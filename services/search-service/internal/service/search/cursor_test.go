@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package search
 
 import "testing"
@@ -8,7 +24,7 @@ func TestCursorRoundTrip(t *testing.T) {
 		Org:         "acme",
 		QueryHash:   queryHash("foo"),
 		Limit:       20,
-		SearchAfter: []interface{}{1.23, "abc"},
+		SearchAfter: []any{1.23, "abc"},
 	}
 
 	encoded, err := EncodeCursor(state)
@@ -30,7 +46,7 @@ func TestCursorRoundTrip(t *testing.T) {
 }
 
 func TestValidateCursorMismatch(t *testing.T) {
-	state := CursorState{Version: cursorVersion, Org: "acme", QueryHash: queryHash("foo"), Limit: 20, SearchAfter: []interface{}{1.0, "x"}}
+	state := CursorState{Version: cursorVersion, Org: "acme", QueryHash: queryHash("foo"), Limit: 20, SearchAfter: []any{1.0, "x"}}
 	if err := ValidateCursor(state, "other", queryHash("foo"), "", "", 20); err == nil {
 		t.Fatalf("expected org mismatch error")
 	}

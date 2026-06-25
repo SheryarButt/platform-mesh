@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package authorization_test
 
 import (
@@ -9,10 +25,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/platform-mesh/rebac-authz-webhook/pkg/authorization"
 	"github.com/stretchr/testify/assert"
 
-	v1 "k8s.io/api/authorization/v1"
+	"go.platform-mesh.io/rebac-authz-webhook/pkg/authorization"
+
+	authorizationv1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
@@ -31,7 +48,7 @@ func TestServeHTTP(t *testing.T) {
 				return httptest.NewRequest(http.MethodPost, "/authorize", nil)
 			},
 			responseAssertions: func(t *testing.T, res *http.Response) {
-				var sar v1.SubjectAccessReview
+				var sar authorizationv1.SubjectAccessReview
 				err := json.NewDecoder(res.Body).Decode(&sar)
 				assert.NoError(t, err)
 
@@ -45,7 +62,7 @@ func TestServeHTTP(t *testing.T) {
 				return httptest.NewRequest(http.MethodPost, "/authorize", http.NoBody)
 			},
 			responseAssertions: func(t *testing.T, res *http.Response) {
-				var sar v1.SubjectAccessReview
+				var sar authorizationv1.SubjectAccessReview
 				err := json.NewDecoder(res.Body).Decode(&sar)
 				assert.NoError(t, err)
 
@@ -61,7 +78,7 @@ func TestServeHTTP(t *testing.T) {
 				return req
 			},
 			responseAssertions: func(t *testing.T, res *http.Response) {
-				var sar v1.SubjectAccessReview
+				var sar authorizationv1.SubjectAccessReview
 				err := json.NewDecoder(res.Body).Decode(&sar)
 				assert.NoError(t, err)
 
@@ -80,7 +97,7 @@ func TestServeHTTP(t *testing.T) {
 				return req
 			},
 			responseAssertions: func(t *testing.T, res *http.Response) {
-				var sar v1.SubjectAccessReview
+				var sar authorizationv1.SubjectAccessReview
 				err := json.NewDecoder(res.Body).Decode(&sar)
 				assert.NoError(t, err)
 
@@ -92,7 +109,7 @@ func TestServeHTTP(t *testing.T) {
 			name: "should return the response from the handler with the UID",
 			req: func() *http.Request {
 				var buffer bytes.Buffer
-				sar := v1.SubjectAccessReview{
+				sar := authorizationv1.SubjectAccessReview{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "1234",
 					},
@@ -108,7 +125,7 @@ func TestServeHTTP(t *testing.T) {
 				return authorization.Allowed()
 			}),
 			responseAssertions: func(t *testing.T, res *http.Response) {
-				var sar v1.SubjectAccessReview
+				var sar authorizationv1.SubjectAccessReview
 				err := json.NewDecoder(res.Body).Decode(&sar)
 				assert.NoError(t, err)
 
@@ -120,7 +137,7 @@ func TestServeHTTP(t *testing.T) {
 			name: "should set Retry-After header and 503 when handler returns Retry",
 			req: func() *http.Request {
 				var buffer bytes.Buffer
-				sar := v1.SubjectAccessReview{
+				sar := authorizationv1.SubjectAccessReview{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "1234",
 					},
@@ -139,7 +156,7 @@ func TestServeHTTP(t *testing.T) {
 				assert.Equal(t, 503, res.StatusCode)
 				assert.Equal(t, "5", res.Header.Get("Retry-After"))
 
-				var sar v1.SubjectAccessReview
+				var sar authorizationv1.SubjectAccessReview
 				err := json.NewDecoder(res.Body).Decode(&sar)
 				assert.Error(t, err, "response body should not contain a SubjectAccessReview when Retry is returned")
 			},

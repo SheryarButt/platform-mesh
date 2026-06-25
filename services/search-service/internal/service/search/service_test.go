@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package search
 
 import (
@@ -57,12 +73,12 @@ func (f *fakeAuthorizer) FilterAuthorized(ctx context.Context, req Authorization
 func TestSearchFillsAuthorizedPageAcrossBatches(t *testing.T) {
 	searcher := &fakeSearcher{pages: []OpenSearchPage{
 		{Hits: []OpenSearchHit{
-			{ID: "1", Score: 1, Sort: []interface{}{1.0, "1"}, Source: map[string]interface{}{"id": "1"}},
-			{ID: "2", Score: 1, Sort: []interface{}{0.9, "2"}, Source: map[string]interface{}{"id": "2"}},
+			{ID: "1", Score: 1, Sort: []any{1.0, "1"}, Source: map[string]any{"id": "1"}},
+			{ID: "2", Score: 1, Sort: []any{0.9, "2"}, Source: map[string]any{"id": "2"}},
 		}},
 		{Hits: []OpenSearchHit{
-			{ID: "3", Score: 1, Sort: []interface{}{0.8, "3"}, Source: map[string]interface{}{"id": "3"}},
-			{ID: "4", Score: 1, Sort: []interface{}{0.7, "4"}, Source: map[string]interface{}{"id": "4"}},
+			{ID: "3", Score: 1, Sort: []any{0.8, "3"}, Source: map[string]any{"id": "3"}},
+			{ID: "4", Score: 1, Sort: []any{0.7, "4"}, Source: map[string]any{"id": "4"}},
 		}},
 	}}
 	authorizer := &fakeAuthorizer{results: []AuthorizationResult{
@@ -122,10 +138,10 @@ func TestSearchRejectsMissingQuery(t *testing.T) {
 func TestSearchClampsLimitToConfiguredMax(t *testing.T) {
 	searcher := &fakeSearcher{pages: []OpenSearchPage{
 		{Hits: []OpenSearchHit{
-			{ID: "1", Score: 1, Sort: []interface{}{1.0, "1"}, Source: map[string]interface{}{"id": "1"}},
+			{ID: "1", Score: 1, Sort: []any{1.0, "1"}, Source: map[string]any{"id": "1"}},
 		}},
 		{Hits: []OpenSearchHit{
-			{ID: "2", Score: 1, Sort: []interface{}{0.9, "2"}, Source: map[string]interface{}{"id": "2"}},
+			{ID: "2", Score: 1, Sort: []any{0.9, "2"}, Source: map[string]any{"id": "2"}},
 		}},
 	}}
 	authorizer := &fakeAuthorizer{results: []AuthorizationResult{
@@ -166,9 +182,9 @@ func TestSearchClampsLimitToConfiguredMax(t *testing.T) {
 func TestFilterValuesPostFiltersAndEnforcesLimit(t *testing.T) {
 	searcher := &fakeSearcher{pages: []OpenSearchPage{
 		{Hits: []OpenSearchHit{
-			{ID: "1", Source: map[string]interface{}{"status": "Terminated"}},
-			{ID: "2", Source: map[string]interface{}{"status": "Active"}},
-			{ID: "3", Source: map[string]interface{}{"status": "Pending"}},
+			{ID: "1", Source: map[string]any{"status": "Terminated"}},
+			{ID: "2", Source: map[string]any{"status": "Active"}},
+			{ID: "3", Source: map[string]any{"status": "Pending"}},
 		}},
 	}}
 

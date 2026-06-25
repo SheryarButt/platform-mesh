@@ -10,8 +10,8 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0
-	go.platform-mesh.io/apis v0.0.0-20260622214312-00032b10b96f
-	go.platform-mesh.io/golang-commons v0.0.0-20260622192504-abc212e78567
+	go.platform-mesh.io/apis v0.0.1
+	go.platform-mesh.io/golang-commons v0.18.0
 	golang.org/x/time v0.15.0
 	k8s.io/api v0.35.4
 	k8s.io/apimachinery v0.35.4
@@ -108,3 +108,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace github.com/kcp-dev/multicluster-provider/client => github.com/kcp-dev/multicluster-provider/client v0.7.1

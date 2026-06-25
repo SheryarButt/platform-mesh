@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package fga
 
 import (
@@ -5,20 +21,21 @@ import (
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	accountsv1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
-	"github.com/platform-mesh/golang-commons/logger"
-	securityv1alpha1 "github.com/platform-mesh/security-operator/api/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	"go.platform-mesh.io/golang-commons/logger"
+	appcontext "go.platform-mesh.io/iam-service/pkg/context"
+	fgamocks "go.platform-mesh.io/iam-service/pkg/fga/mocks"
+	"go.platform-mesh.io/iam-service/pkg/graph"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-
-	appcontext "github.com/platform-mesh/iam-service/pkg/context"
-	fgamocks "github.com/platform-mesh/iam-service/pkg/fga/mocks"
-	"github.com/platform-mesh/iam-service/pkg/graph"
+	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 )
 
 func TestEmailToLabelValue(t *testing.T) {
@@ -93,10 +110,10 @@ func TestService_AssignRolesToUsers_WithInvites_UserExists(t *testing.T) {
 		AccountPath: "root:org:test-account",
 	}
 
-	ai := &accountsv1alpha1.AccountInfo{
+	ai := &pmcorev1alpha1.AccountInfo{
 		ObjectMeta: metav1.ObjectMeta{Name: "account"},
-		Spec: accountsv1alpha1.AccountInfoSpec{
-			Account: accountsv1alpha1.AccountLocation{
+		Spec: pmcorev1alpha1.AccountInfoSpec{
+			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
 			},
 		},
@@ -155,7 +172,7 @@ func TestService_AssignRolesToUsers_WithInvites_UserDoesNotExist(t *testing.T) {
 
 	// Create scheme with security operator API
 	scheme := runtime.NewScheme()
-	err := securityv1alpha1.AddToScheme(scheme)
+	err := pmcorev1alpha1.AddToScheme(scheme)
 	require.NoError(t, err)
 
 	mockWsClient := fake.NewClientBuilder().
@@ -184,10 +201,10 @@ func TestService_AssignRolesToUsers_WithInvites_UserDoesNotExist(t *testing.T) {
 		AccountPath: "root:org:test-account",
 	}
 
-	ai := &accountsv1alpha1.AccountInfo{
+	ai := &pmcorev1alpha1.AccountInfo{
 		ObjectMeta: metav1.ObjectMeta{Name: "account"},
-		Spec: accountsv1alpha1.AccountInfoSpec{
-			Account: accountsv1alpha1.AccountLocation{
+		Spec: pmcorev1alpha1.AccountInfoSpec{
+			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
 			},
 		},
@@ -218,7 +235,7 @@ func TestService_AssignRolesToUsers_WithInvites_UserDoesNotExist(t *testing.T) {
 		nil, nil).Once()
 
 	// Mock workspace client creation (path is appended with resource name for Account)
-	mockWsFactory.EXPECT().New(mock.Anything, "root:org:test-account:test-account").Return(mockWsClient, nil).Once()
+	mockWsFactory.EXPECT().New(mock.Anything, multicluster.ClusterName("root:org:test-account:test-account")).Return(mockWsClient, nil).Once()
 
 	// Mock Write calls for role assignment (2 writes per role: assignee + role tuple)
 	client.EXPECT().Write(mock.Anything, mock.MatchedBy(func(req *openfgav1.WriteRequest) bool {
@@ -267,10 +284,10 @@ func TestService_AssignRolesToUsers_WithInvites_InvalidRole(t *testing.T) {
 		AccountPath: "root:org:test-account",
 	}
 
-	ai := &accountsv1alpha1.AccountInfo{
+	ai := &pmcorev1alpha1.AccountInfo{
 		ObjectMeta: metav1.ObjectMeta{Name: "account"},
-		Spec: accountsv1alpha1.AccountInfoSpec{
-			Account: accountsv1alpha1.AccountLocation{
+		Spec: pmcorev1alpha1.AccountInfoSpec{
+			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
 			},
 		},
@@ -345,10 +362,10 @@ func TestService_AssignRolesToUsers_WithBothChangesAndInvites(t *testing.T) {
 		AccountPath: "root:org:test-account",
 	}
 
-	ai := &accountsv1alpha1.AccountInfo{
+	ai := &pmcorev1alpha1.AccountInfo{
 		ObjectMeta: metav1.ObjectMeta{Name: "account"},
-		Spec: accountsv1alpha1.AccountInfoSpec{
-			Account: accountsv1alpha1.AccountLocation{
+		Spec: pmcorev1alpha1.AccountInfoSpec{
+			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
 			},
 		},
@@ -435,10 +452,10 @@ func TestService_AssignRolesToUsers_WithInvites_IDMCheckError(t *testing.T) {
 		AccountPath: "root:org:test-account",
 	}
 
-	ai := &accountsv1alpha1.AccountInfo{
+	ai := &pmcorev1alpha1.AccountInfo{
 		ObjectMeta: metav1.ObjectMeta{Name: "account"},
-		Spec: accountsv1alpha1.AccountInfoSpec{
-			Account: accountsv1alpha1.AccountLocation{
+		Spec: pmcorev1alpha1.AccountInfoSpec{
+			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
 			},
 		},
@@ -516,10 +533,10 @@ func TestService_AssignRolesToUsers_WithInvites_WorkspaceClientError(t *testing.
 		AccountPath: "root:org:test-account",
 	}
 
-	ai := &accountsv1alpha1.AccountInfo{
+	ai := &pmcorev1alpha1.AccountInfo{
 		ObjectMeta: metav1.ObjectMeta{Name: "account"},
-		Spec: accountsv1alpha1.AccountInfoSpec{
-			Account: accountsv1alpha1.AccountLocation{
+		Spec: pmcorev1alpha1.AccountInfoSpec{
+			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
 			},
 		},
@@ -550,7 +567,7 @@ func TestService_AssignRolesToUsers_WithInvites_WorkspaceClientError(t *testing.
 		nil, nil).Once()
 
 	// Mock workspace client creation - returns error
-	mockWsFactory.EXPECT().New(mock.Anything, "root:org:test-account:test-account").Return(nil, assert.AnError).Once()
+	mockWsFactory.EXPECT().New(mock.Anything, multicluster.ClusterName("root:org:test-account:test-account")).Return(nil, assert.AnError).Once()
 
 	// Mock Write calls for role assignment (code continues despite invite error)
 	client.EXPECT().Write(mock.Anything, mock.MatchedBy(func(req *openfgav1.WriteRequest) bool {
@@ -580,7 +597,7 @@ func TestService_AssignRolesToUsers_WithInvites_InvalidEmail(t *testing.T) {
 
 	// Create scheme with security operator API
 	scheme := runtime.NewScheme()
-	err := securityv1alpha1.AddToScheme(scheme)
+	err := pmcorev1alpha1.AddToScheme(scheme)
 	require.NoError(t, err)
 
 	mockWsClient := fake.NewClientBuilder().
@@ -609,10 +626,10 @@ func TestService_AssignRolesToUsers_WithInvites_InvalidEmail(t *testing.T) {
 		AccountPath: "root:org:test-account",
 	}
 
-	ai := &accountsv1alpha1.AccountInfo{
+	ai := &pmcorev1alpha1.AccountInfo{
 		ObjectMeta: metav1.ObjectMeta{Name: "account"},
-		Spec: accountsv1alpha1.AccountInfoSpec{
-			Account: accountsv1alpha1.AccountLocation{
+		Spec: pmcorev1alpha1.AccountInfoSpec{
+			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
 			},
 		},
@@ -643,7 +660,7 @@ func TestService_AssignRolesToUsers_WithInvites_InvalidEmail(t *testing.T) {
 		nil, nil).Once()
 
 	// Mock workspace client creation
-	mockWsFactory.EXPECT().New(mock.Anything, "root:org:test-account:test-account").Return(mockWsClient, nil).Once()
+	mockWsFactory.EXPECT().New(mock.Anything, multicluster.ClusterName("root:org:test-account:test-account")).Return(mockWsClient, nil).Once()
 
 	// Mock Write calls for role assignment (code continues despite invite error)
 	client.EXPECT().Write(mock.Anything, mock.MatchedBy(func(req *openfgav1.WriteRequest) bool {

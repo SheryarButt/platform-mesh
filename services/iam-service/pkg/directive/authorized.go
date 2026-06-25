@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package directive
 
 import (
@@ -8,24 +24,26 @@ import (
 
 	"github.com/99designs/gqlgen/graphql"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	accountsv1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
-	pmcontext "github.com/platform-mesh/golang-commons/context"
-	"github.com/platform-mesh/golang-commons/errors"
-	"github.com/platform-mesh/golang-commons/fga/util"
-	"github.com/platform-mesh/golang-commons/jwt"
-	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/vektah/gqlparser/v2/gqlerror"
+
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	pmcontext "go.platform-mesh.io/golang-commons/context"
+	"go.platform-mesh.io/golang-commons/errors"
+	"go.platform-mesh.io/golang-commons/fga/util"
+	"go.platform-mesh.io/golang-commons/jwt"
+	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/iam-service/pkg/accountinfo"
+	appcontext "go.platform-mesh.io/iam-service/pkg/context"
+	"go.platform-mesh.io/iam-service/pkg/fga/store"
+	"go.platform-mesh.io/iam-service/pkg/fga/tuples"
+	"go.platform-mesh.io/iam-service/pkg/graph"
+	"go.platform-mesh.io/iam-service/pkg/metrics"
+	"go.platform-mesh.io/iam-service/pkg/workspace"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"github.com/platform-mesh/iam-service/pkg/accountinfo"
-	appcontext "github.com/platform-mesh/iam-service/pkg/context"
-	"github.com/platform-mesh/iam-service/pkg/fga/store"
-	"github.com/platform-mesh/iam-service/pkg/fga/tuples"
-	"github.com/platform-mesh/iam-service/pkg/graph"
-	"github.com/platform-mesh/iam-service/pkg/metrics"
-	"github.com/platform-mesh/iam-service/pkg/workspace"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 )
 
 type AuthorizedDirective struct {
@@ -90,7 +108,7 @@ func (a AuthorizedDirective) Authorized(ctx context.Context, _ any, next graphql
 	if rctx.Group == "core.platform-mesh.io" && rctx.Kind == "Account" {
 		path = fmt.Sprintf("%s:%s", path, rctx.Resource.Name)
 	}
-	ai, err := a.air.Get(ctx, path)
+	ai, err := a.air.Get(ctx, multicluster.ClusterName(path))
 	if err != nil { // coverage-ignore
 		return nil, errors.Wrap(err, "failed to get account info from kcp context")
 	}
@@ -109,7 +127,7 @@ func (a AuthorizedDirective) Authorized(ctx context.Context, _ any, next graphql
 	ctx = appcontext.SetClusterId(ctx, clusterId)
 
 	// Test if resource exists
-	wsClient, err := a.wcClient.New(ctx, rctx.AccountPath)
+	wsClient, err := a.wcClient.New(ctx, multicluster.ClusterName(rctx.AccountPath))
 	if err != nil { // coverage-ignore
 		return nil, errors.Wrap(err, "failed to get workspace client")
 	}
@@ -132,7 +150,7 @@ func (a AuthorizedDirective) Authorized(ctx context.Context, _ any, next graphql
 	return next(ctx)
 }
 
-func (a AuthorizedDirective) testIfAllowed(ctx context.Context, ai *accountsv1alpha1.AccountInfo, rctx *graph.ResourceContext, permission string, token jwt.WebToken) (bool, error) {
+func (a AuthorizedDirective) testIfAllowed(ctx context.Context, ai *pmcorev1alpha1.AccountInfo, rctx *graph.ResourceContext, permission string, token jwt.WebToken) (bool, error) {
 	start := time.Now()
 	defer func() {
 		metrics.AuthorizationDuration.WithLabelValues(permission).Observe(time.Since(start).Seconds())
@@ -183,7 +201,7 @@ func (a AuthorizedDirective) testIfAllowed(ctx context.Context, ai *accountsv1al
 	return res.Allowed, nil
 }
 
-func (a AuthorizedDirective) testIfResourceExists(ctx context.Context, rctx *graph.ResourceContext, wsClient client.Client) (bool, error) {
+func (a AuthorizedDirective) testIfResourceExists(ctx context.Context, rctx *graph.ResourceContext, wsClient ctrlruntimeclient.Client) (bool, error) {
 	gvr := schema.GroupVersionResource{
 		Group:    rctx.Group,
 		Resource: rctx.Kind,
@@ -203,13 +221,13 @@ func (a AuthorizedDirective) testIfResourceExists(ctx context.Context, rctx *gra
 	resource.SetGroupVersionKind(gvk)
 
 	// Try to get the resource
-	clObj := client.ObjectKey{Name: rctx.Resource.Name}
+	clObj := ctrlruntimeclient.ObjectKey{Name: rctx.Resource.Name}
 	if rctx.Resource.Namespace != nil {
 		clObj.Namespace = *rctx.Resource.Namespace
 	}
 	err = wsClient.Get(ctx, clObj, resource)
 	if err != nil {
-		if client.IgnoreNotFound(err) == nil {
+		if ctrlruntimeclient.IgnoreNotFound(err) == nil {
 			return false, nil
 		}
 	}

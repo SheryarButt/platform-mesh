@@ -3,6 +3,7 @@ go 1.25.7
 use (
 	./apis
 	./cmd/jl
+	./cmd/qbrtool
 	./cmd/release
 	./golang-commons
 	./operators/account-operator
@@ -13,6 +14,9 @@ use (
 	./operators/search-operator
 	./operators/security-operator
 	./operators/terminal-controller-manager
+	./services/iam-service
+	./services/rebac-authz-webhook
+	./services/search-service
 	./services/virtual-workspaces
 	./subroutines
 )

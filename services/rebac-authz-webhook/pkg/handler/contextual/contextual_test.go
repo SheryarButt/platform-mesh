@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package contextual_test
 
 import (
@@ -7,15 +23,16 @@ import (
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/platform-mesh/rebac-authz-webhook/pkg/authorization"
-	"github.com/platform-mesh/rebac-authz-webhook/pkg/clustercache"
-	"github.com/platform-mesh/rebac-authz-webhook/pkg/handler/contextual"
-	"github.com/platform-mesh/rebac-authz-webhook/pkg/handler/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc"
 
-	v1 "k8s.io/api/authorization/v1"
+	"go.platform-mesh.io/rebac-authz-webhook/pkg/authorization"
+	"go.platform-mesh.io/rebac-authz-webhook/pkg/clustercache"
+	"go.platform-mesh.io/rebac-authz-webhook/pkg/handler/contextual"
+	"go.platform-mesh.io/rebac-authz-webhook/pkg/handler/mocks"
+
+	authorizationv1 "k8s.io/api/authorization/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
@@ -38,12 +55,12 @@ func TestHandler(t *testing.T) {
 		{
 			name: "should retry processing if cluster not found in cache and cacheMissTracker returns true",
 			req: authorization.Request{
-				SubjectAccessReview: v1.SubjectAccessReview{
-					Spec: v1.SubjectAccessReviewSpec{
-						Extra: map[string]v1.ExtraValue{
+				SubjectAccessReview: authorizationv1.SubjectAccessReview{
+					Spec: authorizationv1.SubjectAccessReviewSpec{
+						Extra: map[string]authorizationv1.ExtraValue{
 							"authorization.kubernetes.io/cluster-name": {"a"},
 						},
-						ResourceAttributes: &v1.ResourceAttributes{},
+						ResourceAttributes: &authorizationv1.ResourceAttributes{},
 					},
 				},
 			},
@@ -59,12 +76,12 @@ func TestHandler(t *testing.T) {
 		{
 			name: "should skip processing if cluster not found in cache and cacheMissTracker returns false",
 			req: authorization.Request{
-				SubjectAccessReview: v1.SubjectAccessReview{
-					Spec: v1.SubjectAccessReviewSpec{
-						Extra: map[string]v1.ExtraValue{
+				SubjectAccessReview: authorizationv1.SubjectAccessReview{
+					Spec: authorizationv1.SubjectAccessReviewSpec{
+						Extra: map[string]authorizationv1.ExtraValue{
 							"authorization.kubernetes.io/cluster-name": {"a"},
 						},
-						ResourceAttributes: &v1.ResourceAttributes{},
+						ResourceAttributes: &authorizationv1.ResourceAttributes{},
 					},
 				},
 			},
@@ -76,12 +93,12 @@ func TestHandler(t *testing.T) {
 		{
 			name: "should skip processing if restmapper cannot resolve GVK",
 			req: authorization.Request{
-				SubjectAccessReview: v1.SubjectAccessReview{
-					Spec: v1.SubjectAccessReviewSpec{
-						Extra: map[string]v1.ExtraValue{
+				SubjectAccessReview: authorizationv1.SubjectAccessReview{
+					Spec: authorizationv1.SubjectAccessReviewSpec{
+						Extra: map[string]authorizationv1.ExtraValue{
 							"authorization.kubernetes.io/cluster-name": {"a"},
 						},
-						ResourceAttributes: &v1.ResourceAttributes{
+						ResourceAttributes: &authorizationv1.ResourceAttributes{
 							Group:    "unknown.io",
 							Version:  "v1",
 							Resource: "unknowns",
@@ -103,12 +120,12 @@ func TestHandler(t *testing.T) {
 		{
 			name: "should process request non-parent, non-namespaced successfully",
 			req: authorization.Request{
-				SubjectAccessReview: v1.SubjectAccessReview{
-					Spec: v1.SubjectAccessReviewSpec{
-						Extra: map[string]v1.ExtraValue{
+				SubjectAccessReview: authorizationv1.SubjectAccessReview{
+					Spec: authorizationv1.SubjectAccessReviewSpec{
+						Extra: map[string]authorizationv1.ExtraValue{
 							"authorization.kubernetes.io/cluster-name": {"a"},
 						},
-						ResourceAttributes: &v1.ResourceAttributes{
+						ResourceAttributes: &authorizationv1.ResourceAttributes{
 							Group:    "test.platform-mesh.io",
 							Version:  "v1alpha1",
 							Resource: "tests",
@@ -169,12 +186,12 @@ func TestHandler(t *testing.T) {
 		{
 			name: "should process request non-parent, namespaced successfully",
 			req: authorization.Request{
-				SubjectAccessReview: v1.SubjectAccessReview{
-					Spec: v1.SubjectAccessReviewSpec{
-						Extra: map[string]v1.ExtraValue{
+				SubjectAccessReview: authorizationv1.SubjectAccessReview{
+					Spec: authorizationv1.SubjectAccessReviewSpec{
+						Extra: map[string]authorizationv1.ExtraValue{
 							"authorization.kubernetes.io/cluster-name": {"a"},
 						},
-						ResourceAttributes: &v1.ResourceAttributes{
+						ResourceAttributes: &authorizationv1.ResourceAttributes{
 							Group:     "test.platform-mesh.io",
 							Version:   "v1alpha1",
 							Resource:  "tests",
@@ -244,12 +261,12 @@ func TestHandler(t *testing.T) {
 		{
 			name: "should process request parent, namespaced successfully",
 			req: authorization.Request{
-				SubjectAccessReview: v1.SubjectAccessReview{
-					Spec: v1.SubjectAccessReviewSpec{
-						Extra: map[string]v1.ExtraValue{
+				SubjectAccessReview: authorizationv1.SubjectAccessReview{
+					Spec: authorizationv1.SubjectAccessReviewSpec{
+						Extra: map[string]authorizationv1.ExtraValue{
 							"authorization.kubernetes.io/cluster-name": {"a"},
 						},
-						ResourceAttributes: &v1.ResourceAttributes{
+						ResourceAttributes: &authorizationv1.ResourceAttributes{
 							Group:     "test.platform-mesh.io",
 							Version:   "v1alpha1",
 							Resource:  "tests",
@@ -311,12 +328,12 @@ func TestHandler(t *testing.T) {
 		{
 			name: "should process request parent, non-namespaced successfully",
 			req: authorization.Request{
-				SubjectAccessReview: v1.SubjectAccessReview{
-					Spec: v1.SubjectAccessReviewSpec{
-						Extra: map[string]v1.ExtraValue{
+				SubjectAccessReview: authorizationv1.SubjectAccessReview{
+					Spec: authorizationv1.SubjectAccessReviewSpec{
+						Extra: map[string]authorizationv1.ExtraValue{
 							"authorization.kubernetes.io/cluster-name": {"a"},
 						},
-						ResourceAttributes: &v1.ResourceAttributes{
+						ResourceAttributes: &authorizationv1.ResourceAttributes{
 							Group:    "test.platform-mesh.io",
 							Version:  "v1alpha1",
 							Resource: "tests",
@@ -377,17 +394,17 @@ func TestHandler(t *testing.T) {
 		{
 			name: "should process bind verb authorization successfully",
 			req: authorization.Request{
-				SubjectAccessReview: v1.SubjectAccessReview{
-					Spec: v1.SubjectAccessReviewSpec{
+				SubjectAccessReview: authorizationv1.SubjectAccessReview{
+					Spec: authorizationv1.SubjectAccessReviewSpec{
 						User: "system:anonymous",
 						Groups: []string{
 							"system:authenticated",
 							"system:cluster:consumer-cluster-id",
 						},
-						Extra: map[string]v1.ExtraValue{
+						Extra: map[string]authorizationv1.ExtraValue{
 							"authorization.kubernetes.io/cluster-name": {"provider-cluster-id"},
 						},
-						ResourceAttributes: &v1.ResourceAttributes{
+						ResourceAttributes: &authorizationv1.ResourceAttributes{
 							Group:    "apis.kcp.io",
 							Version:  "v1alpha1",
 							Resource: "apiexports",
@@ -437,17 +454,17 @@ func TestHandler(t *testing.T) {
 		{
 			name: "should return no opinion if bind verb and consumer cluster not found",
 			req: authorization.Request{
-				SubjectAccessReview: v1.SubjectAccessReview{
-					Spec: v1.SubjectAccessReviewSpec{
+				SubjectAccessReview: authorizationv1.SubjectAccessReview{
+					Spec: authorizationv1.SubjectAccessReviewSpec{
 						User: "system:anonymous",
 						Groups: []string{
 							"system:authenticated",
 							"system:cluster:consumer-cluster-id",
 						},
-						Extra: map[string]v1.ExtraValue{
+						Extra: map[string]authorizationv1.ExtraValue{
 							"authorization.kubernetes.io/cluster-name": {"provider-cluster-id"},
 						},
-						ResourceAttributes: &v1.ResourceAttributes{
+						ResourceAttributes: &authorizationv1.ResourceAttributes{
 							Group:    "apis.kcp.io",
 							Version:  "v1alpha1",
 							Resource: "apiexports",
@@ -465,16 +482,16 @@ func TestHandler(t *testing.T) {
 		{
 			name: "should return no opinion if bind verb and consumer cluster not in groups",
 			req: authorization.Request{
-				SubjectAccessReview: v1.SubjectAccessReview{
-					Spec: v1.SubjectAccessReviewSpec{
+				SubjectAccessReview: authorizationv1.SubjectAccessReview{
+					Spec: authorizationv1.SubjectAccessReviewSpec{
 						User: "system:anonymous",
 						Groups: []string{
 							"system:authenticated",
 						},
-						Extra: map[string]v1.ExtraValue{
+						Extra: map[string]authorizationv1.ExtraValue{
 							"authorization.kubernetes.io/cluster-name": {"provider-cluster-id"},
 						},
-						ResourceAttributes: &v1.ResourceAttributes{
+						ResourceAttributes: &authorizationv1.ResourceAttributes{
 							Group:    "apis.kcp.io",
 							Version:  "v1alpha1",
 							Resource: "apiexports",
@@ -489,15 +506,15 @@ func TestHandler(t *testing.T) {
 		{
 			name: "should return no opinion if bind verb and provider cluster not in extra",
 			req: authorization.Request{
-				SubjectAccessReview: v1.SubjectAccessReview{
-					Spec: v1.SubjectAccessReviewSpec{
+				SubjectAccessReview: authorizationv1.SubjectAccessReview{
+					Spec: authorizationv1.SubjectAccessReviewSpec{
 						User: "system:anonymous",
 						Groups: []string{
 							"system:authenticated",
 							"system:cluster:consumer-cluster-id",
 						},
-						Extra: map[string]v1.ExtraValue{},
-						ResourceAttributes: &v1.ResourceAttributes{
+						Extra: map[string]authorizationv1.ExtraValue{},
+						ResourceAttributes: &authorizationv1.ResourceAttributes{
 							Group:    "apis.kcp.io",
 							Version:  "v1alpha1",
 							Resource: "apiexports",
@@ -512,17 +529,17 @@ func TestHandler(t *testing.T) {
 		{
 			name: "should retry if bind verb and consumer cluster not found in cache and cacheMissTracker returns true",
 			req: authorization.Request{
-				SubjectAccessReview: v1.SubjectAccessReview{
-					Spec: v1.SubjectAccessReviewSpec{
+				SubjectAccessReview: authorizationv1.SubjectAccessReview{
+					Spec: authorizationv1.SubjectAccessReviewSpec{
 						User: "system:anonymous",
 						Groups: []string{
 							"system:authenticated",
 							"system:cluster:consumer-cluster-id",
 						},
-						Extra: map[string]v1.ExtraValue{
+						Extra: map[string]authorizationv1.ExtraValue{
 							"authorization.kubernetes.io/cluster-name": {"provider-cluster-id"},
 						},
-						ResourceAttributes: &v1.ResourceAttributes{
+						ResourceAttributes: &authorizationv1.ResourceAttributes{
 							Group:    "apis.kcp.io",
 							Version:  "v1alpha1",
 							Resource: "apiexports",
@@ -544,17 +561,17 @@ func TestHandler(t *testing.T) {
 		{
 			name: "should not process bind verb if group is not apis.kcp.io",
 			req: authorization.Request{
-				SubjectAccessReview: v1.SubjectAccessReview{
-					Spec: v1.SubjectAccessReviewSpec{
+				SubjectAccessReview: authorizationv1.SubjectAccessReview{
+					Spec: authorizationv1.SubjectAccessReviewSpec{
 						User: "system:anonymous",
 						Groups: []string{
 							"system:authenticated",
 							"system:cluster:consumer-cluster-id",
 						},
-						Extra: map[string]v1.ExtraValue{
+						Extra: map[string]authorizationv1.ExtraValue{
 							"authorization.kubernetes.io/cluster-name": {"a"},
 						},
-						ResourceAttributes: &v1.ResourceAttributes{
+						ResourceAttributes: &authorizationv1.ResourceAttributes{
 							Group:    "other.io",
 							Version:  "v1",
 							Resource: "tests",

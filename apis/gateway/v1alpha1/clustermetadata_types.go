@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package v1alpha1
 
 import (
@@ -11,7 +27,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kube-openapi/pkg/spec3"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Schema represents the data extracted from a schema file
@@ -80,12 +96,12 @@ func BuildRestConfigFromMetadata(metadata ClusterMetadata) (*rest.Config, error)
 }
 
 // BuildClusterMetadataFromClusterAccess builds ClusterMetadata from ClusterAccess by reading secrets
-func BuildClusterMetadataFromClusterAccess(ctx context.Context, ca ClusterAccess, c client.Client) (*ClusterMetadata, error) {
+func BuildClusterMetadataFromClusterAccess(ctx context.Context, ca ClusterAccess, c ctrlruntimeclient.Client) (*ClusterMetadata, error) {
 	return buildClusterMetadataFromClusterAccess(ctx, ca, c)
 }
 
 // buildClusterMetadataFromClusterAccess builds ClusterMetadata from ClusterAccess
-func buildClusterMetadataFromClusterAccess(ctx context.Context, ca ClusterAccess, c client.Client) (*ClusterMetadata, error) {
+func buildClusterMetadataFromClusterAccess(ctx context.Context, ca ClusterAccess, c ctrlruntimeclient.Client) (*ClusterMetadata, error) {
 	metadata := &ClusterMetadata{
 		Host:                ca.Spec.Host,
 		Path:                ca.Spec.Path,
@@ -145,7 +161,7 @@ func buildClusterMetadataFromClusterAccess(ctx context.Context, ca ClusterAccess
 
 	case auth.ClientCertificateRef != nil:
 		secret := &corev1.Secret{}
-		if err := c.Get(ctx, client.ObjectKey{
+		if err := c.Get(ctx, ctrlruntimeclient.ObjectKey{
 			Name:      auth.ClientCertificateRef.Name,
 			Namespace: auth.ClientCertificateRef.Namespace,
 		}, secret); err != nil {
@@ -170,7 +186,7 @@ func buildClusterMetadataFromClusterAccess(ctx context.Context, ca ClusterAccess
 	case auth.ServiceAccountRef != nil:
 		// Generate a token for the ServiceAccount using TokenRequest API
 		sa := &corev1.ServiceAccount{}
-		if err := c.Get(ctx, client.ObjectKey{
+		if err := c.Get(ctx, ctrlruntimeclient.ObjectKey{
 			Name:      auth.ServiceAccountRef.Name,
 			Namespace: auth.ServiceAccountRef.Namespace,
 		}, sa); err != nil {
@@ -206,9 +222,9 @@ func buildClusterMetadataFromClusterAccess(ctx context.Context, ca ClusterAccess
 }
 
 // readSecretKey reads a specific key from a secret referenced by SecretKeyRef
-func readSecretKey(ctx context.Context, c client.Client, ref *SecretKeyRef) ([]byte, error) {
+func readSecretKey(ctx context.Context, c ctrlruntimeclient.Client, ref *SecretKeyRef) ([]byte, error) {
 	secret := &corev1.Secret{}
-	if err := c.Get(ctx, client.ObjectKey{
+	if err := c.Get(ctx, ctrlruntimeclient.ObjectKey{
 		Name:      ref.Name,
 		Namespace: ref.Namespace,
 	}, secret); err != nil {
@@ -242,7 +258,7 @@ func readSecretKey(ctx context.Context, c client.Client, ref *SecretKeyRef) ([]b
 }
 
 // BuildRestConfigFromClusterAccess creates a rest.Config from ClusterAccess by reading secrets
-func BuildRestConfigFromClusterAccess(ctx context.Context, ca ClusterAccess, c client.Client) (*rest.Config, error) {
+func BuildRestConfigFromClusterAccess(ctx context.Context, ca ClusterAccess, c ctrlruntimeclient.Client) (*rest.Config, error) {
 	metadata, err := buildClusterMetadataFromClusterAccess(ctx, ca, c)
 	if err != nil {
 		return nil, err

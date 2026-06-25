@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package cmd
 
 import (
@@ -5,26 +21,26 @@ import (
 	"net/http"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/platform-mesh/rebac-authz-webhook/pkg/authorization"
-	"github.com/platform-mesh/rebac-authz-webhook/pkg/authorization/union"
-	"github.com/platform-mesh/rebac-authz-webhook/pkg/clustercache"
-	"github.com/platform-mesh/rebac-authz-webhook/pkg/config"
-	"github.com/platform-mesh/rebac-authz-webhook/pkg/handler/contextual"
-	"github.com/platform-mesh/rebac-authz-webhook/pkg/handler/nonresourceattributes"
-	"github.com/platform-mesh/rebac-authz-webhook/pkg/handler/orgs"
-	"github.com/platform-mesh/rebac-authz-webhook/pkg/retry"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"go.platform-mesh.io/rebac-authz-webhook/pkg/authorization"
+	"go.platform-mesh.io/rebac-authz-webhook/pkg/authorization/union"
+	"go.platform-mesh.io/rebac-authz-webhook/pkg/clustercache"
+	"go.platform-mesh.io/rebac-authz-webhook/pkg/config"
+	"go.platform-mesh.io/rebac-authz-webhook/pkg/handler/contextual"
+	"go.platform-mesh.io/rebac-authz-webhook/pkg/handler/nonresourceattributes"
+	"go.platform-mesh.io/rebac-authz-webhook/pkg/handler/orgs"
+	"go.platform-mesh.io/rebac-authz-webhook/pkg/retry"
+
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
-
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"github.com/kcp-dev/multicluster-provider/apiexport"

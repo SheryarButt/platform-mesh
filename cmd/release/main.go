@@ -20,8 +20,16 @@ limitations under the License.
 // prefix is the component name (for go-gettable modules it is also the module's
 // directory path, so the tag doubles as the Go-module tag):
 //
+//	golang-commons     golang-commons/v<X.Y.Z>     go-gettable module tag for
+//	                                               go.platform-mesh.io/golang-commons (no image)
+//	subroutines        subroutines/v<X.Y.Z>        go-gettable module tag for
+//	                                               go.platform-mesh.io/subroutines (no image)
 //	apis               apis/v<X.Y.Z>               go-gettable module tag for
 //	                                               go.platform-mesh.io/apis (no image)
+//	golang-commons     golang-commons/v<X.Y.Z>     golang-commons.yml: go-gettable module
+//	                                               tag + GitHub release (no image)
+//	subroutines        subroutines/v<X.Y.Z>        subroutines.yml: go-gettable module
+//	                                               tag + GitHub release (no image)
 //	account-operator   account-operator/v<X.Y.Z>   account-operator.yml: signed image,
 //	                                               GitHub release, chart bump, SBOM, OCM
 //	backup-operator    backup-operator/v<X.Y.Z>    backup-operator.yml: signed image,
@@ -37,10 +45,17 @@ limitations under the License.
 //	                                               GitHub release, chart bump, SBOM, OCM
 //	search-operator    search-operator/v<X.Y.Z>    search-operator.yml: signed image,
 //	                                               GitHub release, chart bump, SBOM, OCM
+//	search-service     search-service/v<X.Y.Z>     search-service.yml: signed image,
+//	                                               GitHub release, chart bump, SBOM, OCM
 //	security-operator  security-operator/v<X.Y.Z>  security-operator.yml: signed image,
 //	                                               GitHub release, chart bump, SBOM, OCM
 //	terminal-controller-manager   terminal-controller-manager/v<X.Y.Z>
 //	                                               terminal-controller-manager.yml: signed image,
+//	iam-service   iam-service/v<X.Y.Z>             iam-service.yml: signed image,
+//	                                               GitHub release, chart bump, SBOM, OCM
+//	                                               GitHub release, chart bump, SBOM, OCM
+//	rebac-authz-webhook   rebac-authz-webhook/v<X.Y.Z>
+//	                                               rebac-authz-webhook.yml: signed image,
 //	                                               GitHub release, chart bump, SBOM, OCM
 //	virtual-workspaces   virtual-workspaces/v<X.Y.Z>
 //	                                               virtual-workspaces.yml: signed image,
@@ -79,44 +94,13 @@ import (
 	"strings"
 )
 
-// component describes a release line: its tag prefix (the version is appended
-// directly, e.g. prefix "apis/v" + "0.0.1" = "apis/v0.0.1") and a one-line
-// summary of what cutting the tag sets in motion — shown in the plan so a
-// dry-run makes the downstream effect obvious. Order in componentOrder matters
-// for `all`.
-type component struct {
-	prefix   string
-	triggers string
-}
+// The release component registry (component, componentOrder, components,
+// libraryComponents) lives in const.go.
 
-// apis is first: the operators depend on the apis module, so when releasing
-// `all` the apis tag is cut before the operators that will eventually `require`
-// that published version.
-var componentOrder = []string{
-	"apis",
-	"account-operator",
-	"backup-operator",
-	"extension-manager-operator",
-	"kcp-migration-operator",
-	"resource-sharding-operator",
-	"search-operator",
-	"security-operator",
-	"terminal-controller-manager",
-	"virtual-workspaces",
-}
-
-var components = map[string]component{
-	"apis":                        {"apis/v", "go-gettable module tag for go.platform-mesh.io/apis (no image)"},
-	"account-operator":            {"account-operator/v", "account-operator.yml: builds + signs the image, cuts a GitHub release, bumps the chart, publishes SBOM + signed OCM component"},
-	"backup-operator":             {"backup-operator/v", "backup-operator.yml: builds + signs the image, cuts a GitHub release, bumps the chart, publishes SBOM + signed OCM component"},
-	"extension-manager-operator":  {"extension-manager-operator/v", "extension-manager-operator.yml: builds + signs the image, cuts a GitHub release, bumps the chart, publishes SBOM + signed OCM component"},
-	"kcp-migration-operator":      {"kcp-migration-operator/v", "kcp-migration-operator.yml: builds + signs the image, cuts a GitHub release, bumps the chart, publishes SBOM + signed OCM component"},
-	"resource-sharding-operator":  {"resource-sharding-operator/v", "resource-sharding-operator.yml: builds + signs the image, cuts a GitHub release, bumps the chart, publishes SBOM + signed OCM component"},
-	"search-operator":             {"search-operator/v", "search-operator.yml: builds + signs the image, cuts a GitHub release, bumps the chart, publishes SBOM + signed OCM component"},
-	"security-operator":           {"security-operator/v", "security-operator.yml: builds + signs the image, cuts a GitHub release, bumps the chart, publishes SBOM + signed OCM component"},
-	"terminal-controller-manager": {"terminal-controller-manager/v", "terminal-controller-manager.yml: builds + signs the image, cuts a GitHub release, bumps the chart, publishes SBOM + signed OCM component"},
-	"virtual-workspaces":          {"virtual-workspaces/v", "virtual-workspaces.yml: builds + signs the image, cuts a GitHub release, bumps the chart, publishes SBOM + signed OCM component"},
-}
+// plan is one component's resolved release step: the tag it moves from, the
+// full tag to create, the bare version (e.g. v0.0.1), and what cutting it
+// triggers downstream.
+type plan struct{ name, from, fullTag, ver, triggers string }
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -196,7 +180,6 @@ func run(args []string) error {
 	branch, _ := gitOut("rev-parse", "--abbrev-ref", "HEAD")
 
 	// Build the plan.
-	type plan struct{ name, from, fullTag, triggers string }
 	var plans []plan
 	for _, name := range names {
 		comp := components[name]
@@ -221,7 +204,7 @@ func run(args []string) error {
 		if hasLatest {
 			from = comp.prefix + strings.TrimPrefix(latest.String(), "v")
 		}
-		plans = append(plans, plan{name, from, full, comp.triggers})
+		plans = append(plans, plan{name, from, full, next.String(), comp.triggers})
 	}
 
 	// Show the plan: the version step and what each tag sets in motion.
@@ -237,6 +220,7 @@ func run(args []string) error {
 		for _, p := range plans {
 			fmt.Printf("  git tag %s %s && git push origin %s\n", p.fullTag, opts.ref, p.fullTag)
 		}
+		printBumpHints(plans)
 		return nil
 	}
 
@@ -265,7 +249,28 @@ func run(args []string) error {
 		fmt.Printf("pushed %s\n", p.fullTag)
 	}
 	fmt.Println("\nDone — the release workflow will pick these up.")
+	printBumpHints(plans)
 	return nil
+}
+
+// printBumpHints tells the user how to point the repo's consumers at the
+// freshly tagged library modules. cmd/release only moves the tag; bumping the
+// dependents is a separate, reviewable commit — so we print the exact
+// `task bump-deps` command rather than editing go.mod files here.
+func printBumpHints(plans []plan) {
+	var hints []string
+	for _, p := range plans {
+		if libraryComponents[p.name] {
+			hints = append(hints, fmt.Sprintf("  task bump-deps -- %s %s", p.name, p.ver))
+		}
+	}
+	if len(hints) == 0 {
+		return
+	}
+	fmt.Println("\nNow point the repo's consumers at the released version(s):")
+	for _, h := range hints {
+		fmt.Println(h)
+	}
 }
 
 // latestTag returns the highest semver tag carrying prefix, with the prefix
@@ -437,7 +442,11 @@ Usage:
   release <component|all> [flags]
 
 Components:
+  golang-commons               golang-commons/v<X.Y.Z>               (go-gettable module tag, no image)
+  subroutines                  subroutines/v<X.Y.Z>                  (go-gettable module tag, no image)
   apis                         apis/v<X.Y.Z>                         (go-gettable module tag, no image)
+  golang-commons               golang-commons/v<X.Y.Z>               (go-gettable module tag + GitHub release, no image)
+  subroutines                  subroutines/v<X.Y.Z>                  (go-gettable module tag + GitHub release, no image)
   account-operator             account-operator/v<X.Y.Z>             (signed image + release + chart + SBOM + OCM)
   backup-operator              backup-operator/v<X.Y.Z>              (signed image + release + chart + SBOM + OCM)
   extension-manager-operator   extension-manager-operator/v<X.Y.Z>   (signed image + release + chart + SBOM + OCM)
@@ -445,6 +454,10 @@ Components:
   resource-sharding-operator   resource-sharding-operator/v<X.Y.Z>   (signed image + release + chart + SBOM + OCM)
   security-operator            security-operator/v<X.Y.Z>            (signed image + release + chart + SBOM + OCM)
   search-operator              search-operator/v<X.Y.Z>              (signed image + release + chart + SBOM + OCM)
+  search-service               search-service/v<X.Y.Z>               (signed image + release + chart + SBOM + OCM)
+  terminal-controller-manager  terminal-controller-manager/v<X.Y.Z>  (signed image + release + chart + SBOM + OCM)
+  iam-service                  iam-service/v<X.Y.Z>                  (signed image + release + chart + SBOM + OCM)
+  rebac-authz-webhook          rebac-authz-webhook/v<X.Y.Z>          (signed image + release + chart + SBOM + OCM)
   terminal-controller-manager  terminal-controller-manager/v<X.Y.Z>  (signed image + release + chart + SBOM + OCM)
   virtual-workspaces           virtual-workspaces/v<X.Y.Z>           (signed image + release + chart + SBOM + OCM)
   all                          every component                       (independent versions)

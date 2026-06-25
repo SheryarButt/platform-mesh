@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package fga
 
 import (
@@ -8,18 +24,19 @@ import (
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	accountsv1alpha1 "github.com/platform-mesh/account-operator/api/v1alpha1"
-	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/iam-service/pkg/config"
+	appcontext "go.platform-mesh.io/iam-service/pkg/context"
+	fgamocks "go.platform-mesh.io/iam-service/pkg/fga/mocks"
+	"go.platform-mesh.io/iam-service/pkg/graph"
+	"go.platform-mesh.io/iam-service/pkg/roles"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
-
-	"github.com/platform-mesh/iam-service/pkg/config"
-	appcontext "github.com/platform-mesh/iam-service/pkg/context"
-	fgamocks "github.com/platform-mesh/iam-service/pkg/fga/mocks"
-	"github.com/platform-mesh/iam-service/pkg/graph"
-	"github.com/platform-mesh/iam-service/pkg/roles"
 )
 
 // createTestConfig creates a test configuration
@@ -90,10 +107,10 @@ func TestService_ListUsers_Success(t *testing.T) {
 		AccountPath: "test-account",
 	}
 
-	ai := &accountsv1alpha1.AccountInfo{
+	ai := &pmcorev1alpha1.AccountInfo{
 		ObjectMeta: metav1.ObjectMeta{Name: "account"},
-		Spec: accountsv1alpha1.AccountInfoSpec{
-			Account: accountsv1alpha1.AccountLocation{
+		Spec: pmcorev1alpha1.AccountInfoSpec{
+			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
 			},
 		},
@@ -214,10 +231,10 @@ func TestService_ListUsers_NoKCPContext(t *testing.T) {
 		AccountPath: "test-account",
 	}
 
-	ai := &accountsv1alpha1.AccountInfo{
+	ai := &pmcorev1alpha1.AccountInfo{
 		ObjectMeta: metav1.ObjectMeta{Name: "account"},
-		Spec: accountsv1alpha1.AccountInfoSpec{
-			Account: accountsv1alpha1.AccountLocation{
+		Spec: pmcorev1alpha1.AccountInfoSpec{
+			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
 			},
 		},
@@ -363,10 +380,10 @@ func TestService_AssignRolesToUsers_Success(t *testing.T) {
 		AccountPath: "test-account",
 	}
 
-	ai := &accountsv1alpha1.AccountInfo{
+	ai := &pmcorev1alpha1.AccountInfo{
 		ObjectMeta: metav1.ObjectMeta{Name: "account"},
-		Spec: accountsv1alpha1.AccountInfoSpec{
-			Account: accountsv1alpha1.AccountLocation{
+		Spec: pmcorev1alpha1.AccountInfoSpec{
+			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
 			},
 		},
@@ -432,10 +449,10 @@ func TestService_AssignRolesToUsers_InvalidRole(t *testing.T) {
 		AccountPath: "test-account",
 	}
 
-	ai := &accountsv1alpha1.AccountInfo{
+	ai := &pmcorev1alpha1.AccountInfo{
 		ObjectMeta: metav1.ObjectMeta{Name: "account"},
-		Spec: accountsv1alpha1.AccountInfoSpec{
-			Account: accountsv1alpha1.AccountLocation{
+		Spec: pmcorev1alpha1.AccountInfoSpec{
+			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
 			},
 		},
@@ -511,10 +528,10 @@ func TestService_RemoveRole_Success(t *testing.T) {
 		AccountPath: "test-account",
 	}
 
-	ai := &accountsv1alpha1.AccountInfo{
+	ai := &pmcorev1alpha1.AccountInfo{
 		ObjectMeta: metav1.ObjectMeta{Name: "account"},
-		Spec: accountsv1alpha1.AccountInfoSpec{
-			Account: accountsv1alpha1.AccountLocation{
+		Spec: pmcorev1alpha1.AccountInfoSpec{
+			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
 			},
 		},
@@ -600,10 +617,10 @@ func TestService_RemoveRole_RoleNotAssigned(t *testing.T) {
 		AccountPath: "test-account",
 	}
 
-	ai := &accountsv1alpha1.AccountInfo{
+	ai := &pmcorev1alpha1.AccountInfo{
 		ObjectMeta: metav1.ObjectMeta{Name: "account"},
-		Spec: accountsv1alpha1.AccountInfoSpec{
-			Account: accountsv1alpha1.AccountLocation{
+		Spec: pmcorev1alpha1.AccountInfoSpec{
+			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
 			},
 		},

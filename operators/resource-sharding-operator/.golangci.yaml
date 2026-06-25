@@ -21,7 +21,7 @@ linters:
     - copyloopvar
     - dupl
     - errcheck
-    - ginkgolinter
+    - goconst
     - gocyclo
     - govet
     - ineffassign
@@ -56,7 +56,6 @@ linters:
 formatters:
   enable:
     - gofmt
-    - goimports
   exclusions:
     generated: lax
     paths:

@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package cmd
 
 import (
@@ -8,24 +24,24 @@ import (
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	pmcontext "github.com/platform-mesh/golang-commons/context"
-	gerrors "github.com/platform-mesh/golang-commons/errors"
-	cmw "github.com/platform-mesh/golang-commons/middleware"
+	"github.com/spf13/cobra"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	pmcontext "go.platform-mesh.io/golang-commons/context"
+	gerrors "go.platform-mesh.io/golang-commons/errors"
+	cmw "go.platform-mesh.io/golang-commons/middleware"
+	fgaclient "go.platform-mesh.io/search-service/internal/clients/fga"
+	"go.platform-mesh.io/search-service/internal/clients/kcp"
+	osclient "go.platform-mesh.io/search-service/internal/clients/opensearch"
+	lmw "go.platform-mesh.io/search-service/internal/middleware"
+	"go.platform-mesh.io/search-service/internal/observability"
+	"go.platform-mesh.io/search-service/internal/router"
+	searchservice "go.platform-mesh.io/search-service/internal/service/search"
+
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-
-	fgaclient "github.com/platform-mesh/search/internal/clients/fga"
-	"github.com/platform-mesh/search/internal/clients/kcp"
-	osclient "github.com/platform-mesh/search/internal/clients/opensearch"
-	lmw "github.com/platform-mesh/search/internal/middleware"
-	"github.com/platform-mesh/search/internal/observability"
-	"github.com/platform-mesh/search/internal/router"
-	searchservice "github.com/platform-mesh/search/internal/service/search"
-
-	"github.com/spf13/cobra"
 )
 
 var serverCmd = &cobra.Command{

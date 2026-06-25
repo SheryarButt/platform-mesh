@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package kcp
 
 import (
@@ -7,14 +23,15 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/platform-mesh/golang-commons/context/keys"
-	pmjwt "github.com/platform-mesh/golang-commons/jwt"
-	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/assert"
-	"k8s.io/client-go/rest"
 
-	appcontext "github.com/platform-mesh/iam-service/pkg/context"
-	"github.com/platform-mesh/iam-service/pkg/middleware/idm"
+	"go.platform-mesh.io/golang-commons/context/keys"
+	pmjwt "go.platform-mesh.io/golang-commons/jwt"
+	"go.platform-mesh.io/golang-commons/logger"
+	appcontext "go.platform-mesh.io/iam-service/pkg/context"
+	"go.platform-mesh.io/iam-service/pkg/middleware/idm"
+
+	"k8s.io/client-go/rest"
 )
 
 // Mock IDM tenant retriever
@@ -53,7 +70,7 @@ func TestNew(t *testing.T) {
 func TestGetKCPContext(t *testing.T) {
 	tests := []struct {
 		name         string
-		contextValue interface{}
+		contextValue any
 		expectError  bool
 		expectedErr  string
 	}{

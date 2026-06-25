@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package fga
 
 import (
@@ -6,18 +22,18 @@ import (
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/platform-mesh/golang-commons/errors"
-	"github.com/platform-mesh/golang-commons/fga/util"
-	"github.com/platform-mesh/golang-commons/logger"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc/status"
 
-	"github.com/platform-mesh/iam-service/pkg/config"
-	appcontext "github.com/platform-mesh/iam-service/pkg/context"
-	"github.com/platform-mesh/iam-service/pkg/fga/store"
-	"github.com/platform-mesh/iam-service/pkg/graph"
-	"github.com/platform-mesh/iam-service/pkg/roles"
-	"github.com/platform-mesh/iam-service/pkg/workspace"
+	"go.platform-mesh.io/golang-commons/errors"
+	"go.platform-mesh.io/golang-commons/fga/util"
+	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/iam-service/pkg/config"
+	appcontext "go.platform-mesh.io/iam-service/pkg/context"
+	"go.platform-mesh.io/iam-service/pkg/fga/store"
+	"go.platform-mesh.io/iam-service/pkg/graph"
+	"go.platform-mesh.io/iam-service/pkg/roles"
+	"go.platform-mesh.io/iam-service/pkg/workspace"
 )
 
 var (
