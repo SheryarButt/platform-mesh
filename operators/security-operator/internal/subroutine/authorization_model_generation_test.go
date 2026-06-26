@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
 	"go.platform-mesh.io/security-operator/internal/subroutine"
 	"go.platform-mesh.io/security-operator/internal/subroutine/mocks"
 
@@ -134,7 +135,7 @@ func TestAuthorizationModelGeneration_Process(t *testing.T) {
 					return nil
 				}).Once()
 				kcpClient.EXPECT().List(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, list ctrlruntimeclient.ObjectList, opts ...ctrlruntimeclient.ListOption) error {
-					if _, ok := list.(*pmcorev1alpha1.ProviderPermissionsList); ok {
+					if _, ok := list.(*pmprovidersv1alpha1.ProviderPermissionsList); ok {
 						return nil
 					}
 					return nil
@@ -179,7 +180,7 @@ func TestAuthorizationModelGeneration_Process(t *testing.T) {
 					return nil
 				}).Once()
 				kcpClient.EXPECT().List(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, list ctrlruntimeclient.ObjectList, opts ...ctrlruntimeclient.ListOption) error {
-					if _, ok := list.(*pmcorev1alpha1.ProviderPermissionsList); ok {
+					if _, ok := list.(*pmprovidersv1alpha1.ProviderPermissionsList); ok {
 						return nil
 					}
 					return nil
@@ -215,7 +216,7 @@ func TestAuthorizationModelGeneration_Process(t *testing.T) {
 					return nil
 				}).Once()
 				kcpClient.EXPECT().List(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, list ctrlruntimeclient.ObjectList, opts ...ctrlruntimeclient.ListOption) error {
-					if _, ok := list.(*pmcorev1alpha1.ProviderPermissionsList); ok {
+					if _, ok := list.(*pmprovidersv1alpha1.ProviderPermissionsList); ok {
 						return nil
 					}
 					return nil
@@ -264,7 +265,7 @@ func TestAuthorizationModelGeneration_Process(t *testing.T) {
 					return nil
 				}).Once()
 				kcpClient.EXPECT().List(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, list ctrlruntimeclient.ObjectList, opts ...ctrlruntimeclient.ListOption) error {
-					if _, ok := list.(*pmcorev1alpha1.ProviderPermissionsList); ok {
+					if _, ok := list.(*pmprovidersv1alpha1.ProviderPermissionsList); ok {
 						return nil
 					}
 					return nil
@@ -288,7 +289,7 @@ func TestAuthorizationModelGeneration_Process(t *testing.T) {
 					return nil
 				}).Once()
 				kcpClient.EXPECT().List(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, list ctrlruntimeclient.ObjectList, opts ...ctrlruntimeclient.ListOption) error {
-					if _, ok := list.(*pmcorev1alpha1.ProviderPermissionsList); ok {
+					if _, ok := list.(*pmprovidersv1alpha1.ProviderPermissionsList); ok {
 						return nil
 					}
 					return nil
@@ -346,7 +347,7 @@ func TestAuthorizationModelGeneration_Process(t *testing.T) {
 					return nil
 				}).Once()
 				kcpClient.EXPECT().List(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, list ctrlruntimeclient.ObjectList, opts ...ctrlruntimeclient.ListOption) error {
-					if _, ok := list.(*pmcorev1alpha1.ProviderPermissionsList); ok {
+					if _, ok := list.(*pmprovidersv1alpha1.ProviderPermissionsList); ok {
 						return nil
 					}
 					return nil
