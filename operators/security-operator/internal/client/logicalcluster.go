@@ -28,7 +28,7 @@ import (
 )
 
 // NewForLogicalCluster returns a client for a given logical cluster name or
-// path, based on a KCP base config.
+// path, based on a kcp base config.
 func NewForLogicalCluster(config *rest.Config, scheme *runtime.Scheme, clusterKey logicalcluster.Name) (ctrlruntimeclient.Client, error) {
 	path := fmt.Sprintf("/clusters/%s", clusterKey)
 
@@ -37,16 +37,16 @@ func NewForLogicalCluster(config *rest.Config, scheme *runtime.Scheme, clusterKe
 
 // clientForPath returns a client for a give raw URL path.
 func clientForPath(config *rest.Config, scheme *runtime.Scheme, path string) (ctrlruntimeclient.Client, error) {
-	copy := rest.CopyConfig(config)
+	copied := rest.CopyConfig(config)
 
-	parsed, err := url.Parse(copy.Host)
+	parsed, err := url.Parse(copied.Host)
 	if err != nil {
 		return nil, fmt.Errorf("parsing host from config: %w", err)
 	}
 	parsed.Path = path
-	copy.Host = parsed.String()
+	copied.Host = parsed.String()
 
-	return ctrlruntimeclient.New(copy, ctrlruntimeclient.Options{
+	return ctrlruntimeclient.New(copied, ctrlruntimeclient.Options{
 		Scheme: scheme,
 	})
 }

@@ -27,24 +27,24 @@ import (
 type contextKey string
 
 const (
-	// kcpContextKey is the key for storing KCP user context
+	// kcpContextKey is the key for storing kcp user context
 	kcpContextKey contextKey = "KCPContext"
 	// clusterIdContextKey is the key for storing Cluster ID
 	clusterIdContextKey contextKey = "clusterId"
 )
 
-// KCPContext holds KCP-related user information
+// KCPContext holds kcp-related user information
 type KCPContext struct {
 	IDMTenant        string
 	OrganizationName string
 }
 
-// SetKCPContext stores KCP context information in the request context
+// SetKCPContext stores kcp context information in the request context
 func SetKCPContext(ctx context.Context, kcpCtx KCPContext) context.Context {
 	return context.WithValue(ctx, kcpContextKey, kcpCtx)
 }
 
-// GetKCPContext retrieves KCP context information from the request context
+// GetKCPContext retrieves kcp context information from the request context
 func GetKCPContext(ctx context.Context) (KCPContext, error) {
 	val := ctx.Value(kcpContextKey)
 	if val == nil {

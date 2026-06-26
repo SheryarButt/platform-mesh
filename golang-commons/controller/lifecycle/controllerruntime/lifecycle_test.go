@@ -148,7 +148,7 @@ func TestLifecycle(t *testing.T) {
 			assert.Error(t, err)
 		})
 	})
-	t.Run("WthConditionManagement", func(t *testing.T) {
+	t.Run("WithConditionManagement", func(t *testing.T) {
 		// Given
 		fakeClient := pmtesting.CreateFakeClient(t, &pmtesting.TestApiObject{})
 		_, log := createLifecycleManager([]subroutine.Subroutine{}, fakeClient)
@@ -195,7 +195,6 @@ func TestLifecycle(t *testing.T) {
 		delay := l.rateLimiter.When(req)
 		assert.Equal(t, expectedCfg.StaticRequeueDelay, delay)
 	})
-
 }
 
 type testReconciler struct {

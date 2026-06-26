@@ -23,6 +23,7 @@ includes:
 
 vars:
   CRD_DIRECTORY: config/crd
+  RBAC_DIRECTORY: config/rbac
 
 tasks:
   ## Development
@@ -33,6 +34,10 @@ tasks:
         vars:
           PATH: /migration/...
           OUTPUT: '{{.CRD_DIRECTORY}}'
+      - task: tools:generate-rbac
+        vars:
+          PATHS: ./...
+          OUTPUT: '{{.RBAC_DIRECTORY}}'
 
   generate:
     desc: Generate code (deepcopy, manifests)

@@ -1,4 +1,4 @@
-# ADR: Account Model Implementation in Platform Mesh using KCP
+# ADR: Account Model Implementation in Platform Mesh using kcp
 
 ## Status: Proposed
 
@@ -9,11 +9,11 @@
 ## Date: TBD
 
 ## Technical Story:
-Evaluate implementation options for the account model in Platform Mesh using KCP to create a flexible, scalable, and interoperable system for managing accounts, services and workload instances.
+Evaluate implementation options for the account model in Platform Mesh using kcp to create a flexible, scalable, and interoperable system for managing accounts, services and workload instances.
 
 ## Context and Problem Statement
 
-We need to implement an account model for Platform Mesh using KCP. The account model should be simple, scalable, and not locked to regions. It should support service and workload management, distinguish between services and applications, and allow for the decoupling of orthogonal aspects such as quotas, service validation, and access control. The core question is how to implement this account model effectively using KCP's workspace concepts and the Kubernetes Resource Model (KRM).
+We need to implement an account model for Platform Mesh using kcp. The account model should be simple, scalable, and not locked to regions. It should support service and workload management, distinguish between services and applications, and allow for the decoupling of orthogonal aspects such as quotas, service validation, and access control. The core question is how to implement this account model effectively using kcp's workspace concepts and the Kubernetes Resource Model (KRM).
 
 The account model that operates is platform specific. The account model is mostly like a central piece in a star schema, with additional extensions/dimensions as needed by the platform which can be specific to each implementation of the platform mesh. These can be handled as extensions to the account model, but the core account model should be kept simple and not allowed to grow.
 
@@ -21,7 +21,7 @@ The account model that operates is platform specific. The account model is mostl
 
 1. Need for a simple and scalable account model
 2. Requirement to support hierarchical account structures
-3. Desire to leverage KCP's workspace capabilities efficiently
+3. Desire to leverage kcp's workspace capabilities efficiently
 4. Need for clear distinction between services and workloads
 5. Requirement for extensibility to accommodate various provider-specific needs
 6. Desire for orthogonal aspects to be decoupled from the core account model
@@ -34,10 +34,10 @@ The account model that operates is platform specific. The account model is mostl
 
 ### Option 1: Custom Resource Definition (CRD) for Account Model
 
-This option involves creating a new CRD in that can be used to define the account model from an external perspective but can be used in kcp, with accounts managed as custom resources. 
-This option implements accounts as CRDs with a strict 1:1 mapping to KCP workspaces, using initializers for atomic creation and setup. 
+This option involves creating a new CRD in that can be used to define the account model from an external perspective but can be used in kcp, with accounts managed as custom resources.
+This option implements accounts as CRDs with a strict 1:1 mapping to kcp workspaces, using initializers for atomic creation and setup.
 The account CRD should be the minimum frame, not to grow. There need to be other ways to extend partner/customer specific account implementation for platform.
-The account model itself is living outside KCP and can be managed external from it, but kcp needs to work with that model to achive account models goals. 
+The account model itself is living outside kcp and can be managed external from it, but kcp needs to work with that model to achieve account models goals.
 
 ```mermaid
 graph TD
@@ -50,13 +50,13 @@ graph TD
         D --> G[Validation]
         A --> H[Child Account CRD]
         H --> I[Child Workspace]
-        
+
         subgraph "Extensions"
             J[Platform-specific Extensions]
             K[Custom Validators]
             L[Resource Quotas]
         end
-        
+
         A -.-> J
         G -.-> K
         F -.-> L
@@ -69,13 +69,13 @@ graph TD
 ```
 
 Pros:
-- Native Kubernetes approach, easily integrable with KCP
+- Native Kubernetes approach, easily integrable with kcp
 - Allows for declarative management of accounts
 - Can be extended using additional fields or annotations
 - Facilitates versioning and API evolution
 - Atomic account creation through initializer pattern
 - Clear, predictable 1:1 relationship with workspaces
-- Built-in validation and dependency management through initializers for creation and status, but validation for aspects on account through interfaces in KCP
+- Built-in validation and dependency management through initializers for creation and status, but validation for aspects on account through interfaces in kcp
 - Supports hierarchical account structures
 - Facilitates staged resource creation
 - Clear status tracking through conditions
@@ -91,15 +91,15 @@ Cons:
 - Need for careful timeout and retry handling
 
 Important Considerations:
-- Cascading of accounts needs investigation regarding KCP sharding capabilities if account model is concept in KCP and makes use of KCP's sharding
-- The KCP framework needs to support a mechanism by which an account model can be supported. This does not mean that the account model is part of the KCP framework, but that mechanisms exist to create account model
+- Cascading of accounts needs investigation regarding kcp sharding capabilities if account model is concept in kcp and makes use of kcp's sharding
+- The kcp framework needs to support a mechanism by which an account model can be supported. This does not mean that the account model is part of the kcp framework, but that mechanisms exist to create account model
 - At the moment it is 1:1 account to workspace for the MVP, unless otherwise specified by use cases
 - Self-referencing tree structure allows creation of child accounts
 - There needs to be a root account and a root workspace, the rest flows from there
 
-### Option 2: KCP Workspace as the Core Account Representation
+### Option 2: kcp Workspace as the Core Account Representation
 
-This option uses KCP workspaces as the primary representation of accounts, with additional metadata stored in workspace annotations or labels.
+This option uses kcp workspaces as the primary representation of accounts, with additional metadata stored in workspace annotations or labels.
 
 ```mermaid
 graph TD
@@ -107,18 +107,18 @@ graph TD
         A[Root Workspace] --> B[Metadata/Labels]
         A --> C[Child Workspace]
         C --> D[Metadata/Labels]
-        
+
         subgraph "Workspace Controllers"
             E[Account Controller]
             F[Resource Controller]
             G[Validation Webhook]
         end
-        
+
         B --> E
         D --> E
         E --> F
         E --> G
-        
+
         style A fill:#bbf,stroke:#333
         style C fill:#bbf,stroke:#333
         style E fill:#f96,stroke:#333
@@ -128,52 +128,52 @@ graph TD
 ```
 
 Pros:
-- Leverages KCP's existing hierarchical workspace model
+- Leverages kcp's existing hierarchical workspace model
 - Provides built-in isolation and access control mechanisms
 - Allows for easy implementation of hierarchical structures
 - Facilitates management of resources within account context
-- Simpler approach and more KCP native
+- Simpler approach and more kcp native
 
 Cons:
 - Limited flexibility in storing complex account data
 - May require additional controllers to manage account-specific operations
 - Could lead to overloading of workspace concepts
-- More tight coupling between account and workspace and KCP to account
-- More required to define context for externals outside KCP for an account model (might not be sufficient for all use cases, e.g. you need to build more work on top)
+- More tight coupling between account and workspace and kcp to account
+- More required to define context for externals outside kcp for an account model (might not be sufficient for all use cases, e.g. you need to build more work on top)
 - Would need additional validation maybe via an additional webhook implementation
 
-### Option 3: KCP as a Service with Encapsulated Account Model (external to KCP)
+### Option 3: kcp as a Service with Encapsulated Account Model (external to kcp)
 
-This option positions KCP as a service that can be consumed by other teams, with the account model built as a layer on top.
+This option positions kcp as a service that can be consumed by other teams, with the account model built as a layer on top.
 
 ```mermaid
 graph TD
     subgraph "Option 3: External Account Model"
         A[External Account Service] --> B[Account API]
         B --> C[Account Store]
-        
-        subgraph "KCP Layer"
-            D[KCP Service]
+
+        subgraph "kcp Layer"
+            D[kcp Service]
             E[Workspaces]
             F[Resources]
         end
-        
+
         A --> D
         D --> E
         E --> F
-        
+
         subgraph "Integration Layer"
             G[Account Mapper]
             H[Resource Sync]
             I[State Management]
         end
-        
+
         A --> G
         G --> D
         G --> H
         H --> F
         G --> I
-        
+
         style A fill:#f9f,stroke:#333
         style D fill:#bbf,stroke:#333
         style G fill:#f96,stroke:#333
@@ -181,9 +181,9 @@ graph TD
 ```
 
 Pros:
-- Clear separation of concerns between KCP and account management
+- Clear separation of concerns between kcp and account management
 - Flexibility to evolve account model independently
-- Can leverage existing KCP features while maintaining abstraction
+- Can leverage existing kcp features while maintaining abstraction
 - Loose coupling
 
 Cons:
@@ -213,7 +213,7 @@ The proposal is to with option 1, and the poc for the MVP can then validate that
 - Custom initializers for different providers within kcp
 - Pluggable initialization steps
 - Support for future requirements
-- account model can be extended and defined as per need basis independent of kcp, but allows platform operators to custome to their own needs
+- account model can be extended and defined as per need basis independent of kcp, but allows platform operators to customize to their own needs
 
 4. Operational Benefits:
 - Clear status tracking
@@ -264,7 +264,7 @@ The proposal is to with option 1, and the poc for the MVP can then validate that
 
 ## Related Documents
 
-- KCP Workspace Documentation
+- kcp Workspace Documentation
 - Platform Mesh Architecture Overview
 - Service Provider Integration Guide
 

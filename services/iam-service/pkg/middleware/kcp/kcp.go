@@ -113,15 +113,14 @@ func (m *Middleware) SetKCPUserContext() func(http.Handler) http.Handler {
 }
 
 func checkToken(ctx context.Context, authHeader string, subdomain string, cfg *rest.Config) (bool, error) {
-
 	log := logger.LoadLoggerFromContext(ctx)
 	clusterUrl, err := url.Parse(cfg.Host)
 	if err != nil {
-		log.Error().Err(errors.WithStack(err)).Msg("Error parsing KCP host URL")
+		log.Error().Err(errors.WithStack(err)).Msg("Error parsing kcp host URL")
 	}
 
 	if clusterUrl == nil {
-		return false, errors.New("invalid KCP host URL")
+		return false, errors.New("invalid kcp host URL")
 	}
 
 	clusterPath := fmt.Sprintf("root:orgs:%s", subdomain)

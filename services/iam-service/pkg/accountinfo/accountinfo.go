@@ -57,7 +57,7 @@ func (a *accountInfoRetriever) Get(ctx context.Context, accountPath multicluster
 
 	//FIXME: This lock was necessary as we saw race conditions when processing multiple requests in parallel
 	// The issue occurs when a cluster is requested for the first time and multiple requests are processed simultaneously
-	// We will work with the KCP team to identify the root cause and remove this lock in future
+	// We will work with the kcp team to identify the root cause and remove this lock in future
 	mu := a.getClusterLock(accountPath)
 	mu.Lock()
 	defer mu.Unlock()

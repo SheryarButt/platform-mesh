@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package reconciler
 
 import (
@@ -6,8 +22,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/platform-mesh/kubernetes-graphql-gateway/apis/v1alpha1"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/listener/pkg/schemahandler"
+	pmgatewayv1alpha1 "go.platform-mesh.io/apis/gateway/v1alpha1"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/listener/pkg/schemahandler"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
@@ -33,7 +49,7 @@ func NewReconciler(ioHandler schemahandler.Handler) *Reconciler {
 
 // Reconcile processes schema generation for the given schema paths and cluster config
 // Paths are treated as aliased cluster paths for the same cluster config.
-func (r *Reconciler) Reconcile(ctx context.Context, schemaPaths []string, cfg *rest.Config, metadata *v1alpha1.ClusterMetadata) error {
+func (r *Reconciler) Reconcile(ctx context.Context, schemaPaths []string, cfg *rest.Config, metadata *pmgatewayv1alpha1.ClusterMetadata) error {
 	logger := log.FromContext(ctx)
 
 	logger.Info("Processing schema generation", "paths", schemaPaths)

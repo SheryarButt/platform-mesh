@@ -3,11 +3,6 @@
 
 # kubernetes-graphql-gateway
 
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/platform-mesh/kubernetes-graphql-gateway/badge)](https://scorecard.dev/viewer/?uri=github.com/platform-mesh/kubernetes-graphql-gateway)
-![Build Status](https://github.com/platform-mesh/kubernetes-graphql-gateway/actions/workflows/ci.yml/badge.svg)
-[![REUSE status](
-https://api.reuse.software/badge/github.com/platform-mesh/kubernetes-graphql-gateway)](https://api.reuse.software/info/github.com/platform-mesh/kubernetes-graphql-gateway)
-
 Expose Kubernetes resources as a GraphQL API. This enables UIs and tools to query, mutate, and subscribe to cluster resources in a developer-friendly way using the GraphQL ecosystem.
 
 ## Architecture
@@ -161,8 +156,8 @@ The listener supports three provider modes via `--multicluster-runtime-provider`
 | Mode | Flag Value | Description |
 |---|---|---|
 | **Single** | `single` (default) | Watches the local cluster from your kubeconfig |
-| **KCP** | `kcp` | Connects to [kcp](https://kcp.io) workspaces via APIExport virtual workspaces |
-| **Multi** | `multi` | Combines KCP + standard clusters. Use `--single-kubeconfig` for the standard cluster and `--kubeconfig` for KCP |
+| **kcp** | `kcp` | Connects to [kcp](https://kcp.io) workspaces via APIExport virtual workspaces |
+| **Multi** | `multi` | Combines kcp + standard clusters. Use `--single-kubeconfig` for the standard cluster and `--kubeconfig` for kcp |
 
 In any mode, enable `--enable-clusteraccess-controller` to additionally manage remote clusters via the `ClusterAccess` CRD.
 
@@ -264,4 +259,3 @@ All the released versions will be available through access to GitHub (as any oth
 If you find any bug that may be a security problem, please follow our instructions [in our security policy](https://github.com/platform-mesh/.github/blob/main/SECURITY.md) on how to report it. Please do not create GitHub issues for security-related doubts or problems.
 
 <p align="center"><img alt="Bundesministerium für Wirtschaft und Energie (BMWE)-EU funding logo" src="https://apeirora.eu/assets/img/BMWK-EU.png" width="400"/></p>
-

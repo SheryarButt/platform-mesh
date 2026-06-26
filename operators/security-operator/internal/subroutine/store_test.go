@@ -173,7 +173,6 @@ func TestProcess(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			fga := mocks.NewMockOpenFGAServiceClient(t)
 			if test.fgaMocks != nil {
 				test.fgaMocks(fga)
@@ -189,7 +188,6 @@ func TestProcess(t *testing.T) {
 			} else {
 				assert.Nil(t, err)
 			}
-
 		})
 	}
 }
@@ -289,7 +287,7 @@ func TestFinalize(t *testing.T) {
 			},
 		},
 		{
-			name: "should not reconcile successfully deletion is errorneous",
+			name: "should not reconcile successfully deletion is erroneous",
 			store: &pmcorev1alpha1.Store{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "store",
@@ -309,7 +307,6 @@ func TestFinalize(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			fga := mocks.NewMockOpenFGAServiceClient(t)
 			if test.fgaMocks != nil {
 				test.fgaMocks(fga)
@@ -333,7 +330,6 @@ func TestFinalize(t *testing.T) {
 			} else {
 				assert.Nil(t, err)
 			}
-
 		})
 	}
 }

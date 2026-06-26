@@ -72,7 +72,7 @@ const (
 	relativeBinaryAssetsDirectory = "../../bin"
 )
 
-// setupKCP starts KCP and sets up the basic platform-mesh workspace structure
+// setupKCP starts kcp and sets up the basic platform-mesh workspace structure
 // and configuration.
 func (s *AccountTestSuite) setupKCP() {
 	s.env = &envtest.Environment{AttachKcpOutput: false, KcpStopTimeout: time.Second * 30}
@@ -80,12 +80,12 @@ func (s *AccountTestSuite) setupKCP() {
 	s.env.KcpStartTimeout = 2 * time.Minute
 	s.env.KcpStopTimeout = 30 * time.Second
 
-	// Set the context in case using an existing KCP instance.
+	// Set the context in case using an existing kcp instance.
 	if os.Getenv("USE_EXISTING_KCP") != "" && os.Getenv("EXISTING_KCP_CONTEXT") == "" {
 		s.env.ExistingKcpContext = "base"
 	}
 
-	// Prevents KCP from cleaning up workspace fixtures before shutdown, the
+	// Prevents kcp from cleaning up workspace fixtures before shutdown, the
 	// instance controlled by envtest is ephemeral anyway.
 	if os.Getenv("PRESERVE") == "" {
 		s.Require().NoError(os.Setenv("PRESERVE", "true"))
@@ -185,7 +185,7 @@ func (s *AccountTestSuite) setupKCP() {
 			return false
 		}
 		return len(endpointSlice.Status.APIExportEndpoints) > 0 && endpointSlice.Status.APIExportEndpoints[0].URL != ""
-	}, 10*time.Second, 200*time.Millisecond, "KCP should automatically create APIExportEndpointSlice with populated endpoints")
+	}, 10*time.Second, 200*time.Millisecond, "kcp should automatically create APIExportEndpointSlice with populated endpoints")
 
 	s.Require().NotEmpty(endpointSlice.Status.APIExportEndpoints, "APIExportEndpointSlice should have at least one endpoint")
 	s.Require().NotEqual("", endpointSlice.Status.APIExportEndpoints[0].URL, "APIExportEndpointSlice endpoint URL should not be empty")

@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package options
 
 import (
@@ -7,8 +23,9 @@ import (
 	"path"
 	"strings"
 
-	"github.com/platform-mesh/kubernetes-graphql-gateway/apis/v1alpha1"
 	"github.com/spf13/pflag"
+
+	pmgatewayv1alpha1 "go.platform-mesh.io/apis/gateway/v1alpha1"
 
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -110,10 +127,10 @@ func (options *CompletedOptions) ApplyLogicalClusterToConfig(cfg *rest.Config) (
 	return out, nil
 }
 
-func (options *CompletedOptions) GetClusterMetadataOverrideFunc() v1alpha1.ClusterMetadataFunc {
-	return func(clusterName string) (*v1alpha1.ClusterMetadata, error) {
+func (options *CompletedOptions) GetClusterMetadataOverrideFunc() pmgatewayv1alpha1.ClusterMetadataFunc {
+	return func(clusterName string) (*pmgatewayv1alpha1.ClusterMetadata, error) {
 		if options.WorkspaceSchemaKubeconfigRestConfig != nil {
-			metadata, err := v1alpha1.BuildClusterMetadataFromConfig(options.WorkspaceSchemaKubeconfigRestConfig)
+			metadata, err := pmgatewayv1alpha1.BuildClusterMetadataFromConfig(options.WorkspaceSchemaKubeconfigRestConfig)
 			if err != nil {
 				return nil, fmt.Errorf("failed to build metadata from rest config: %w", err)
 			}
@@ -128,7 +145,7 @@ func (options *CompletedOptions) GetClusterMetadataOverrideFunc() v1alpha1.Clust
 			return metadata, nil
 		}
 
-		metadata := &v1alpha1.ClusterMetadata{}
+		metadata := &pmgatewayv1alpha1.ClusterMetadata{}
 		if options.WorkspaceSchemaHostOverride != "" {
 			metadata.Host = options.WorkspaceSchemaHostOverride
 		}
@@ -136,7 +153,7 @@ func (options *CompletedOptions) GetClusterMetadataOverrideFunc() v1alpha1.Clust
 	}
 }
 
-func (options *CompletedOptions) GetClusterURLResolverFunc() v1alpha1.ClusterURLResolver {
+func (options *CompletedOptions) GetClusterURLResolverFunc() pmgatewayv1alpha1.ClusterURLResolver {
 	return func(currentURL string, clusterName string) (string, error) {
 		if options.WorkspaceSchemaHostOverride != "" {
 			return options.WorkspaceSchemaHostOverride, nil

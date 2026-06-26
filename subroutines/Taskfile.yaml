@@ -27,6 +27,12 @@ tasks:
     cmds:
       - go build ./...
 
+  generate:
+    desc: Run code generation (no generated artifacts in this module).
+    cmds:
+      - cmd: 'true'
+        silent: true
+
   lint:
     desc: Run golangci-lint
     cmds:

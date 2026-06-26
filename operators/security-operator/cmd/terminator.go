@@ -45,7 +45,7 @@ var terminatorCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		kcpCfg, err := getKubeconfigFromPath(terminatorCfg.KCP.Kubeconfig)
 		if err != nil {
-			log.Error().Err(err).Msg("unable to get KCP kubeconfig")
+			log.Error().Err(err).Msg("unable to get kcp kubeconfig")
 			os.Exit(1)
 		}
 

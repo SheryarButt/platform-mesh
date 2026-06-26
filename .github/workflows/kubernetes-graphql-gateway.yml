@@ -12,39 +12,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: resource-sharding-operator
+name: kubernetes-graphql-gateway
 
-# Per-operator pipeline for operators/resource-sharding-operator.
+# Per-operator pipeline for services/kubernetes-graphql-gateway.
 #   - Pull requests:     build the image only (no push).
 #   - Push to main:      build and push the mutable :latest image.
 #   - Push a git tag
-#     resource-sharding-operator/v*: build and push the dedicated, immutable version
+#     kubernetes-graphql-gateway/v*: build and push the dedicated, immutable version
 #                                    image, sign it, cut a GitHub release, bump the chart
 #                                    and publish the signed OCM component.
 #
-# Releases are component-scoped: tagging `resource-sharding-operator/v1.2.3` only builds
+# Releases are component-scoped: tagging `kubernetes-graphql-gateway/v1.2.3` only builds
 # this operator, never the others in the monorepo.
 #
 # Build context is the repository ROOT (the operator module is linked to the
 # shared ./apis module through the repository-root go.work file), so the image
-# is built with -f operators/resource-sharding-operator/Dockerfile .
+# is built with -f services/kubernetes-graphql-gateway/Dockerfile .
 
 on:
   push:
     branches:
       - main
     tags:
-      - 'resource-sharding-operator/v*'
+      - 'kubernetes-graphql-gateway/v*'
   pull_request:
     types:
       - opened
       - synchronize
     paths:
-      - 'operators/resource-sharding-operator/**'
+      - 'services/kubernetes-graphql-gateway/**'
       - 'apis/**'
       - 'go.work'
       - 'go.work.sum'
-      - '.github/workflows/resource-sharding-operator.yml'
+      - '.github/workflows/kubernetes-graphql-gateway.yml'
 
 permissions:
   contents: write
@@ -55,13 +55,13 @@ permissions:
   attestations: write
 
 concurrency:
-  group: resource-sharding-operator-${{ github.ref }}
+  group: kubernetes-graphql-gateway-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  COMPONENT: resource-sharding-operator
-  IMAGE_NAME: ghcr.io/platform-mesh/platform-mesh/resource-sharding-operator
-  DOCKERFILE: operators/resource-sharding-operator/Dockerfile
+  COMPONENT: kubernetes-graphql-gateway
+  IMAGE_NAME: ghcr.io/platform-mesh/platform-mesh/kubernetes-graphql-gateway
+  DOCKERFILE: services/kubernetes-graphql-gateway/Dockerfile
 
 jobs:
   # ──────────────────────────────────────────────
@@ -76,7 +76,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
-          go-version-file: operators/resource-sharding-operator/go.mod
+          go-version-file: go.work
           cache: true
       - name: Enable git CLI clones using GITHUB_TOKEN
         run: |
@@ -97,7 +97,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
-          go-version-file: operators/resource-sharding-operator/go.mod
+          go-version-file: go.work
           cache: true
       - name: Enable git CLI clones using GITHUB_TOKEN
         run: |
@@ -120,7 +120,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
-          go-version-file: operators/resource-sharding-operator/go.mod
+          go-version-file: go.work
           cache: true
       - name: Enable git CLI clones using GITHUB_TOKEN
         run: |
@@ -201,7 +201,7 @@ jobs:
   trivy-image:
     if: github.ref == 'refs/heads/main'
     needs: [docker-build-latest]
-    uses: platform-mesh/.github/.github/workflows/job-trivy-image.yml@main
+    uses: ./.github/workflows/job-trivy-image.yml
     permissions:
       contents: read
       packages: read
@@ -210,10 +210,10 @@ jobs:
       imageRef: ${{ needs.docker-build-latest.outputs.imageRef }}
 
   # ──────────────────────────────────────────────
-  # Tag resource-sharding-operator/v*: dedicated immutable version release.
+  # Tag kubernetes-graphql-gateway/v*: dedicated immutable version release.
   # ──────────────────────────────────────────────
   version:
-    if: startsWith(github.ref, 'refs/tags/resource-sharding-operator/')
+    if: startsWith(github.ref, 'refs/tags/kubernetes-graphql-gateway/')
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
@@ -221,10 +221,10 @@ jobs:
       - name: Derive version from tag
         id: v
         # vX.Y.Z (keeps the leading v) — used for the image tag and OCM.
-        run: echo "version=${GITHUB_REF#refs/tags/resource-sharding-operator/}" >> "$GITHUB_OUTPUT"
+        run: echo "version=${GITHUB_REF#refs/tags/kubernetes-graphql-gateway/}" >> "$GITHUB_OUTPUT"
 
   docker-build-push:
-    if: startsWith(github.ref, 'refs/tags/resource-sharding-operator/')
+    if: startsWith(github.ref, 'refs/tags/kubernetes-graphql-gateway/')
     needs: [version, verify, test, test-e2e]
     runs-on: ubuntu-latest
     permissions:
@@ -304,36 +304,55 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
   update-version:
-    if: startsWith(github.ref, 'refs/tags/resource-sharding-operator/')
+    if: startsWith(github.ref, 'refs/tags/kubernetes-graphql-gateway/')
     needs: [version, docker-build-push]
     uses: platform-mesh/.github/.github/workflows/job-chart-version-update.yml@main
     secrets: inherit
     with:
       appVersion: ${{ needs.version.outputs.version }}
-      chart: resource-sharding-operator
+      chart: kubernetes-graphql-gateway
       targetRepository: platform-mesh/helm-charts
 
   image-ocm:
-    if: startsWith(github.ref, 'refs/tags/resource-sharding-operator/')
+    if: startsWith(github.ref, 'refs/tags/kubernetes-graphql-gateway/')
     needs: [version, docker-build-push]
     uses: platform-mesh/.github/.github/workflows/job-image-ocm.yml@main
     secrets: inherit
     with:
-      imageReference: ghcr.io/platform-mesh/platform-mesh/resource-sharding-operator:${{ needs.version.outputs.version }}
+      imageReference: ghcr.io/platform-mesh/platform-mesh/kubernetes-graphql-gateway:${{ needs.version.outputs.version }}
       appVersion: ${{ needs.version.outputs.version }}
       # The reusable job signs with "<repoName>.platform-mesh" and OCM requires
       # that to equal the signing cert's CN. The monorepo's shared OCM cert has
       # CN "platform-mesh.platform-mesh", so repoName must be platform-mesh. The
       # per-component OCM component identity is preserved via componentName.
       repoName: platform-mesh
-      componentName: github.com/platform-mesh/images/resource-sharding-operator
+      componentName: github.com/platform-mesh/images/kubernetes-graphql-gateway
       commit: ${{ github.sha }}
       # Store the OCM component under this repo (owned by its GITHUB_TOKEN),
       # not the org root, to avoid cross-repo package permissions.
       ocmRegistryUrl: ghcr.io/platform-mesh/platform-mesh
 
+  image-ocm-legacy:
+    if: startsWith(github.ref, 'refs/tags/kubernetes-graphql-gateway/')
+    needs: [version, docker-build-push]
+    uses: platform-mesh/.github/.github/workflows/job-image-ocm.yml@main
+    secrets: inherit
+    with:
+      imageReference: ghcr.io/platform-mesh/platform-mesh/kubernetes-graphql-gateway:${{ needs.version.outputs.version }}
+      appVersion: ${{ needs.version.outputs.version }}
+      # The reusable job signs with "<repoName>.platform-mesh" and OCM requires
+      # that to equal the signing cert's CN. The monorepo's shared OCM cert has
+      # CN "platform-mesh.platform-mesh", so repoName must be platform-mesh. The
+      # per-component OCM component identity is preserved via componentName.
+      repoName: platform-mesh
+      componentName: github.com/platform-mesh/images/kubernetes-graphql-gateway
+      commit: ${{ github.sha }}
+      # Store the OCM component under this repo (owned by its GITHUB_TOKEN),
+      # not the org root, to avoid cross-repo package permissions.
+      ocmRegistryUrl: ghcr.io/platform-mesh
+
   trivy-sbom:
-    if: startsWith(github.ref, 'refs/tags/resource-sharding-operator/')
+    if: startsWith(github.ref, 'refs/tags/kubernetes-graphql-gateway/')
     needs: [version, docker-build-push, image-ocm]
     uses: ./.github/workflows/job-trivy-sbom.yml
     permissions:
@@ -341,5 +360,5 @@ jobs:
       packages: read
       security-events: write
     with:
-      componentName: github.com/platform-mesh/images/resource-sharding-operator
+      componentName: github.com/platform-mesh/images/kubernetes-graphql-gateway
       componentVersion: ${{ needs.version.outputs.version }}

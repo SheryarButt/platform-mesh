@@ -119,7 +119,7 @@ packages:
           filename: mock_KeycloakClientInterface.go
           structname: KeycloakClientInterface
 
-  # Workspace ClientFactory - External dependency for KCP workspace client creation
+  # Workspace ClientFactory - External dependency for kcp workspace client creation
   go.platform-mesh.io/iam-service/pkg/workspace:
     config:
       dir: pkg/fga/mocks

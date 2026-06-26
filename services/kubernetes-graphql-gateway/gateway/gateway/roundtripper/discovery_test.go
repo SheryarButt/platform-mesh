@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package roundtripper
 
 import (
@@ -19,13 +35,13 @@ func TestIsDiscoveryRequest(t *testing.T) {
 		{name: "api group", method: http.MethodGet, path: "/apis/apps", expected: true},
 		{name: "api group version", method: http.MethodGet, path: "/apis/apps/v1", expected: true},
 
-		// KCP paths: /services/{ws}/clusters/{cl}/...
+		// kcp paths: /services/{ws}/clusters/{cl}/...
 		{name: "kcp services api", method: http.MethodGet, path: "/services/ws/clusters/cl/api", expected: true},
 		{name: "kcp services api version", method: http.MethodGet, path: "/services/ws/clusters/cl/api/v1", expected: true},
 		{name: "kcp services apis group", method: http.MethodGet, path: "/services/ws/clusters/cl/apis/apps", expected: true},
 		{name: "kcp services apis group version", method: http.MethodGet, path: "/services/ws/clusters/cl/apis/apps/v1", expected: true},
 
-		// KCP paths: /clusters/{cl}/...
+		// kcp paths: /clusters/{cl}/...
 		{name: "kcp clusters api", method: http.MethodGet, path: "/clusters/cl/api", expected: true},
 		{name: "kcp clusters api version", method: http.MethodGet, path: "/clusters/cl/api/v1", expected: true},
 		{name: "kcp clusters apis group", method: http.MethodGet, path: "/clusters/cl/apis/apps", expected: true},

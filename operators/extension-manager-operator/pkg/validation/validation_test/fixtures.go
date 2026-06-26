@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+//nolint:dupword
 package validation_test
 
 func GetValidJSON() string {
@@ -438,7 +439,7 @@ func GetValidJSON_node_category_object() string {
 }`
 }
 
-func GetInalidYAML_node_category_object() string {
+func GetInvalidYAML_node_category_object() string {
 	return `
 name: overview2
 luigiConfigFragment:

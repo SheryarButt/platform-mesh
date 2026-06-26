@@ -34,7 +34,6 @@ import (
 
 // Test the setReady function with an empty array
 func TestSetReady(t *testing.T) {
-
 	t.Run("TestSetReady with empty array", func(t *testing.T) {
 		// Given
 		condition := []metav1.Condition{}
@@ -78,7 +77,6 @@ func TestSetReady(t *testing.T) {
 }
 
 func TestSetUnknown(t *testing.T) {
-
 	t.Run("TestSetUnknown with empty array", func(t *testing.T) {
 		// Given
 		cm := NewConditionManager()
@@ -181,7 +179,7 @@ func TestSubroutineCondition(t *testing.T) {
 	log, err := logger.New(logger.DefaultConfig())
 	require.NoError(t, err)
 
-	// Add a test case to set a subroutine condition to ready if it was successfull
+	// Add a test case to set a subroutine condition to ready if it was successful
 	t.Run("TestSetSubroutineConditionReady", func(t *testing.T) {
 		// Given
 		cm := NewConditionManager()

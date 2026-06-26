@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package endpoint
 
 import (
@@ -7,18 +23,18 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/platform-mesh/kubernetes-graphql-gateway/apis/v1alpha1"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/gateway/gateway/authn"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/gateway/gateway/cluster"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/gateway/gateway/config"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/gateway/gateway/graphql"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/gateway/gateway/metrics"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/gateway/gateway/queryvalidation"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/gateway/gateway/requestparser"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/gateway/resolver"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/gateway/schema"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/gateway/schema/extensions"
-	utilscontext "github.com/platform-mesh/kubernetes-graphql-gateway/gateway/utils/context"
+	pmgatewayv1alpha1 "go.platform-mesh.io/apis/gateway/v1alpha1"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/authn"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/cluster"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/config"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/graphql"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/metrics"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/queryvalidation"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/requestparser"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/resolver"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/schema"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/schema/extensions"
+	utilscontext "go.platform-mesh.io/kubernetes-graphql-gateway/gateway/utils/context"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -210,8 +226,8 @@ func (e *Endpoint) Close() {
 	e.graphqlServer = nil
 }
 
-func parseSchema(schemaJSON []byte) (*v1alpha1.Schema, error) {
-	var schemaData v1alpha1.Schema
+func parseSchema(schemaJSON []byte) (*pmgatewayv1alpha1.Schema, error) {
+	var schemaData pmgatewayv1alpha1.Schema
 	if err := json.Unmarshal(schemaJSON, &schemaData); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}

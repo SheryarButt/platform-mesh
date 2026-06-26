@@ -18,27 +18,11 @@ run:
 linters:
   default: none
   enable:
-    - copyloopvar
     - dupl
-    - errcheck
     - ginkgolinter
     - gocyclo
-    - govet
-    - ineffassign
     - lll
-    - misspell
-    - nakedret
-    - prealloc
-    - revive
-    - staticcheck
-    - unconvert
     - unparam
-    - unused
-  settings:
-    revive:
-      rules:
-        - name: comment-spacings
-        - name: import-shadowing
   exclusions:
     generated: lax
     rules:

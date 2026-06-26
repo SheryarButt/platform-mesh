@@ -27,12 +27,12 @@ import (
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 )
 
-// ClientFactory creates a client for a specific KCP workspace
+// ClientFactory creates a client for a specific kcp workspace
 type ClientFactory interface {
 	New(ctx context.Context, accountPath multicluster.ClusterName) (ctrlruntimeclient.Client, error)
 }
 
-// KCPClient implements ClientFactory for KCP workspaces
+// KCPClient implements ClientFactory for kcp workspaces
 type KCPClient struct {
 	mgr mcmanager.Manager
 }

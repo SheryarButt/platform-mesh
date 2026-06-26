@@ -1,10 +1,27 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package types_test
 
 import (
 	"testing"
 
 	"github.com/graphql-go/graphql"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/gateway/schema/types"
+
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/schema/types"
 
 	"k8s.io/kube-openapi/pkg/validation/spec"
 )
@@ -13,7 +30,7 @@ import (
 // explicit type (as produced by apiextensionsv1.JSON / runtime.RawExtension with
 // x-kubernetes-preserve-unknown-fields) is mapped to JSONStringScalar instead of
 // graphql.String, so values are serialized via json.Marshal rather than fmt.Sprintf.
-// Regression test for https://github.com/platform-mesh/kubernetes-graphql-gateway/issues/148
+// Regression test for https://go.platform-mesh.io/kubernetes-graphql-gateway/issues/148
 func TestConvert_TypelessFieldUsesJSONScalar(t *testing.T) {
 	converter := types.NewConverter(types.NewRegistry())
 
@@ -41,7 +58,7 @@ func TestConvert_TypelessFieldUsesJSONScalar(t *testing.T) {
 // TestConvert_NestedTypeNameCollision verifies that a CRD whose nested field
 // path would produce a name matching a built-in Kind (e.g., Component + status
 // → ComponentStatus) does not collide when the typePrefix is group+version
-// qualified. Regression test for https://github.com/platform-mesh/kubernetes-graphql-gateway/issues/222
+// qualified. Regression test for https://go.platform-mesh.io/kubernetes-graphql-gateway/issues/222
 func TestConvert_NestedTypeNameCollision(t *testing.T) {
 	registry := types.NewRegistry()
 	converter := types.NewConverter(registry)
@@ -97,7 +114,7 @@ func TestConvert_NestedTypeNameCollision(t *testing.T) {
 // field literally named "input" does not collide with the parent's _Input type.
 // The field "input" produces output type "...SpecTemplatesInput" while the parent
 // input type is "...SpecTemplates_Input" — these are distinct.
-// Regression test for https://github.com/platform-mesh/kubernetes-graphql-gateway/issues/222
+// Regression test for https://go.platform-mesh.io/kubernetes-graphql-gateway/issues/222
 func TestConvert_FieldNamedInputNoCollision(t *testing.T) {
 	registry := types.NewRegistry()
 	converter := types.NewConverter(registry)

@@ -27,10 +27,10 @@ vars:
   CRD_DIRECTORY: config/crd/bases
   SEDCMD:
     sh: |
-      if [ "$(go env GOOS)" = "darwin" ]; then
-        echo "sed -i ''"
-      else
+      if sed --version >/dev/null 2>&1; then
         echo "sed -i"
+      else
+        echo "sed -i ''"
       fi
 
 tasks:

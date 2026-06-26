@@ -130,7 +130,6 @@ func (s *Service) CountUsersForRole(ctx context.Context, rctx graph.ResourceCont
 
 // listUsersParallel performs parallel ListUsers calls for multiple roles
 func (s *Service) listUsersParallel(ctx context.Context, rctx graph.ResourceContext, storeID string, roles []string) ([]*graph.UserRoles, error) {
-
 	type roleResult struct {
 		role  string
 		users *openfgav1.ListUsersResponse
@@ -176,7 +175,7 @@ func (s *Service) listUsersParallel(ctx context.Context, rctx graph.ResourceCont
 	allUserIDToRoles := UserIDToRoles{}
 	var mu sync.Mutex
 
-	for i := 0; i < len(roles); i++ {
+	for range roles {
 		result := <-resultChan
 
 		// Handle any errors
@@ -199,7 +198,7 @@ func (s *Service) listUsersParallel(ctx context.Context, rctx graph.ResourceCont
 
 // convertToGraphUserRoles converts UserIDToRoles map to []*graph.UserRoles
 func (s *Service) convertToGraphUserRoles(rctx graph.ResourceContext, userIDToRoles UserIDToRoles) []*graph.UserRoles {
-	var result []*graph.UserRoles
+	result := make([]*graph.UserRoles, 0, len(userIDToRoles))
 
 	// Get role definitions for this group resource
 	roleDefinitions, err := s.rolesRetriever.GetRoleDefinitions(rctx)

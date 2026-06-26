@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package cluster
 
 import (
@@ -7,20 +23,20 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/platform-mesh/kubernetes-graphql-gateway/apis/v1alpha1"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/gateway/gateway/roundtripper"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/gateway/gateway/roundtripper/union"
+	pmgatewayv1alpha1 "go.platform-mesh.io/apis/gateway/v1alpha1"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/roundtripper"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/roundtripper/union"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/rest"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type Cluster struct {
 	name     string
-	client   client.WithWatch
+	client   ctrlruntimeclient.WithWatch
 	restCfg  *rest.Config
 	adminCfg *rest.Config
 }
@@ -29,7 +45,7 @@ type Cluster struct {
 func New(
 	ctx context.Context,
 	name string,
-	metadata *v1alpha1.ClusterMetadata,
+	metadata *pmgatewayv1alpha1.ClusterMetadata,
 ) (*Cluster, error) {
 	if metadata == nil {
 		return nil, fmt.Errorf("cluster %s requires cluster metadata", name)
@@ -40,7 +56,7 @@ func New(
 	}
 
 	var err error
-	cluster.restCfg, err = v1alpha1.BuildRestConfigFromMetadata(*metadata)
+	cluster.restCfg, err = pmgatewayv1alpha1.BuildRestConfigFromMetadata(*metadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build config from metadata: %w", err)
 	}
@@ -76,7 +92,7 @@ func New(
 		}
 	}
 
-	cluster.client, err = client.NewWithWatch(cluster.restCfg, client.Options{Mapper: mapper})
+	cluster.client, err = ctrlruntimeclient.NewWithWatch(cluster.restCfg, ctrlruntimeclient.Options{Mapper: mapper})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cluster client: %w", err)
 	}
@@ -87,7 +103,7 @@ func New(
 	return cluster, nil
 }
 
-func (c *Cluster) Client() client.WithWatch {
+func (c *Cluster) Client() ctrlruntimeclient.WithWatch {
 	return c.client
 }
 

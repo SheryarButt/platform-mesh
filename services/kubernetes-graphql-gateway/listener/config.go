@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package listener
 
 import (
@@ -7,14 +23,15 @@ import (
 	"slices"
 	"strings"
 
-	gatewayv1alpha1 "github.com/platform-mesh/kubernetes-graphql-gateway/apis/v1alpha1"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/listener/options"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/listener/pkg/schemahandler"
-	kcpprovider "github.com/platform-mesh/kubernetes-graphql-gateway/providers/kcp"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/sdk"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
+
+	pmgatewayv1alpha1 "go.platform-mesh.io/apis/gateway/v1alpha1"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/listener/options"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/listener/pkg/schemahandler"
+	kcpprovider "go.platform-mesh.io/kubernetes-graphql-gateway/providers/kcp"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/sdk"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -28,19 +45,17 @@ import (
 	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
-
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 	multiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
 	singleprovider "sigs.k8s.io/multicluster-runtime/providers/single"
 
-	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
-	kcpapis "github.com/kcp-dev/sdk/apis/apis/v1alpha2"
-	kcpcore "github.com/kcp-dev/sdk/apis/core/v1alpha1"
-	kcptenancy "github.com/kcp-dev/sdk/apis/tenancy/v1alpha1"
-
 	"github.com/kcp-dev/multicluster-provider/apiexport"
+	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
+	kcpapisv1alpha2 "github.com/kcp-dev/sdk/apis/apis/v1alpha2"
+	kcpcorev1alpha1 "github.com/kcp-dev/sdk/apis/core/v1alpha1"
+	kcptenancyv1alpha1 "github.com/kcp-dev/sdk/apis/tenancy/v1alpha1"
 )
 
 type Config struct {
@@ -59,7 +74,7 @@ type Config struct {
 
 	// ResourceReconcilerClusterMetadataFunc allows to provide cluster metadata for a given cluster name
 	// when reconciling anchor namespaces.
-	ResourceReconcilerClusterMetadataFunc func(clusterName string) (*gatewayv1alpha1.ClusterMetadata, error)
+	ResourceReconcilerClusterMetadataFunc func(clusterName string) (*pmgatewayv1alpha1.ClusterMetadata, error)
 
 	// Per-controller builder options (provider filters). Nil means no filter (watch all providers).
 	ResourceControllerForOptions      []mcbuilder.ForOption
@@ -105,7 +120,7 @@ func NewConfig(options *options.CompletedOptions) (*Config, error) {
 	if err := apiextensionsv1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("error adding apiextensions scheme: %w", err)
 	}
-	if err := gatewayv1alpha1.AddToScheme(scheme); err != nil {
+	if err := pmgatewayv1alpha1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("error adding kubebind scheme: %w", err)
 	}
 
@@ -281,7 +296,6 @@ func NewConfig(options *options.CompletedOptions) (*Config, error) {
 				log.Error().Err(err).Msg("error serving gRPC")
 			}
 		}()
-
 	}
 
 	return config, nil
@@ -291,13 +305,13 @@ func addKcpSchemes(scheme *runtime.Scheme) error {
 	if err := kcpapisv1alpha1.AddToScheme(scheme); err != nil {
 		return fmt.Errorf("error adding apis v1alpha1 scheme: %w", err)
 	}
-	if err := kcpapis.AddToScheme(scheme); err != nil {
+	if err := kcpapisv1alpha2.AddToScheme(scheme); err != nil {
 		return fmt.Errorf("error adding apis v1alpha2 scheme: %w", err)
 	}
-	if err := kcpcore.AddToScheme(scheme); err != nil {
+	if err := kcpcorev1alpha1.AddToScheme(scheme); err != nil {
 		return fmt.Errorf("error adding core scheme: %w", err)
 	}
-	if err := kcptenancy.AddToScheme(scheme); err != nil {
+	if err := kcptenancyv1alpha1.AddToScheme(scheme); err != nil {
 		return fmt.Errorf("error adding tenancy scheme: %w", err)
 	}
 	return nil

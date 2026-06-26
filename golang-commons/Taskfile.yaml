@@ -27,6 +27,10 @@ tasks:
     deps: [tools:mockery]
     cmds:
       - "{{.BIN}}/mockery"
+  generate:
+    desc: Run code generation (mocks).
+    cmds:
+      - task: mockery
   fmt:
     cmds:
       - go fmt ./...

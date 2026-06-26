@@ -16,7 +16,7 @@ logConfig := logger.DefaultConfig()
 logConfig.Name = "my-service"
 logConfig.Level = "debug"
 
-// ceate logger
+// create logger
 log, err := logger.New(logConfig)
 if err != nil {
 	fmt.Println("failed to create logger: %s", err)
@@ -49,7 +49,7 @@ For testing it is possible to pass a `&bytes.Buffer{}` as `Output` to collect lo
 
 ### Usage
 
-The logger uses a chained syntax for creating log entrys.
+The logger uses a chained syntax for creating log entries.
 You start with the level you want to log in, then optional fields that further describe the context of an error and finally the message itself.
 
 This will create a log entry with level fatal, sets the error as a field in the log output and prints the message "init failed":
@@ -78,7 +78,7 @@ Fields are optionally and can be omitted, the Msg call instead is obligatory:
 log.Debug().Msg("Service started")
 ```
 
-Never forget to call `Msg()` otherwise no log entry is created! 
+Never forget to call `Msg()` otherwise no log entry is created!
 There is also a `Msgf(format, values...)` function but try to use fields if possible and create a
 static log message as it makes creating dashboards in Kibana easier.
 
@@ -112,7 +112,7 @@ This makes testing easier and is in general best practice.
 ### Platform Mesh Logger from Zerolog
 
 Because the Platform Mesh logger internally embeds Zerolog it is compatible with new versions of Zerolog.
-Nevertheless, because of this embeding, some functions return Zerolog instances.
+Nevertheless, because of this embedding, some functions return Zerolog instances.
 It is very easy to return a new Platform Mesh logger from a Zerolog instance using this helper function:
 ```go
 log := NewFromZerolog(zerologger)
@@ -133,5 +133,4 @@ func(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-If no logger can be found in the context, `LoadFromContext()` returns `logger.StdLogger`. 
-
+If no logger can be found in the context, `LoadFromContext()` returns `logger.StdLogger`.

@@ -74,7 +74,7 @@ func NewServeCmd() *cobra.Command {
 				klog.Exit(err, "unable to construct cluster provider")
 			}
 
-			// Use Root KCP config for manager
+			// Use Root kcp config for manager
 			mgr, err := mcmanager.New(restCfg, provider, mcmanager.Options{
 				Scheme: scheme,
 				Logger: klog.NewKlogr(),

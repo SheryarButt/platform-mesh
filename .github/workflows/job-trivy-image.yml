@@ -1,0 +1,60 @@
+# Copyright The Platform Mesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Local (vendored) copy of platform-mesh/.github's job-trivy-image.yml.
+#
+# Kept in-repo so the per-component pipelines run image scanning from this
+# repository (no cross-repo dependency on platform-mesh/.github@main), pinned
+# alongside the rest of the workflows. Behaviour is identical to upstream.
+
+name: Container Security Scan
+on:
+  workflow_call:
+    inputs:
+      imageRef:
+        description: 'Full image reference to scan (e.g. ghcr.io/platform-mesh/security-operator:1.2.3)'
+        required: true
+        type: string
+      severity:
+        description: 'Severity levels to scan for (default: CRITICAL,HIGH)'
+        type: string
+        default: 'CRITICAL,HIGH'
+      exitCode:
+        description: 'Exit code to use if vulnerabilities are found (default: 0 - do not fail the workflow)'
+        type: string
+        default: '0'
+
+jobs:
+  trivy-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: 'image'
+          image-ref: ${{ inputs.imageRef }}
+          severity: ${{ inputs.severity }}
+          exit-code: ${{ inputs.exitCode }}
+          ignore-unfixed: true
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'

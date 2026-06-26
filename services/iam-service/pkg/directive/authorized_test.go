@@ -156,7 +156,7 @@ func TestAuthorized_HappyPath(t *testing.T) {
 	token := createTestWebToken()
 	ctx = context.WithValue(ctx, keys.WebTokenCtxKey, token)
 
-	// Setup KCP context
+	// Setup kcp context
 	kcpCtx := appcontext.KCPContext{
 		IDMTenant:        "test-tenant",
 		OrganizationName: "test-org",
@@ -215,7 +215,7 @@ func TestAuthorized_ErrorCases(t *testing.T) {
 			expectedError: "failed to get web token from context",
 		},
 		{
-			name: "missing KCP context",
+			name: "missing kcp context",
 			setupContext: func() context.Context {
 				ctx, _ := setupTestContext()
 				token := createTestWebToken()

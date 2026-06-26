@@ -79,7 +79,7 @@ func (r *NewSubroutine) Process(ctx context.Context, runtimeObj lifecycle.Runtim
         return ctrl.Result{}, errors.NewOperatorError(errors.New("ExtensionClass type is not set"), true, false)
     }
     // do something
-	
+
     return ctrl.Result{}, nil
 }
 ```
@@ -128,7 +128,7 @@ Features of the `lifecycle` package:
 func (l *LifecycleManager) SetupWithManager(mgr ctrl.Manager, maxReconciles int, reconcilerName string, instance RuntimeObject, debugLabelValue string, r reconcile.Reconciler, log *logger.Logger, eventPredicates ...predicate.Predicate) error
 ```
 
-The **debugLabelValue** parameter enables filtering of the resources based on a `debug.platform-mesh.io` label. If the label has the value passed in **debugLabelValue**, the resource will be reconciled in the `Process` function of the subroutine and all other resources will be skipped. If the value is empty string, all resources will be reconciled. This could be useful in debuging situations.
+The **debugLabelValue** parameter enables filtering of the resources based on a `debug.platform-mesh.io` label. If the label has the value passed in **debugLabelValue**, the resource will be reconciled in the `Process` function of the subroutine and all other resources will be skipped. If the value is empty string, all resources will be reconciled. This could be useful in debugging situations.
 
 ```yaml
 apiVersion: myorg.com/v1alpha1

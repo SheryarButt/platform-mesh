@@ -15,16 +15,16 @@ For reference, see the [RFC for Platform Mesh Extension Management - CDM Process
 - Services to allow validation of content configuration at runtime while developing a micro frontend on the developers system.
 - Ability to provide validation feedback while keeping the last validated content configuration.
 
-## KCP vs. K8S
+## kcp vs. K8S
 
-The operator always runs with **multicluster-runtime** and optionally reconciles against an APIExportEndpointSlice using the KCP APIExport provider. The relevant three configuration parameters are:
+The operator always runs with **multicluster-runtime** and optionally reconciles against an APIExportEndpointSlice using the kcp APIExport provider. The relevant three configuration parameters are:
 
 * The `KUBECONFIG` environment variable will be used for reconciling, defaulting to `ctrl.GetConfigOrDie()`.
 * The optional `--leader-elect` CLI switch enables leader election and will use `rest.InClusterConfig()` for election.
 * The opitonal `--kcp-api-export-endpoint-slice-name` enables the APIExport provider.
 
 In practice this means:
-* To reconcile against a KCP instance, configure `KUBECONFIG` to point to KCP and set `--kcp-api-export-endpoint-slice-name` accordingly. Optionally enable `--leader-election` when running as Pod in a k8s cluster to use in-cluster leader election.
+* To reconcile against a kcp instance, configure `KUBECONFIG` to point to kcp and set `--kcp-api-export-endpoint-slice-name` accordingly. Optionally enable `--leader-election` when running as Pod in a k8s cluster to use in-cluster leader election.
 * To reconcile against plain K8S and running as Pod in k8s, optionally enable `--leader-election` and leave the the other two variables unset.
 
 ## Getting Started

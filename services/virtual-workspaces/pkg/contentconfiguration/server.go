@@ -57,7 +57,6 @@ func BuildVirtualWorkspace(
 	kcpClusterClient kcpclientset.ClusterInterface,
 	virtualWorkspaceBaseURL string,
 ) virtualrootapiserver.NamedVirtualWorkspace {
-
 	clusterResolver := proxy.NewClusterResolver(kcpClusterClient)
 
 	return virtualrootapiserver.NamedVirtualWorkspace{
@@ -96,7 +95,7 @@ func BuildVirtualWorkspace(
 					return nil, err
 				}
 
-				storeageProvider := storage.CreateStorageProviderFunc(
+				storageProvider := storage.CreateStorageProviderFunc(
 					dynamicClient,
 					storage.ContentConfigurationLookup(dynamicClient, cfg, providerWSCluster.Name.String()),
 				)
@@ -107,7 +106,7 @@ func BuildVirtualWorkspace(
 					Resource: "contentconfigurations",
 				}
 
-				return apidefinition.NewSingleResourceProvider(mainConfig, gvr, &resourceSchema, storeageProvider), nil
+				return apidefinition.NewSingleResourceProvider(mainConfig, gvr, &resourceSchema, storageProvider), nil
 			},
 		},
 	}

@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package resolver
 
 import (
@@ -12,35 +28,36 @@ import (
 	"time"
 
 	"github.com/graphql-go/graphql"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/gateway/gateway/metrics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"gopkg.in/yaml.v3"
 
-	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/metrics"
+
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type Service struct {
-	runtimeClient client.WithWatch
+	runtimeClient ctrlruntimeclient.WithWatch
 	metrics       *metrics.ResolverMetrics
 }
 
-func New(runtimeClient client.WithWatch, m *metrics.ResolverMetrics) *Service {
+func New(runtimeClient ctrlruntimeclient.WithWatch, m *metrics.ResolverMetrics) *Service {
 	return &Service{
 		runtimeClient: runtimeClient,
 		metrics:       m,
 	}
 }
 
-func (r *Service) ListItems(gvk schema.GroupVersionKind, scope v1.ResourceScope) graphql.FieldResolveFn {
+func (r *Service) ListItems(gvk schema.GroupVersionKind, scope apiextensionsv1.ResourceScope) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (result any, err error) {
 		start := time.Now()
 		defer func() {
@@ -68,7 +85,7 @@ func (r *Service) ListItems(gvk schema.GroupVersionKind, scope v1.ResourceScope)
 		list := &unstructured.UnstructuredList{}
 		list.SetGroupVersionKind(gvk)
 
-		var opts []client.ListOption
+		var opts []ctrlruntimeclient.ListOption
 
 		labelSelector, err := GetArg[string](p.Args, LabelSelectorArg, false)
 		if err != nil {
@@ -80,7 +97,7 @@ func (r *Service) ListItems(gvk schema.GroupVersionKind, scope v1.ResourceScope)
 				logger.WithValues(LabelSelectorArg, labelSelector).Error(err, "Unable to parse given label selector")
 				return nil, err
 			}
-			opts = append(opts, client.MatchingLabelsSelector{Selector: selector})
+			opts = append(opts, ctrlruntimeclient.MatchingLabelsSelector{Selector: selector})
 		}
 
 		if isResourceNamespaceScoped(scope) {
@@ -89,7 +106,7 @@ func (r *Service) ListItems(gvk schema.GroupVersionKind, scope v1.ResourceScope)
 				return nil, err
 			}
 			if namespace != "" {
-				opts = append(opts, client.InNamespace(namespace))
+				opts = append(opts, ctrlruntimeclient.InNamespace(namespace))
 			}
 		}
 
@@ -98,7 +115,7 @@ func (r *Service) ListItems(gvk schema.GroupVersionKind, scope v1.ResourceScope)
 			return nil, err
 		}
 		if limit > 0 {
-			opts = append(opts, client.Limit(int64(limit)))
+			opts = append(opts, ctrlruntimeclient.Limit(int64(limit)))
 		}
 
 		continueToken, err := GetArg[string](p.Args, ContinueArg, false)
@@ -106,7 +123,7 @@ func (r *Service) ListItems(gvk schema.GroupVersionKind, scope v1.ResourceScope)
 			return nil, err
 		}
 		if continueToken != "" {
-			opts = append(opts, client.Continue(continueToken))
+			opts = append(opts, ctrlruntimeclient.Continue(continueToken))
 		}
 
 		if err = r.runtimeClient.List(ctx, list, opts...); err != nil {
@@ -141,7 +158,7 @@ func (r *Service) ListItems(gvk schema.GroupVersionKind, scope v1.ResourceScope)
 	}
 }
 
-func (r *Service) GetItem(gvk schema.GroupVersionKind, scope v1.ResourceScope) graphql.FieldResolveFn {
+func (r *Service) GetItem(gvk schema.GroupVersionKind, scope apiextensionsv1.ResourceScope) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (result any, err error) {
 		start := time.Now()
 		defer func() {
@@ -175,7 +192,7 @@ func (r *Service) GetItem(gvk schema.GroupVersionKind, scope v1.ResourceScope) g
 		obj := &unstructured.Unstructured{}
 		obj.SetGroupVersionKind(gvk)
 
-		key := client.ObjectKey{
+		key := ctrlruntimeclient.ObjectKey{
 			Name: name,
 		}
 
@@ -198,7 +215,7 @@ func (r *Service) GetItem(gvk schema.GroupVersionKind, scope v1.ResourceScope) g
 	}
 }
 
-func (r *Service) GetItemAsYAML(gvk schema.GroupVersionKind, scope v1.ResourceScope) graphql.FieldResolveFn {
+func (r *Service) GetItemAsYAML(gvk schema.GroupVersionKind, scope apiextensionsv1.ResourceScope) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (result any, err error) {
 		_, span := otel.Tracer("").Start(p.Context, "GetItemAsYAML", trace.WithAttributes(attribute.String("kind", gvk.Kind)))
 		defer span.End()
@@ -217,7 +234,7 @@ func (r *Service) GetItemAsYAML(gvk schema.GroupVersionKind, scope v1.ResourceSc
 	}
 }
 
-func (r *Service) CreateItem(gvk schema.GroupVersionKind, scope v1.ResourceScope) graphql.FieldResolveFn {
+func (r *Service) CreateItem(gvk schema.GroupVersionKind, scope apiextensionsv1.ResourceScope) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (result any, err error) {
 		start := time.Now()
 		defer func() {
@@ -268,7 +285,7 @@ func (r *Service) CreateItem(gvk schema.GroupVersionKind, scope v1.ResourceScope
 			dryRun = []string{"All"}
 		}
 
-		if err := r.runtimeClient.Create(ctx, obj, &client.CreateOptions{DryRun: dryRun}); err != nil {
+		if err := r.runtimeClient.Create(ctx, obj, &ctrlruntimeclient.CreateOptions{DryRun: dryRun}); err != nil {
 			logger.Error(err, "Failed to create object")
 			return nil, err
 		}
@@ -277,7 +294,7 @@ func (r *Service) CreateItem(gvk schema.GroupVersionKind, scope v1.ResourceScope
 	}
 }
 
-func (r *Service) UpdateItem(gvk schema.GroupVersionKind, scope v1.ResourceScope) graphql.FieldResolveFn {
+func (r *Service) UpdateItem(gvk schema.GroupVersionKind, scope apiextensionsv1.ResourceScope) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (result any, err error) {
 		start := time.Now()
 		defer func() {
@@ -328,8 +345,8 @@ func (r *Service) UpdateItem(gvk schema.GroupVersionKind, scope v1.ResourceScope
 			dryRun = []string{"All"}
 		}
 
-		patch := client.RawPatch(types.MergePatchType, patchData)
-		if err := r.runtimeClient.Patch(ctx, obj, patch, &client.PatchOptions{DryRun: dryRun}); err != nil {
+		patch := ctrlruntimeclient.RawPatch(types.MergePatchType, patchData)
+		if err := r.runtimeClient.Patch(ctx, obj, patch, &ctrlruntimeclient.PatchOptions{DryRun: dryRun}); err != nil {
 			logger.Error(err, "Failed to patch object")
 			return nil, err
 		}
@@ -338,7 +355,7 @@ func (r *Service) UpdateItem(gvk schema.GroupVersionKind, scope v1.ResourceScope
 	}
 }
 
-func (r *Service) DeleteItem(gvk schema.GroupVersionKind, scope v1.ResourceScope) graphql.FieldResolveFn {
+func (r *Service) DeleteItem(gvk schema.GroupVersionKind, scope apiextensionsv1.ResourceScope) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (result any, err error) {
 		start := time.Now()
 		defer func() {
@@ -383,7 +400,7 @@ func (r *Service) DeleteItem(gvk schema.GroupVersionKind, scope v1.ResourceScope
 			dryRun = []string{"All"}
 		}
 
-		if err := r.runtimeClient.Delete(ctx, obj, &client.DeleteOptions{DryRun: dryRun}); err != nil {
+		if err := r.runtimeClient.Delete(ctx, obj, &ctrlruntimeclient.DeleteOptions{DryRun: dryRun}); err != nil {
 			logger.Error(err, "Failed to delete object")
 			return nil, err
 		}

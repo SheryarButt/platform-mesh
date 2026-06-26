@@ -1,16 +1,16 @@
-# KCP and Micro Frontend Platform (MFP) Integration POC
+# kcp and Micro Frontend Platform (MFP) Integration POC
 
 ## Overview
 
-This POC demonstrates the integration between KCP (Kubernetes Control Planes) and a Micro Frontend Platform (MFP), showcasing how workload management and frontend services can be orchestrated across multiple workspaces and clusters.
+This POC demonstrates the integration between kcp (Kubernetes Control Planes) and a Micro Frontend Platform (MFP), showcasing how workload management and frontend services can be orchestrated across multiple workspaces and clusters.
 
 ## Architecture
 
-### KCP Workspace Structure
+### kcp Workspace Structure
 
-![KCP Workspace Structure](../assets/apeirora-poc-design-infrav1.png)
+![kcp Workspace Structure](../assets/apeirora-poc-design-infrav1.png)
 
-The KCP instance is organized into several key workspaces:
+The kcp instance is organized into several key workspaces:
 
 1. **Root Workspace**
    - Base workspace that contains all other workspaces
@@ -40,7 +40,7 @@ The MSP Control Plane provides the actual Kubernetes cluster where workloads are
 
 - Namespace: `prefix-apeirora-example`
 - Workload: HTTPBin service deployment
-- Bidirectional sync with KCP example workspace
+- Bidirectional sync with kcp example workspace
 
 ### Micro Frontend Platform Integration
 
@@ -49,7 +49,7 @@ The MFP architecture consists of:
 1. **OpenMFP Cluster**
    - Account UI for user management
    - Gateway for routing
-   - Integration with KCP through account-operator
+   - Integration with kcp through account-operator
 
 2. **MSP Cluster**
    - Consumer UI for end-users
@@ -64,11 +64,11 @@ The POC uses HTTPBin as an example service to demonstrate:
 
 
 1. **Resource Definition**
-   - Defined in KCP example workspace
+   - Defined in kcp example workspace
    - Synchronized to MSP cluster
 
 2. **Deployment Flow**
-   - KCP manages the service definition
+   - kcp manages the service definition
    - MSP cluster handles actual deployment
    - Bidirectional synchronization ensures consistency
 
@@ -84,16 +84,16 @@ The POC uses HTTPBin as an example service to demonstrate:
    - Isolated resource management
 
 2. **Centralized Control**
-   - KCP provides unified control plane
+   - kcp provides unified control plane
    - Consistent resource management across clusters
 
 3. **Frontend Integration**
    - MFP provides user interfaces for different personas
-   - Seamless integration with KCP resources
+   - Seamless integration with kcp resources
 
 4. **Managed Services**
    - MSP provides actual compute resources
-   - Automated synchronization with KCP definitions
+   - Automated synchronization with kcp definitions
 
 ## Implementation Details
 
@@ -108,8 +108,8 @@ The POC uses HTTPBin as an example service to demonstrate:
    ```
 
 2. **Resource Synchronization**
-   - KCP to MSP: Service definitions and configurations
-   - MSP to KCP: Status updates and health information
+   - kcp to MSP: Service definitions and configurations
+   - MSP to kcp: Status updates and health information
 
 3. **Frontend Components**
    - Account management UI
@@ -117,4 +117,4 @@ The POC uses HTTPBin as an example service to demonstrate:
    - Operator dashboard
    - HTTPBin specific controls
 
-This POC demonstrates how KCP can be used to manage complex, multi-cluster deployments while integrating with a micro frontend platform for comprehensive service management and user interaction.
+This POC demonstrates how kcp can be used to manage complex, multi-cluster deployments while integrating with a micro frontend platform for comprehensive service management and user interaction.

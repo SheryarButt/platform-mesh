@@ -29,7 +29,6 @@ import (
 )
 
 func TestSetRequestIdWithIncomingHeader(t *testing.T) {
-
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		val := GetRequestId(r.Context())
 		assert.Equal(t, "123", val)
@@ -39,15 +38,14 @@ func TestSetRequestIdWithIncomingHeader(t *testing.T) {
 	handlerToTest := SetRequestId()(nextHandler)
 
 	// create a mock request to use
-	req := httptest.NewRequest("GET", "http://testing", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://testing", nil)
 	req.Header.Add("X-Request-Id", "123")
 
 	// call the handler using a mock response recorder (we'll not use that anyway)
 	handlerToTest.ServeHTTP(httptest.NewRecorder(), req)
 }
 
-func TestSetRequestIdWitoutIncomingHeader(t *testing.T) {
-
+func TestSetRequestIdWithoutIncomingHeader(t *testing.T) {
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		val := GetRequestId(r.Context())
 		assert.Len(t, val, 36)
@@ -57,7 +55,7 @@ func TestSetRequestIdWitoutIncomingHeader(t *testing.T) {
 	handlerToTest := SetRequestId()(nextHandler)
 
 	// create a mock request to use
-	req := httptest.NewRequest("GET", "http://testing", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://testing", nil)
 
 	// call the handler using a mock response recorder (we'll not use that anyway)
 	handlerToTest.ServeHTTP(httptest.NewRecorder(), req)
@@ -76,7 +74,7 @@ func TestSetRequestIdInLogger(t *testing.T) {
 	handlerToTest := SetRequestIdInLogger()(nextHandler)
 
 	// create a mock request to use
-	req := httptest.NewRequest("GET", "http://testing", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://testing", nil)
 
 	// call the handler using a mock response recorder
 	handlerToTest.ServeHTTP(httptest.NewRecorder(), req)
@@ -92,7 +90,7 @@ func TestGetRequestId_WithValidContext(t *testing.T) {
 
 	handlerToTest := SetRequestId()(nextHandler)
 
-	req := httptest.NewRequest("GET", "http://testing", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://testing", nil)
 	req.Header.Add("X-Request-Id", requestId)
 
 	handlerToTest.ServeHTTP(httptest.NewRecorder(), req)

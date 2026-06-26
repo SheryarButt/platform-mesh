@@ -58,7 +58,6 @@ func BuildVirtualWorkspace(
 	virtualWorkspaceBaseURL string,
 	provider *apiexport.Provider,
 ) virtualrootapiserver.NamedVirtualWorkspace {
-
 	clusterResolver := proxy.NewClusterResolver(kcpClusterClient)
 
 	return virtualrootapiserver.NamedVirtualWorkspace{
@@ -77,7 +76,6 @@ func BuildVirtualWorkspace(
 			),
 			ReadyChecker: framework.ReadyFunc(func() error { return nil }),
 			BootstrapAPISetManagement: func(mainConfig genericapiserver.CompletedConfig) (kcpapidefinition.APIDefinitionSetGetter, error) {
-
 				var resourceSchema kcpapisv1alpha1.APIResourceSchema
 				err := yaml.Unmarshal([]byte(resources.ResourceSchema), &resourceSchema)
 				if err != nil {
@@ -86,7 +84,7 @@ func BuildVirtualWorkspace(
 
 				marketplaceFilter := storage.Marketplace(provider, cfg)
 
-				storeageProvider := storage.CreateStorageProviderFunc(
+				storageProvider := storage.CreateStorageProviderFunc(
 					dynamicClient,
 					marketplaceFilter,
 				)
@@ -97,7 +95,7 @@ func BuildVirtualWorkspace(
 					Resource: resourceSchema.Spec.Names.Plural,
 				}
 
-				return apidefinition.NewSingleResourceProvider(mainConfig, gvr, &resourceSchema, storeageProvider), nil
+				return apidefinition.NewSingleResourceProvider(mainConfig, gvr, &resourceSchema, storageProvider), nil
 			},
 		},
 	}

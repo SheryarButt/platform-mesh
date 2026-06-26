@@ -72,7 +72,7 @@ var operatorCmd = &cobra.Command{
 
 		restCfg, err := getKubeconfigFromPath(operatorCfg.KCP.Kubeconfig)
 		if err != nil {
-			log.Error().Err(err).Msg("unable to get KCP kubeconfig")
+			log.Error().Err(err).Msg("unable to get kcp kubeconfig")
 			return err
 		}
 

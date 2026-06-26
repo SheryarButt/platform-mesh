@@ -5,7 +5,7 @@
 
 ## Description
 
-The Platform Mesh IAM Authorizaton Webhook is a kubernetes authorization webhook that uses openFGA to answer authorization requests from kubernetes.
+The Platform Mesh IAM Authorization Webhook is a kubernetes authorization webhook that uses openFGA to answer authorization requests from kubernetes.
 
 ## kcp Configuration
 

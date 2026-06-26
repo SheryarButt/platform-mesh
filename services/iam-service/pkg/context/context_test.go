@@ -27,22 +27,22 @@ import (
 func TestKCPContext(t *testing.T) {
 	ctx := context.Background()
 
-	// Test setting and getting KCP context
+	// Test setting and getting kcp context
 	kcpCtx := KCPContext{
 		IDMTenant:        "test-tenant",
 		OrganizationName: "test-org",
 	}
 
-	// Set KCP context
+	// Set kcp context
 	ctxWithKCP := SetKCPContext(ctx, kcpCtx)
 
-	// Get KCP context
+	// Get kcp context
 	retrievedKCP, err := GetKCPContext(ctxWithKCP)
 	require.NoError(t, err)
 	assert.Equal(t, kcpCtx.IDMTenant, retrievedKCP.IDMTenant)
 	assert.Equal(t, kcpCtx.OrganizationName, retrievedKCP.OrganizationName)
 
-	// Test getting KCP context from empty context
+	// Test getting kcp context from empty context
 	_, err = GetKCPContext(ctx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "kcp user context not found in context")

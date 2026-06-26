@@ -367,7 +367,7 @@ func (l *Lifecycle) Reconcile(ctx context.Context, req mcreconcile.Request) (rec
 		patchErr := l.patchChanges(ctx, cl, original, obj)
 		if patchErr != nil {
 			if apierrors.IsConflict(patchErr) {
-				logger.V(1).Info("conflict during patch, requeueing")
+				logger.V(1).Info("conflict during patch, requeuing")
 				return reconcile.Result{RequeueAfter: time.Second}, nil
 			}
 			return reconcile.Result{}, errors.Join(subroutineErr, patchErr)

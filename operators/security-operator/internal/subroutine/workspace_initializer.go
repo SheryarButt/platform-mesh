@@ -99,7 +99,7 @@ func (w *workspaceInitializer) reconcile(ctx context.Context, obj ctrlruntimecli
 	}, &ai); err != nil && !apierrors.IsNotFound(err) {
 		return subroutines.OK(), fmt.Errorf("getting AccountInfo for LogicalCluster: %w", err)
 	} else if apierrors.IsNotFound(err) {
-		return subroutines.StopWithRequeue(5*time.Second, "AccountInfo not found yet, requeueing"), nil
+		return subroutines.StopWithRequeue(5*time.Second, "AccountInfo not found yet, requeuing"), nil
 	}
 
 	orgsClient, err := w.kcpClientGetter.NewClientForLogicalCluster(ctx, "root:orgs")
@@ -157,13 +157,13 @@ func (w *workspaceInitializer) reconcile(ctx context.Context, obj ctrlruntimecli
 	}); err != nil {
 		return subroutines.OK(), fmt.Errorf("unable to create/update store: %w", err)
 	} else if result == controllerutil.OperationResultCreated || result == controllerutil.OperationResultUpdated {
-		return subroutines.StopWithRequeue(5*time.Second, "store needed to be updated, requeueing"), nil
+		return subroutines.StopWithRequeue(5*time.Second, "store needed to be updated, requeuing"), nil
 	}
 
 	// Check if Store applied tuple changes
 	for _, t := range tuples {
 		if !slices.Contains(store.Status.ManagedTuples, t) {
-			return subroutines.StopWithRequeue(5*time.Second, "store does not yet contain all specified tuples, requeueing"), nil
+			return subroutines.StopWithRequeue(5*time.Second, "store does not yet contain all specified tuples, requeuing"), nil
 		}
 	}
 

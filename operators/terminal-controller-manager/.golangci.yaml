@@ -21,24 +21,12 @@ linters:
   default: none
   enable:
     - bodyclose
-    - copyloopvar
     - dogsled
-    - errcheck
     - goconst
     - gocritic
-    - goprintffuncname
     - gosec
-    - govet
-    - ineffassign
-    - misspell
-    - nakedret
     - noctx
-    - staticcheck
-    - unconvert
     - unparam
-    - unused
-    - whitespace
-    - prealloc
 
 linters-settings:
   depguard:
@@ -72,16 +60,6 @@ linters-settings:
   nolintlint:
     require-explanation: false
     require-specific: false
-  revive:
-    rules:
-      - name: var-naming
-        disabled: true
-      - name: exported
-        disabled: true
-      - name: package-comments
-        disabled: true
-      - name: blank-imports
-        disabled: true
 
 issues:
   exclude-rules:
@@ -105,9 +83,6 @@ issues:
     - path: api/
       linters:
         - depguard
-    - linters:
-        - staticcheck
-      text: "SA1019:"
 
 formatters:
   enable:

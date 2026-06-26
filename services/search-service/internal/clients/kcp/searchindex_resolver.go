@@ -47,12 +47,12 @@ const searchIndexOrgClusterIDLabel = "search.platform-mesh.io/org-cluster-id"
 func NewSearchIndexResolver(restCfg *rest.Config, cfg config.SearchIndexConfig, log *logger.Logger) (*SearchIndexResolver, error) {
 	scopedCfg, err := configForKCPCluster(cfg.WorkspacePath, restCfg)
 	if err != nil {
-		return nil, fmt.Errorf("create KCP workspace config: %w", err)
+		return nil, fmt.Errorf("create kcp workspace config: %w", err)
 	}
 
 	dynamicClient, err := dynamic.NewForConfig(scopedCfg)
 	if err != nil {
-		return nil, fmt.Errorf("create KCP dynamic client: %w", err)
+		return nil, fmt.Errorf("create kcp dynamic client: %w", err)
 	}
 
 	return &SearchIndexResolver{

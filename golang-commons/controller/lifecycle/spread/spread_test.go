@@ -29,7 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestGetNextReconcilationTime(t *testing.T) {
+func TestGetNextReconciliationTime(t *testing.T) {
 	expectedEarliest := 12 * time.Hour
 	expectedLatest := 24 * time.Hour
 

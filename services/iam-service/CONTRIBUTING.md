@@ -4,13 +4,13 @@ We want to make contributing to this project as easy and transparent as possible
 
 ## Project Overview
 
-This is the Platform Mesh IAM (Identity and Access Management) service, a Go-based microservice that provides a GraphQL API for user management and authorization. The service has been refactored to use OpenFGA as the primary backend for authorization data and KCP for multi-cluster resource management, eliminating the need for a traditional database. It integrates with Keycloak for identity management.
+This is the Platform Mesh IAM (Identity and Access Management) service, a Go-based microservice that provides a GraphQL API for user management and authorization. The service has been refactored to use OpenFGA as the primary backend for authorization data and kcp for multi-cluster resource management, eliminating the need for a traditional database. It integrates with Keycloak for identity management.
 
 ## Development Setup
 
 ### Prerequisites
 1. Go 1.26.0+ (check [go.mod](go.mod) for exact version)
-2. Platform Mesh installation (OpenFGA and KCP)
+2. Platform Mesh installation (OpenFGA and kcp)
 3. Task runner (optional but recommended)
 
 ### Environment Setup
@@ -80,8 +80,8 @@ task validate
 - **Entry Point**: `main.go` → `cmd/` → `cmd/server.go`
 - **Transport Layer**: GraphQL API via gqlgen
 - **Service Layer**: Business logic in `pkg/service/` and `pkg/resolver/`
-- **Integration Layer**: OpenFGA (gRPC client), Keycloak for identity management, KCP for multi-cluster management
-- **Data Backend**: OpenFGA for authorization data, KCP for resource management (no traditional database), IDP for User Data
+- **Integration Layer**: OpenFGA (gRPC client), Keycloak for identity management, kcp for multi-cluster management
+- **Data Backend**: OpenFGA for authorization data, kcp for resource management (no traditional database), IDP for User Data
 
 ## Development Patterns
 
@@ -99,7 +99,7 @@ task validate
 ### Multi-tenancy
 - Tenant information extracted from JWT tokens
 - Tenant-scoped authorization through OpenFGA
-- KCP-based multi-cluster resource management
+- kcp-based multi-cluster resource management
 
 ## Common Development Tasks
 
@@ -134,7 +134,7 @@ You are welcome to contribute with your pull requests. These steps explain the c
 - **GraphQL**: gqlgen for schema-first GraphQL API
 - **Authorization**: OpenFGA for fine-grained access control (gRPC client)
 - **Identity**: Keycloak integration for user management
-- **Multi-cluster**: KCP (Kubernetes Control Plane) for resource management
+- **Multi-cluster**: kcp (Kubernetes Control Plane) for resource management
 - **Build**: Task (Taskfile.yaml)
 - **Testing**: Standard Go testing with testify
 - **Logging**: zerolog for structured logging

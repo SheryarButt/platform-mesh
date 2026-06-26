@@ -77,7 +77,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
-          go-version-file: operators/extension-manager-operator/go.mod
+          go-version-file: go.work
           cache: true
       - name: Enable git CLI clones using GITHUB_TOKEN
         run: |
@@ -98,7 +98,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
-          go-version-file: operators/extension-manager-operator/go.mod
+          go-version-file: go.work
           cache: true
       - name: Enable git CLI clones using GITHUB_TOKEN
         run: |
@@ -121,7 +121,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
-          go-version-file: operators/extension-manager-operator/go.mod
+          go-version-file: go.work
           cache: true
       - name: Enable git CLI clones using GITHUB_TOKEN
         run: |
@@ -202,7 +202,7 @@ jobs:
   trivy-image:
     if: github.ref == 'refs/heads/main'
     needs: [docker-build-latest]
-    uses: platform-mesh/.github/.github/workflows/job-trivy-image.yml@main
+    uses: ./.github/workflows/job-trivy-image.yml
     permissions:
       contents: read
       packages: read

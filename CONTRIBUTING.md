@@ -49,7 +49,7 @@ task validate   # Run lint + test
 
   To actually update the Go version used for Platform Mesh, adjust the various `Dockerfiles`.
 
-* Similarily, the dependencies in **libraries** should not be updated unless necessary to be
+* Similarly, the dependencies in **libraries** should not be updated unless necessary to be
   compatible with the modules of the operators/services. The libraries like `golang-commons` or `apis`
   are meant to provide the broadest possible compatibility, making them as easy to integrate as
   possible.

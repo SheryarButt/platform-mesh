@@ -1,14 +1,31 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package options
 
 import (
 	"fmt"
 	"strings"
 
-	commonsconfig "github.com/platform-mesh/golang-commons/config"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/apis/v1alpha1"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/defaults"
-	providerkcp "github.com/platform-mesh/kubernetes-graphql-gateway/providers/kcp/options"
 	"github.com/spf13/pflag"
+
+	pmgatewayv1alpha1 "go.platform-mesh.io/apis/gateway/v1alpha1"
+	commonsconfig "go.platform-mesh.io/golang-commons/config"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/defaults"
+	providerkcp "go.platform-mesh.io/kubernetes-graphql-gateway/providers/kcp/options"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -47,9 +64,9 @@ type ExtraOptions struct {
 	AnchorResource string
 	// ClusterMetadataFunc allows to provide cluster metadata for a given cluster name
 	// when reconciling anchor namespaces.
-	ClusterMetadataFunc v1alpha1.ClusterMetadataFunc
+	ClusterMetadataFunc pmgatewayv1alpha1.ClusterMetadataFunc
 	// ClusterURLResolverFunc allows to provide cluster URL for a given cluster name
-	ClusterURLResolverFunc v1alpha1.ClusterURLResolver
+	ClusterURLResolverFunc pmgatewayv1alpha1.ClusterURLResolver
 	// SchemaHandler is the type of schema handler to use (e.g., "file", "grpc")
 	SchemaHandler string
 	// GRPCListenAddr is the gRPC server listener address (only used if SchemaHandler is "grpc")
@@ -57,7 +74,7 @@ type ExtraOptions struct {
 	// GRPCMaxSendMsgSize is the maximum gRPC message size in bytes the server will send.
 	GRPCMaxSendMsgSize int
 
-	AdditonalPathAnnotationKey string
+	AdditionalPathAnnotationKey string
 
 	// CacheNamespaces restricts the cache to these namespaces for namespaced resources.
 	// Cluster-scoped resources are unaffected.
@@ -103,7 +120,7 @@ func NewOptions() *Options {
 			AnchorResource:           "object.metadata.name == 'default'",
 			ResourceGVR:              "namespaces.v1",
 			EnableResourceController: true,
-			ClusterURLResolverFunc:   v1alpha1.DefaultClusterURLResolverFunc,
+			ClusterURLResolverFunc:   pmgatewayv1alpha1.DefaultClusterURLResolverFunc,
 		},
 	}
 	return opts
@@ -140,7 +157,7 @@ func (options *Options) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&options.AnchorResource, "anchor-resource", options.AnchorResource, "Resource to watch as anchor for kubernetes provider (default: default)")
 	fs.StringVar(&options.ResourceGVR, "reconciler-gvr", options.ResourceGVR, "The GroupVersionResource which the reconciler will be watching (default: namespaces.v1)")
 
-	fs.StringVar(&options.AdditonalPathAnnotationKey, "additional-path-annotation-key", options.AdditonalPathAnnotationKey, "additional path annotation key for workspace schema generation")
+	fs.StringVar(&options.AdditionalPathAnnotationKey, "additional-path-annotation-key", options.AdditionalPathAnnotationKey, "additional path annotation key for workspace schema generation")
 
 	fs.StringSliceVar(&options.CacheNamespaces, "cache-namespaces", options.CacheNamespaces, "Namespaces to restrict the cache to for namespaced resources (e.g. secrets, configmaps). Cluster-scoped resources are unaffected. When empty, all namespaces are cached")
 

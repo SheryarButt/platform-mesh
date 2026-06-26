@@ -44,12 +44,12 @@ func NewOrgAccessValidator(restCfg *rest.Config, log *logger.Logger) (*OrgAccess
 
 	httpClient, err := rest.HTTPClientFor(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("create KCP HTTP client: %w", err)
+		return nil, fmt.Errorf("create kcp HTTP client: %w", err)
 	}
 
 	baseURL, err := url.Parse(cfg.Host)
 	if err != nil {
-		return nil, fmt.Errorf("parse KCP host URL: %w", err)
+		return nil, fmt.Errorf("parse kcp host URL: %w", err)
 	}
 	baseURL.Path = ""
 
@@ -62,7 +62,7 @@ func (v *OrgAccessValidator) ValidateTokenForOrg(ctx context.Context, authHeader
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, http.NoBody)
 	if err != nil {
-		return false, fmt.Errorf("create KCP auth request: %w", err)
+		return false, fmt.Errorf("create kcp auth request: %w", err)
 	}
 	req.Header.Set("Authorization", authHeader)
 
@@ -72,8 +72,8 @@ func (v *OrgAccessValidator) ValidateTokenForOrg(ctx context.Context, authHeader
 			Err(err).
 			Str("organization", org).
 			Str("clusterPath", clusterPath).
-			Msg("KCP org token validation request failed")
-		return false, fmt.Errorf("execute KCP auth request: %w", err)
+			Msg("kcp org token validation request failed")
+		return false, fmt.Errorf("execute kcp auth request: %w", err)
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
@@ -85,7 +85,7 @@ func (v *OrgAccessValidator) ValidateTokenForOrg(ctx context.Context, authHeader
 			Str("organization", org).
 			Str("clusterPath", clusterPath).
 			Int("statusCode", resp.StatusCode).
-			Msg("KCP org token validation denied request")
+			Msg("kcp org token validation denied request")
 		return false, nil
 	default:
 		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
@@ -97,7 +97,7 @@ func (v *OrgAccessValidator) ValidateTokenForOrg(ctx context.Context, authHeader
 		if bodySnippet != "" {
 			logEvt = logEvt.Str("responseBody", bodySnippet)
 		}
-		logEvt.Msg("KCP org token validation returned unexpected status")
+		logEvt.Msg("kcp org token validation returned unexpected status")
 
 		if strings.HasPrefix(fmt.Sprintf("%d", resp.StatusCode), "5") {
 			return false, fmt.Errorf("kcp auth check failed with status %d", resp.StatusCode)

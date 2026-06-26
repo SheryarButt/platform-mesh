@@ -82,7 +82,7 @@ func TestInviteSubroutine_Initialize(t *testing.T) {
 			expectedResult: subroutines.OK(),
 		},
 		{
-			name: "KCP client getter error",
+			name: "kcp client getter error",
 			setupMocks: func(_ *mocks.MockClient, _ *mocks.MockClient, _ *mocks.MockManager, kcpHelper *mocks.MockKCPClientGetter) {
 				kcpHelper.EXPECT().NewClientFromContext(mock.Anything).Return(nil, assert.AnError).Once()
 			},

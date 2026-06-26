@@ -157,7 +157,7 @@ func TestContentConfigurationLookup_ExcludesContentForFromLocalWorkspace(t *test
 		{
 			name:          "empty result when all CCs have content-for label",
 			allCCs:        []unstructured.Unstructured{providerProjectedCC},
-			expectedNames: nil,
+			expectedNames: []string{},
 		},
 	}
 
@@ -180,7 +180,7 @@ func TestContentConfigurationLookup_ExcludesContentForFromLocalWorkspace(t *test
 			require.NoError(t, err)
 
 			ul := result.(*unstructured.UnstructuredList)
-			var gotNames []string
+			gotNames := make([]string, 0, len(ul.Items))
 			for _, item := range ul.Items {
 				gotNames = append(gotNames, item.GetName())
 			}

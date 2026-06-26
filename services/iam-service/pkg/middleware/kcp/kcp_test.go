@@ -147,7 +147,7 @@ func TestSetKCPUserContext_NoWebTokenInContext(t *testing.T) {
 	wrappedHandler := middlewareFunc(testHandler)
 
 	// Test with no web token in context (this should fail early)
-	req, _ := http.NewRequest("GET", "/test", nil)
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
 	ctx := logger.SetLoggerInContext(req.Context(), log)
 	req = req.WithContext(ctx)
 	rr := httptest.NewRecorder()
@@ -177,11 +177,11 @@ func TestCheckToken_InvalidURL(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.False(t, result)
-	assert.Contains(t, err.Error(), "invalid KCP host URL")
+	assert.Contains(t, err.Error(), "invalid kcp host URL")
 }
 
 func TestCheckToken_ValidURL(t *testing.T) {
-	// Create a mock HTTP server to simulate KCP API
+	// Create a mock HTTP server to simulate kcp API
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check the request path and authorization
 		expectedPath := "/clusters/root:orgs:test-org/version"
@@ -341,7 +341,7 @@ func TestSetKCPUserContext_IDMTenantError(t *testing.T) {
 	})
 	wrappedHandler := middlewareFunc(testHandler)
 
-	req, _ := http.NewRequest("GET", "/test", nil)
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
 	ctx := logger.SetLoggerInContext(req.Context(), log)
 
 	// Use proper WebToken helper function instead of problematic JWT parsing
@@ -371,7 +371,7 @@ func TestSetKCPUserContext_AuthHeaderError(t *testing.T) {
 	})
 	wrappedHandler := middlewareFunc(testHandler)
 
-	req, _ := http.NewRequest("GET", "/test", nil)
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
 	ctx := logger.SetLoggerInContext(req.Context(), log)
 
 	// Use proper WebToken helper function instead of problematic JWT parsing
@@ -403,7 +403,7 @@ func TestSetKCPUserContext_DirectWebTokenContext(t *testing.T) {
 	})
 	wrappedHandler := middlewareFunc(testHandler)
 
-	req, _ := http.NewRequest("GET", "/test", nil)
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
 	ctx := logger.SetLoggerInContext(req.Context(), log)
 
 	// Directly add a WebToken to context to simulate successful token parsing
@@ -517,7 +517,7 @@ func TestSetKCPUserContext_SubdomainExtraction(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
-			req, _ := http.NewRequest("GET", "/test", nil)
+			req, _ := http.NewRequest(http.MethodGet, "/test", nil)
 			ctx := logger.SetLoggerInContext(req.Context(), log)
 
 			req = req.WithContext(ctx)
@@ -558,7 +558,7 @@ func TestSetKCPUserContext_IDMTenantSuccess(t *testing.T) {
 	}
 	log, _ := logger.New(logger.Config{Level: "debug"})
 
-	// Create a mock KCP server
+	// Create a mock kcp server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Simulate successful auth check
 		w.WriteHeader(http.StatusOK)
@@ -574,7 +574,7 @@ func TestSetKCPUserContext_IDMTenantSuccess(t *testing.T) {
 	middleware := New(restConfig, excludedTenants, mockTenantRetriever, log)
 	middlewareFunc := middleware.SetKCPUserContext()
 
-	// Handler that checks if KCP context was set correctly
+	// Handler that checks if kcp context was set correctly
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		kcpCtx, err := appcontext.GetKCPContext(r.Context())
 		assert.NoError(t, err)
@@ -584,7 +584,7 @@ func TestSetKCPUserContext_IDMTenantSuccess(t *testing.T) {
 	})
 	wrappedHandler := middlewareFunc(testHandler)
 
-	req, _ := http.NewRequest("GET", "/test", nil)
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
 	ctx := logger.SetLoggerInContext(req.Context(), log)
 
 	// Add WebToken to context
@@ -619,7 +619,7 @@ func TestSetKCPUserContext_IDMTenantRetrievalError(t *testing.T) {
 	})
 	wrappedHandler := middlewareFunc(testHandler)
 
-	req, _ := http.NewRequest("GET", "/test", nil)
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
 	ctx := logger.SetLoggerInContext(req.Context(), log)
 
 	// Add WebToken to context
@@ -649,7 +649,7 @@ func TestSetKCPUserContext_MissingAuthHeader(t *testing.T) {
 	})
 	wrappedHandler := middlewareFunc(testHandler)
 
-	req, _ := http.NewRequest("GET", "/test", nil)
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
 	ctx := logger.SetLoggerInContext(req.Context(), log)
 
 	// Add WebToken to context but NO auth header
@@ -669,7 +669,7 @@ func TestSetKCPUserContext_TokenCheckFailure(t *testing.T) {
 	mockTenantRetriever := &mockIDMTenantRetriever{}
 	log, _ := logger.New(logger.Config{Level: "debug"})
 
-	// Create a mock KCP server that returns unauthorized
+	// Create a mock kcp server that returns unauthorized
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
@@ -689,7 +689,7 @@ func TestSetKCPUserContext_TokenCheckFailure(t *testing.T) {
 	})
 	wrappedHandler := middlewareFunc(testHandler)
 
-	req, _ := http.NewRequest("GET", "/test", nil)
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
 	ctx := logger.SetLoggerInContext(req.Context(), log)
 
 	// Add WebToken and auth header to context
@@ -725,7 +725,7 @@ func TestSetKCPUserContext_TokenCheckError(t *testing.T) {
 	})
 	wrappedHandler := middlewareFunc(testHandler)
 
-	req, _ := http.NewRequest("GET", "/test", nil)
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
 	ctx := logger.SetLoggerInContext(req.Context(), log)
 
 	// Add WebToken and auth header to context
@@ -746,7 +746,7 @@ func TestSetKCPUserContext_SubdomainPatterns(t *testing.T) {
 	mockTenantRetriever := &mockIDMTenantRetriever{}
 	log, _ := logger.New(logger.Config{Level: "debug"})
 
-	// Create a mock KCP server
+	// Create a mock kcp server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -782,7 +782,7 @@ func TestSetKCPUserContext_SubdomainPatterns(t *testing.T) {
 			})
 			wrappedHandler := middlewareFunc(testHandler)
 
-			req, _ := http.NewRequest("GET", "/test", nil)
+			req, _ := http.NewRequest(http.MethodGet, "/test", nil)
 			ctx := logger.SetLoggerInContext(req.Context(), log)
 
 			// Add WebToken and auth header to context

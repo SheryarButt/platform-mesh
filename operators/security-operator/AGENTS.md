@@ -6,7 +6,7 @@
 This is not a standard controller-runtime operator. Read this before touching reconcilers or subroutines.
 
 ### Runtime model
-The manager is an `mcmanager.Manager` from `sigs.k8s.io/multicluster-runtime`, which uses kcp's providers from `kcp-dev/multicluster-provider` for clusters engagement. 
+The manager is an `mcmanager.Manager` from `sigs.k8s.io/multicluster-runtime`, which uses kcp's providers from `kcp-dev/multicluster-provider` for clusters engagement.
 Providers:
 - `apiexport` uses `ApiExportEndpointSlice` name for virtual workspace url discovery and engages clusters where `apibinding` is created for `apiexport` with the same name as `ApiExportEndpointSlice`.
 - `initializing` uses `workspaceType` for fetching `initializing` virtual workspace url and engages clusters in `initializing` phase
@@ -26,7 +26,7 @@ Providers:
 - `task fmt` — format Go code.
 - `task lint` — run formatting plus golangci-lint. For fixing lint issues use `golangci-lint run --fix`
 - `task test` — run the standard local test path with required tooling (kcp + gomplate).
-- `task cover` — envtest with coverage; thresholds in `.testcoverage.yml` 
+- `task cover` — envtest with coverage; thresholds in `.testcoverage.yml`
 - `task manifests` — regenerate CRDs.
 - `task generate` — regenerate deepcopy code and API resource output after API changes
 - `task docker:kind` — build image with the tag currently deployed, load into kind cluster override restart all pods related to `security-operator` deployments in `platform-mesh-system` namespace.
@@ -40,7 +40,7 @@ Providers:
 ## Project structure
 - `api/`: API definitions (CRDs)
 - `cmd/`: Command entry points
-- `internal/client/`: KCP client helpers
+- `internal/client/`: kcp client helpers
 - `internal/config/`: operator config
 - `internal/controller/`: kubernetes controllers
 - `internal/fga/`: tuples and storeID management for OpenFGA
@@ -51,7 +51,7 @@ Providers:
 - `internal/test/`: integration tests
 - `internal/webhook/`: validating webhook
 - `pkg/`: HTTP client configuration for OAuth dynamic client registration
-- `config/resources/`: KCP API resources
+- `config/resources/`: kcp API resources
 - `bin/`
 - `main.go`
 - `go.mod`
@@ -65,7 +65,7 @@ Providers:
 - `CODE_OF_CONDUCT.md`
 - `AGENTS.md`
 
-## KCP structure
+## kcp structure
 - root (workspace types, used by initializer, terminator)
     - orgs (store, IDP, account `orgA`)
         - orgA (invite, accountInfo for account `orgA`, account `accB`)

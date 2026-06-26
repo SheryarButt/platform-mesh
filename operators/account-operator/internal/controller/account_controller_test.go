@@ -127,7 +127,7 @@ func (s *AccountTestSuite) SetupSuite() {
 
 func (s *AccountTestSuite) TearDownSuite() {
 	if err := s.env.Stop(); err != nil {
-		s.T().Logf("Error stopping KCP environment: %v", err)
+		s.T().Logf("Error stopping kcp environment: %v", err)
 	}
 	s.cancel(fmt.Errorf("tearing down test suite"))
 }

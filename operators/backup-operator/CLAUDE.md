@@ -50,7 +50,7 @@ Follows the **account-operator** conventions exactly:
 - Controllers live in `internal/controller/`.
 - Each controller holds a `*lifecycle.Lifecycle` from `go.platform-mesh.io/subroutines/lifecycle` and delegates `Reconcile()` to it.
 - Reconcilers are registered with the **multicluster-runtime** manager via `mcbuilder.ControllerManagedBy(mgr)` (not the standard controller-runtime builder).
-- The manager is created with a **path-aware KCP provider** (`github.com/kcp-dev/multicluster-provider/path-aware`), enabling reconciliation across kcp logical clusters.
+- The manager is created with a **path-aware kcp provider** (`github.com/kcp-dev/multicluster-provider/path-aware`), enabling reconciliation across kcp logical clusters.
 
 ### Entry point
 `main.go` → `cmd.Execute()` → Cobra root (`cmd/root.go`) registers the scheme and adds the `operator` sub-command → `cmd/operator.go` builds the `mcmanager`, wires both controllers, and calls `mgr.Start()`.

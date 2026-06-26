@@ -108,7 +108,7 @@ be skipped when sending errors (e.g. E2E tenant) can be provided as arguments.
 
 ### Recover panics
 
-There are rare circumstances where a Go program can crash with a panic. This happens if a `nil` pointer is de-referended
+There are rare circumstances where a Go program can crash with a panic. This happens if a `nil` pointer is de-referenced
 or a not existent map index is accessed. In order to send these errors to Sentry and log them there is a `Recover` func in the Sentry package.
 This function can be used in `main()` to record all panics (but not recover from them). It is also possible to use it in
 functions that are likely to panic (and then recover without crashing). However, if the `Recover()` function is used in `main()` only,

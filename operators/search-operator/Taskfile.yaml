@@ -23,6 +23,7 @@ includes:
 
 vars:
   CRD_DIRECTORY: config/crd/bases
+  RBAC_DIRECTORY: config/rbac
 
 tasks:
   default:
@@ -36,6 +37,10 @@ tasks:
         vars:
           PATH: /search/...
           OUTPUT: '{{.CRD_DIRECTORY}}'
+      - task: tools:generate-rbac
+        vars:
+          PATHS: ./...
+          OUTPUT: '{{.RBAC_DIRECTORY}}'
   generate:
     cmds:
       - task: manifests

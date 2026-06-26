@@ -34,10 +34,10 @@ if ! kind get clusters | grep -q "^platform-mesh$"; then
 fi
 
 echo ""
-echo "Retrieving credentials from KCP kubeconfig..."
+echo "Retrieving credentials from kcp kubeconfig..."
 
 if [ ! -f "$KCP_KUBECONFIG" ]; then
-    echo "Error: KCP kubeconfig not found at $KCP_KUBECONFIG"
+    echo "Error: kcp kubeconfig not found at $KCP_KUBECONFIG"
     exit 1
 fi
 

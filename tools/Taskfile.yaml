@@ -35,7 +35,7 @@ vars:
     sh: echo "$(git rev-parse --show-toplevel)"
   BIN: '{{.TOPLEVEL}}/bin'
   HACK: '{{.TOPLEVEL}}/hack'
-  CONTROLLER_TOOLS_VERSION: v0.16.4
+  CONTROLLER_TOOLS_VERSION: v0.20.1
   ENVTEST_K8S_VERSION: "1.35.0"
   ENVTEST_VERSION: release-0.23
   GOLANGCI_LINT_VERSION: 2.12.2
@@ -75,8 +75,16 @@ tasks:
   lint:
     desc: Lint all Go code in the repository using golangci-lint.
     internal: true
+    vars:
+      GOLANGCI_LINT:
+        # this ensures (installs/updates) golangci-lint and outputs the absolute path to the binary
+        sh: 'UGET_DIRECTORY={{.BIN}} UGET_CHECKSUMS={{.HACK}}/tools.checksums UGET_PRINT_PATH=absolute task tools:golangci-lint'
     cmds:
-      - '"$(UGET_PRINT_PATH=absolute task tools:golangci-lint)" run --timeout 15m ./...'
+      # lint once with the repository-wide settings
+      - '{{.GOLANGCI_LINT}} run --config {{.TOPLEVEL}}/.golangci.yaml --timeout 15m ./...'
+      # and then again with per-component settings, if there are any
+      - if: test -s .golangci.yaml
+        cmd: '{{.GOLANGCI_LINT}} run --timeout 15m ./...'
   mockery:
     desc: Install mockery into the root bin.
     cmds:
@@ -132,7 +140,13 @@ tasks:
     internal: true
     deps: [controller-gen]
     cmds:
-      - '{{.BIN}}/controller-gen rbac:roleName=manager-role crd paths={{.TOPLEVEL}}/apis{{.PATH}} output:crd:artifacts:config={{.OUTPUT}}'
+      - '{{.BIN}}/controller-gen rbac:roleName=manager-role crd:headerFile={{.HACK}}/boilerplate/boilerplate.yaml.txt paths={{.TOPLEVEL}}/apis{{.PATH}} output:crd:artifacts:config={{.OUTPUT}}'
+
+  generate-rbac:
+    internal: true
+    deps: [controller-gen]
+    cmds:
+      - '{{.BIN}}/controller-gen rbac:roleName=manager-role,headerFile={{.HACK}}/boilerplate/boilerplate.yaml.txt paths={{.PATHS}} output:rbac:artifacts:config={{.OUTPUT}}'
 
   generate-deepcopy:
     internal: true

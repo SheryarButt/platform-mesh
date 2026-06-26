@@ -1,12 +1,29 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package enricher_test
 
 import (
 	"testing"
 
-	"github.com/platform-mesh/kubernetes-graphql-gateway/apis"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/apischema"
-	"github.com/platform-mesh/kubernetes-graphql-gateway/listener/pkg/apischema/enricher"
 	"github.com/stretchr/testify/assert"
+
+	pmgateway "go.platform-mesh.io/apis/gateway"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/apischema"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/listener/pkg/apischema/enricher"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kube-openapi/pkg/validation/spec"
@@ -16,7 +33,7 @@ func TestCategoriesEnricher(t *testing.T) {
 	podSchema := &spec.Schema{
 		VendorExtensible: spec.VendorExtensible{
 			Extensions: map[string]any{
-				apis.GVKExtensionKey: []map[string]any{
+				pmgateway.GVKExtensionKey: []map[string]any{
 					{"group": "", "version": "v1", "kind": "Pod"},
 				},
 			},
@@ -47,7 +64,7 @@ func TestCategoriesEnricher(t *testing.T) {
 	assert.NoError(t, err)
 
 	podEntry, _ := schemas.Get("v1.Pod")
-	categories := podEntry.Schema.Extensions[apis.CategoriesExtensionKey]
+	categories := podEntry.Schema.Extensions[pmgateway.CategoriesExtensionKey]
 	assert.Equal(t, []string{"all"}, categories)
 }
 
@@ -55,7 +72,7 @@ func TestCategoriesEnricher_NoCategories(t *testing.T) {
 	podSchema := &spec.Schema{
 		VendorExtensible: spec.VendorExtensible{
 			Extensions: map[string]any{
-				apis.GVKExtensionKey: []map[string]any{
+				pmgateway.GVKExtensionKey: []map[string]any{
 					{"group": "", "version": "v1", "kind": "Pod"},
 				},
 			},
@@ -87,7 +104,7 @@ func TestCategoriesEnricher_NoCategories(t *testing.T) {
 	assert.NoError(t, err)
 
 	podEntry, _ := schemas.Get("v1.Pod")
-	_, hasCategories := podEntry.Schema.Extensions[apis.CategoriesExtensionKey]
+	_, hasCategories := podEntry.Schema.Extensions[pmgateway.CategoriesExtensionKey]
 	assert.False(t, hasCategories, "should not have categories extension")
 }
 

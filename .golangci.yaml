@@ -26,7 +26,27 @@ run:
 linters:
   default: none
   enable:
+    - copyloopvar
+    - dupword
+    - durationcheck
+    - errcheck
+    - goprintffuncname
+    - govet
     - importas
+    - ineffassign
+    - intrange
+    - misspell
+    - nakedret
+    - nilerr
+    - nolintlint
+    - prealloc
+    - predeclared
+    - revive
+    - staticcheck
+    - unconvert
+    - unused
+    - usestdlibvars
+    - whitespace
   settings:
     importas:
       alias:
@@ -49,10 +69,25 @@ linters:
         - pkg: sigs.k8s.io/controller-runtime/pkg/client
           alias: ctrlruntimeclient
       no-unaliased: true
+    revive:
+      rules:
+        - name: var-naming
+          disabled: true
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+        - name: blank-imports
+          disabled: true
     paths:
       - third_party$
       - builtin$
       - examples$
+
+issues:
+  # defaults to 3, which often needlessly hides issues and forces
+  # to re-run the linter across the entire repo many times
+  max-same-issues: 0
 
 formatters:
   enable:

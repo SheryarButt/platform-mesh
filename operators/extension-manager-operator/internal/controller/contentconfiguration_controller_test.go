@@ -163,7 +163,7 @@ func (suite *ContentConfigurationTestSuite) SetupSuite() {
 	// (same as multicluster-provider e2e: providerConfig.Host += provider.RequestPath()).
 	providerConfig := rest.CopyConfig(kcpConfig)
 	providerConfig.Host = strings.TrimSuffix(providerConfig.Host, "/") + suite.provider.RequestPath()
-	// KCP envtest often fails discovery with "failed to get server groups: unknown" when the client
+	// kcp envtest often fails discovery with "failed to get server groups: unknown" when the client
 	// uses HTTP/2 (default). Force HTTP/1.1 so the cache's discovery client uses it (same as operator).
 	providerConfig.Wrap(func(rt http.RoundTripper) http.RoundTripper {
 		if tr, ok := rt.(*http.Transport); ok {

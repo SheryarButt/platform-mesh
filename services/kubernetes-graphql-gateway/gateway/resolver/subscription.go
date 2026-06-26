@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package resolver
 
 import (
@@ -13,7 +29,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -22,7 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/utils/clock"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -64,7 +80,7 @@ type SubscriptionMetadata struct {
 	ResourceVersion string `json:"resourceVersion,omitempty"`
 }
 
-func (r *Service) SubscribeItem(gvk schema.GroupVersionKind, scope v1.ResourceScope) graphql.FieldResolveFn {
+func (r *Service) SubscribeItem(gvk schema.GroupVersionKind, scope apiextensionsv1.ResourceScope) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		resultChannel := make(chan any)
 		go r.runWatch(p, gvk, resultChannel, true, scope)
@@ -72,7 +88,7 @@ func (r *Service) SubscribeItem(gvk schema.GroupVersionKind, scope v1.ResourceSc
 	}
 }
 
-func (r *Service) SubscribeItems(gvk schema.GroupVersionKind, scope v1.ResourceScope) graphql.FieldResolveFn {
+func (r *Service) SubscribeItems(gvk schema.GroupVersionKind, scope apiextensionsv1.ResourceScope) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		resultChannel := make(chan any)
 		go r.runWatch(p, gvk, resultChannel, false, scope)
@@ -85,7 +101,7 @@ func (r *Service) runWatch(
 	gvk schema.GroupVersionKind,
 	resultChannel chan any,
 	singleItem bool,
-	scope v1.ResourceScope,
+	scope apiextensionsv1.ResourceScope,
 ) {
 	defer close(resultChannel)
 
@@ -135,7 +151,7 @@ func (r *Service) runWatch(
 		Group: gvk.Group, Version: gvk.Version, Kind: gvk.Kind + "List",
 	})
 
-	var opts []client.ListOption
+	var opts []ctrlruntimeclient.ListOption
 
 	var namespace string
 	if isResourceNamespaceScoped(scope) {
@@ -147,7 +163,7 @@ func (r *Service) runWatch(
 			return
 		}
 		if namespace != "" {
-			opts = append(opts, client.InNamespace(namespace))
+			opts = append(opts, ctrlruntimeclient.InNamespace(namespace))
 		}
 	}
 
@@ -158,7 +174,7 @@ func (r *Service) runWatch(
 			sendErr(fmt.Errorf("invalid label selector: %w", err))
 			return
 		}
-		opts = append(opts, client.MatchingLabelsSelector{Selector: selector})
+		opts = append(opts, ctrlruntimeclient.MatchingLabelsSelector{Selector: selector})
 	}
 
 	var name string
@@ -169,7 +185,7 @@ func (r *Service) runWatch(
 			sendErr(fmt.Errorf("failed to get name argument: %w", err))
 			return
 		}
-		opts = append(opts, client.MatchingFields{"metadata.name": name})
+		opts = append(opts, ctrlruntimeclient.MatchingFields{"metadata.name": name})
 	}
 
 	// If no resourceVersion provided, perform an initial LIST to obtain current items and resourceVersion,
@@ -226,9 +242,9 @@ func (r *Service) runWatch(
 		}
 
 		// --- WATCH phase ---
-		watchOpts := append([]client.ListOption{}, opts...)
+		watchOpts := append([]ctrlruntimeclient.ListOption{}, opts...)
 		if lastRV != "" {
-			watchOpts = append(watchOpts, &client.ListOptions{
+			watchOpts = append(watchOpts, &ctrlruntimeclient.ListOptions{
 				Raw: &metav1.ListOptions{ResourceVersion: lastRV},
 			})
 		}
