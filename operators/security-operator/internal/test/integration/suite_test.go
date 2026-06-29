@@ -267,7 +267,7 @@ func (suite *IntegrationSuite) setupPlatformMesh(t *testing.T) {
 			return false
 		}
 		return len(endpointSlice.Status.APIExportEndpoints) > 0 && endpointSlice.Status.APIExportEndpoints[0].URL != ""
-	}, 10*time.Second, 200*time.Millisecond, "KCP should automatically create core.platform-mesh.io APIExportEndpointSlice with populated endpoints")
+	}, 10*time.Second, 200*time.Millisecond, "kcp should automatically create core.platform-mesh.io APIExportEndpointSlice with populated endpoints")
 
 	suite.Require().NotEmpty(endpointSlice.Status.APIExportEndpoints, "APIExportEndpointSlice should have at least one endpoint")
 	suite.Require().NotEqual("", endpointSlice.Status.APIExportEndpoints[0].URL, "APIExportEndpointSlice endpoint URL should not be empty")
