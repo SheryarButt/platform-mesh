@@ -100,10 +100,6 @@ type PlatformRestoreList struct {
 	Items           []PlatformRestore `json:"items"`
 }
 
-func init() {
-	SchemeBuilder.Register(&PlatformRestore{}, &PlatformRestoreList{})
-}
-
 func (r *PlatformRestore) GetConditions() []metav1.Condition  { return r.Status.Conditions }
 func (r *PlatformRestore) SetConditions(c []metav1.Condition) { r.Status.Conditions = c }
 func (r *PlatformRestore) GetObservedGeneration() int64       { return r.Status.ObservedGeneration }

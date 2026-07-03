@@ -1,0 +1,7 @@
+Dockerfile.cross
+
+*.kubeconfig
+
+# ignore output from examples
+/*.yaml
+/run.bash

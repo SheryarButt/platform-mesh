@@ -34,16 +34,16 @@ func NewDiscoveryHandler(adminRT http.RoundTripper) *DiscoveryHandler {
 }
 
 // RoundTrip implements union.Handler.
-func (h *DiscoveryHandler) RoundTrip(req *http.Request) (*http.Response, error, bool) {
+func (h *DiscoveryHandler) RoundTrip(req *http.Request) (*http.Response, bool, error) {
 	if !isDiscoveryRequest(req) {
-		return nil, nil, false
+		return nil, false, nil
 	}
 
 	logger := log.FromContext(req.Context())
 	logger.V(4).WithValues("path", req.URL.Path).Info("Discovery request detected, allowing with admin credentials")
 
 	resp, err := h.adminRT.RoundTrip(req)
-	return resp, err, true
+	return resp, true, err
 }
 
 func isDiscoveryRequest(req *http.Request) bool {

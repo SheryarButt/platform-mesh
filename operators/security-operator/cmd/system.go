@@ -121,9 +121,9 @@ var systemCmd = &cobra.Command{
 		fgaClient := openfgav1.NewOpenFGAServiceClient(conn)
 
 		storeIDGetter := fga.NewCachingStoreIDGetter(
+			ctx,
 			fgaClient,
 			systemCfg.FGA.StoreIDCacheTTL,
-			ctx,
 			log,
 		)
 

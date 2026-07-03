@@ -133,9 +133,9 @@ var initializerCmd = &cobra.Command{
 		defer func() { _ = conn.Close() }()
 		fgaClient := openfgav1.NewOpenFGAServiceClient(conn)
 		storeIDGetter := fga.NewCachingStoreIDGetter(
+			cmd.Context(),
 			fgaClient,
 			initializerCfg.FGA.StoreIDCacheTTL,
-			cmd.Context(),
 			log,
 		)
 

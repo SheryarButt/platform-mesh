@@ -92,10 +92,6 @@ type AccountList struct {
 	Items           []Account `json:"items"`
 }
 
-func init() {
-	SchemeBuilder.Register(&Account{}, &AccountList{})
-}
-
 func (i *Account) GetObservedGeneration() int64                { return i.Status.ObservedGeneration }
 func (i *Account) SetObservedGeneration(g int64)               { i.Status.ObservedGeneration = g }
 func (i *Account) GetNextReconcileTime() metav1.Time           { return i.Status.NextReconcileTime }

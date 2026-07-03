@@ -18,6 +18,7 @@ package idp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -40,7 +41,27 @@ import (
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 )
+
+// clusterNotReadyRequeue is how long to wait before retrying when the
+// logical cluster has not yet been engaged by the multicluster provider. This
+// is an expected transient condition during operator startup, before the
+// provider has finished engaging all clusters.
+const clusterNotReadyRequeue = 5 * time.Second
+
+// pendingIfClusterNotReady converts a transient "cluster not yet engaged by
+// the multicluster provider" error into a Pending result, so the object is
+// retried without being marked as failed. It returns ok=false for any other
+// error (or nil), in which case the caller should surface the original result.
+func pendingIfClusterNotReady(ctx context.Context, err error) (subroutines.Result, bool) {
+	if err == nil || !errors.Is(err, multicluster.ErrClusterNotFound) {
+		return subroutines.OK(), false
+	}
+	logger.LoadLoggerFromContext(ctx).Info().Err(err).
+		Msg("cluster not engaged by multicluster provider yet, requeueing")
+	return subroutines.Pending(clusterNotReadyRequeue, "waiting for cluster to be engaged by the multicluster provider"), true
+}
 
 type subroutine struct {
 	keycloakBaseURL string
@@ -91,6 +112,14 @@ func (s *subroutine) newOIDCClient(realmName string) (clientreg.Client, *keycloa
 }
 
 func (s *subroutine) Finalize(ctx context.Context, obj ctrlruntimeclient.Object) (subroutines.Result, error) {
+	result, err := s.finalize(ctx, obj)
+	if res, ok := pendingIfClusterNotReady(ctx, err); ok {
+		return res, nil
+	}
+	return result, err
+}
+
+func (s *subroutine) finalize(ctx context.Context, obj ctrlruntimeclient.Object) (subroutines.Result, error) {
 	idpToDelete := obj.(*pmcorev1alpha1.IdentityProviderConfiguration)
 	log := logger.LoadLoggerFromContext(ctx)
 	realmName := idpToDelete.Name
@@ -154,6 +183,14 @@ func (s *subroutine) Finalizers(_ ctrlruntimeclient.Object) []string {
 func (s *subroutine) GetName() string { return "IdentityProviderConfiguration" }
 
 func (s *subroutine) Process(ctx context.Context, obj ctrlruntimeclient.Object) (subroutines.Result, error) {
+	result, err := s.process(ctx, obj)
+	if res, ok := pendingIfClusterNotReady(ctx, err); ok {
+		return res, nil
+	}
+	return result, err
+}
+
+func (s *subroutine) process(ctx context.Context, obj ctrlruntimeclient.Object) (subroutines.Result, error) {
 	idpConfig := obj.(*pmcorev1alpha1.IdentityProviderConfiguration)
 	log := logger.LoadLoggerFromContext(ctx)
 

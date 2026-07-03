@@ -15,7 +15,7 @@ task generate          # runs manifests then controller-gen object
 task build             # output: bin/manager
 
 # Run tests
-task test              # requires kcp + gomplate (downloaded automatically)
+task test              # requires kcp (downloaded automatically)
 
 # Lint
 task lint

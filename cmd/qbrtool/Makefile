@@ -32,11 +32,11 @@ all: build
 
 ## build: Build the binary
 build:
-	$(GOBUILD) $(LDFLAGS) -o bin/ ./cmd/qbrtool
+	$(GOBUILD) $(LDFLAGS) -o bin/ .
 
 ## build-debug: Build with debug symbols
 build-debug:
-	$(GOBUILD) -o bin/ ./cmd/qbrtool
+	$(GOBUILD) -o bin/ .
 
 ## clean: Clean build artifacts
 clean:

@@ -132,10 +132,6 @@ type PlatformBackupList struct {
 	Items           []PlatformBackup `json:"items"`
 }
 
-func init() {
-	SchemeBuilder.Register(&PlatformBackup{}, &PlatformBackupList{})
-}
-
 func (b *PlatformBackup) GetConditions() []metav1.Condition  { return b.Status.Conditions }
 func (b *PlatformBackup) SetConditions(c []metav1.Condition) { b.Status.Conditions = c }
 func (b *PlatformBackup) GetObservedGeneration() int64       { return b.Status.ObservedGeneration }

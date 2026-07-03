@@ -55,11 +55,11 @@ tasks:
       - task: fmt
       - task: tools:lint
   test:
-    deps: [tools:kcp, tools:gomplate]
+    deps: [tools:kcp]
     cmds:
       - go test ./...
   test-e2e:
-    deps: [tools:kcp, tools:gomplate, tools:envtest]
+    deps: [tools:kcp, tools:envtest]
     cmds:
       - |
         set -ex

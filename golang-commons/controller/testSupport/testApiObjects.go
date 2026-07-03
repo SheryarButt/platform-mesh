@@ -42,6 +42,7 @@ func (t *TestApiObject) DeepCopyObject() runtime.Object {
 	}
 	return nil
 }
+
 func (t *TestApiObject) DeepCopy() *TestApiObject {
 	if t == nil {
 		return nil
@@ -50,10 +51,11 @@ func (t *TestApiObject) DeepCopy() *TestApiObject {
 	t.DeepCopyInto(out)
 	return out
 }
-func (m *TestApiObject) DeepCopyInto(out *TestApiObject) {
-	*out = *m
-	out.TypeMeta = m.TypeMeta
-	m.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
+
+func (t *TestApiObject) DeepCopyInto(out *TestApiObject) {
+	*out = *t
+	out.TypeMeta = t.TypeMeta
+	t.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
 }
 
 type TestNoStatusApiObject struct {
@@ -75,8 +77,8 @@ func (t *TestNoStatusApiObject) DeepCopy() *TestNoStatusApiObject {
 	t.DeepCopyInto(out)
 	return out
 }
-func (m *TestNoStatusApiObject) DeepCopyInto(out *TestNoStatusApiObject) {
-	*out = *m
-	out.TypeMeta = m.TypeMeta
-	m.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
+func (t *TestNoStatusApiObject) DeepCopyInto(out *TestNoStatusApiObject) {
+	*out = *t
+	out.TypeMeta = t.TypeMeta
+	t.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
 }

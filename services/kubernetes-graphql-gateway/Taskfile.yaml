@@ -27,6 +27,7 @@ tasks:
     desc: "Generate all CRD-related files (manifests + deepcopy methods)"
     deps: [tools:apigen]
     cmds:
+      - task: mockery
       - task: tools:generate-crds
         vars:
           PATH: /gateway/...
@@ -117,6 +118,10 @@ tasks:
       - task: lint
       - task: test
 
+  mockery:
+    deps: [tools:mockery]
+    cmds:
+      - "{{.BIN}}/mockery"
   proto:
     desc: "Generate protobuf files"
     cmds:
@@ -133,14 +138,14 @@ tasks:
           kill $PID 2>/dev/null || true
           sleep 2
         fi
-      - go run ./cmd/gateway/gateway.go --enable-playground
+      - go run main.go gateway --enable-playground
 
   listener:
     desc: "Start the listener server (kills existing process on port 8090 if needed)"
     cmds:
-      - go run ./cmd/listener/listener.go
+      - go run main.go listener
 
   listener-kcp:
     desc: "Start the listener server (kills existing process on port 8090 if needed)"
     cmds:
-      - go run ./cmd/listener/listener.go --apiexport-endpoint-slice-name gateway.platform-mesh.io --multicluster-runtime-provider kcp --kubeconfig=.secret/cc-d2-kcp.yaml
+      - go run main.go listener --apiexport-endpoint-slice-name gateway.platform-mesh.io --multicluster-runtime-provider kcp --kubeconfig=.secret/cc-d2-kcp.yaml

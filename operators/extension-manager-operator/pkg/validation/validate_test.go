@@ -19,6 +19,7 @@ package validation
 import (
 	"encoding/json"
 	"log"
+	"slices"
 	"testing"
 
 	"github.com/hashicorp/go-multierror"
@@ -426,26 +427,16 @@ func getJSONSchemaFixture() []byte {
 
 func TestWithSchema(t *testing.T) {
 	cC := NewContentConfiguration()
-	empty := ""
-	err := cC.WithSchema([]byte(empty))
+	err := cC.WithSchema([]byte(""))
 	assert.Error(t, err)
 }
 
 func allErrorsContained(merr multierror.Error, expectedErrors []string) bool {
 	for _, err := range merr.Errors {
-		found := false
-		errStr := ""
-		expectedError := ""
-		for _, expectedError = range expectedErrors {
-			errStr = err.Error()
-			if errStr == expectedError {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !slices.Contains(expectedErrors, err.Error()) {
 			return false
 		}
 	}
+
 	return true
 }

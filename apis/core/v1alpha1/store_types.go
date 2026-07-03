@@ -86,7 +86,3 @@ type StoreList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Store `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&Store{}, &StoreList{})
-}

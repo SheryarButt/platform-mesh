@@ -20,7 +20,6 @@ import (
 	pmuiv1alpha1 "go.platform-mesh.io/apis/ui/v1alpha1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 
 	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
 )
@@ -63,15 +62,4 @@ type MarketplaceEntryList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []MarketplaceEntry `json:"items"`
-}
-
-func init() {
-	SchemeBuilder.Register(func(s *runtime.Scheme) error {
-		s.AddKnownTypes(GroupVersion,
-			&MarketplaceEntry{},
-			&MarketplaceEntryList{},
-		)
-		metav1.AddToGroupVersion(s, GroupVersion)
-		return nil
-	})
 }

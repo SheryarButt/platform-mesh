@@ -153,9 +153,9 @@ var operatorCmd = &cobra.Command{
 
 		fga := openfgav1.NewOpenFGAServiceClient(conn)
 		storeIDGetter := fga2.NewCachingStoreIDGetter(
+			ctx,
 			fga,
 			operatorCfg.FGA.StoreIDCacheTTL,
-			ctx,
 			log,
 		)
 

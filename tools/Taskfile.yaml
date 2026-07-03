@@ -39,11 +39,10 @@ vars:
   ENVTEST_K8S_VERSION: "1.35.0"
   ENVTEST_VERSION: release-0.23
   GOLANGCI_LINT_VERSION: 2.12.2
-  GOMPLATE_VERSION: v4.3.0
   GO_TEST_COVERAGE_VERSION: v2.18.8
   MOCKERY_VERSION: v3.7.0
   OAPI_VERSION: v2.7.1
-  KCP_APIGEN_VERSION: v0.30.1
+  KCP_APIGEN_VERSION: v0.31.1
   # kcp release used by the operators' envtest suites (see component test-e2e).
   KCP_VERSION: 0.31.1
 
@@ -56,10 +55,10 @@ tasks:
   # `task tools` installs everything; `task tools:all` is an explicit alias.
   default:
     desc: Install all shared tools into the root bin.
-    deps: [controller-gen, golangci-lint, mockery, apigen, gomplate, boilerplate]
+    deps: [controller-gen, golangci-lint, mockery, apigen, boilerplate]
   all:
     desc: Install all shared tools into the root bin.
-    deps: [controller-gen, golangci-lint, mockery, apigen, gomplate, boilerplate]
+    deps: [controller-gen, golangci-lint, mockery, apigen, boilerplate]
 
   controller-gen:
     desc: Install controller-gen into the root bin.
@@ -108,15 +107,6 @@ tasks:
       - test -s {{.BIN}}/setup-envtest
     cmds:
       - GOBIN={{.BIN}} GOWORK=off go install sigs.k8s.io/controller-runtime/tools/setup-envtest@{{.ENVTEST_VERSION}}
-  gomplate:
-    internal: true
-    status:
-      - test -s {{.BIN}}/gomplate
-    env:
-      UNCOMPRESSED: "true"
-      UGET_VERSIONED_BINARIES: "false"
-    cmds:
-      - "{{.HACK}}/uget.sh https://github.com/hairyhenderson/gomplate/releases/download/{VERSION}/gomplate_{GOOS}-{GOARCH} gomplate {{.GOMPLATE_VERSION}} 'gomplate_*'"
   go-test-coverage:
     internal: true
     status:
@@ -139,17 +129,25 @@ tasks:
   generate-crds:
     internal: true
     deps: [controller-gen]
+    vars:
+      # CRDs are usually generated based off the global apis module
+      BASEDIR: '{{ .BASEDIR | default (print .TOPLEVEL "/apis") }}'
     cmds:
-      - '{{.BIN}}/controller-gen rbac:roleName=manager-role crd:headerFile={{.HACK}}/boilerplate/boilerplate.yaml.txt paths={{.TOPLEVEL}}/apis{{.PATH}} output:crd:artifacts:config={{.OUTPUT}}'
+      - '{{.BIN}}/controller-gen crd:headerFile={{.HACK}}/boilerplate/boilerplate.yaml.txt paths={{.BASEDIR}}{{.PATH}} output:crd:artifacts:config={{.OUTPUT}}'
 
   generate-rbac:
     internal: true
     deps: [controller-gen]
+    vars:
+      ROLE: '{{ .ROLE | default "manager-role" }}'
     cmds:
-      - '{{.BIN}}/controller-gen rbac:roleName=manager-role,headerFile={{.HACK}}/boilerplate/boilerplate.yaml.txt paths={{.PATHS}} output:rbac:artifacts:config={{.OUTPUT}}'
+      - '{{.BIN}}/controller-gen rbac:roleName={{.ROLE}},headerFile={{.HACK}}/boilerplate/boilerplate.yaml.txt paths={{.PATHS}} output:rbac:artifacts:config={{.OUTPUT}}'
 
   generate-deepcopy:
     internal: true
     deps: [controller-gen]
+    vars:
+      # deepcopy funcs are usually generated based off the global apis module
+      BASEDIR: '{{ .BASEDIR | default (print .TOPLEVEL "/apis") }}'
     cmds:
-      - "{{.BIN}}/controller-gen object:headerFile={{.HACK}}/boilerplate/boilerplate.go.txt paths={{.TOPLEVEL}}/apis{{.PATH}}"
+      - "{{.BIN}}/controller-gen object:headerFile={{.HACK}}/boilerplate/boilerplate.go.txt paths={{.BASEDIR}}{{.PATH}}"

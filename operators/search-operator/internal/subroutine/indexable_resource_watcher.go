@@ -191,7 +191,7 @@ func (s *IndexableResourceWatcherSubroutine) Process(ctx context.Context, instan
 
 	// Contextual Tuples (Permissions field), build parent hierarchy from AccountInfo
 	orgObject := buildFGAObjectName(pmsearchv1alpha1.GroupName, pmsearchv1alpha1.AccountKind, accountInfo.Spec.Organization.OriginClusterId, accountInfo.Spec.Organization.Name, "")
-	accountObject := buildFGAObjectName(pmcorev1alpha1.GroupVersion.Group, pmsearchv1alpha1.AccountKind, accountInfo.Spec.Account.OriginClusterId, accountInfo.Spec.Account.Name, "")
+	accountObject := buildFGAObjectName(pmcorev1alpha1.GroupName, pmsearchv1alpha1.AccountKind, accountInfo.Spec.Account.OriginClusterId, accountInfo.Spec.Account.Name, "")
 	doc.AccountName = accountInfo.Spec.Account.Name
 	doc.AccountID = accountInfo.Spec.Account.OriginClusterId
 

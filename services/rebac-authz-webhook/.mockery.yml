@@ -29,6 +29,9 @@ template-data:
 packages:
   github.com/openfga/api/proto/openfga/v1:
     config:
+      # OpenFGAServiceClient lives in a protobuf-generated *.pb.go file, which
+      # mockery v3 skips by default; opt in so the mock is (re)generated.
+      include-auto-generated: true
       include-interface-regex: OpenFGAServiceClient
   go.platform-mesh.io/rebac-authz-webhook/pkg/clustercache:
     config:

@@ -54,6 +54,10 @@ tasks:
     cmds:
       - go clean -testcache
       - go test ./...
+  test-e2e:
+    desc: No e2e tests for the apis module.
+    cmds:
+      - 'echo "apis: no e2e tests"'
   cover:
     desc: Run tests with coverage
     deps:

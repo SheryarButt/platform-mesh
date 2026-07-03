@@ -68,13 +68,13 @@ tasks:
       - go test -count=1 $(go list ./... | grep -v '/internal/controller$')
   test-e2e:
     desc: Run envtest integration tests (uses the shared kcp from the root bin).
-    deps: [tools:kcp, tools:gomplate]
+    deps: [tools:kcp]
     env:
       TEST_KCP_ASSETS: '{{.BIN}}'
     cmds:
       - go test -count=1 ./internal/controller/... {{.ADDITIONAL_COMMAND_ARGS}}
   cover:
-    deps: [tools:kcp, tools:gomplate]
+    deps: [tools:kcp]
     env:
       TEST_KCP_ASSETS: '{{.BIN}}'
     cmds:

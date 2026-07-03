@@ -69,7 +69,7 @@ var serverCmd = &cobra.Command{
 
 		mgr := setupManager(ctx, log)
 		router := setupRouter(ctx, mgr, setupFGAClient())
-		start(serviceCfg, router, ctx, log, defaultCfg.IsLocal)
+		start(ctx, serviceCfg, router, log, defaultCfg.IsLocal)
 	},
 }
 
@@ -192,7 +192,7 @@ func setupManager(ctx context.Context, log *logger.Logger) mcmanager.Manager {
 	return mgr
 }
 
-func start(serviceCfg *config.ServiceConfig, router *chi.Mux, ctx context.Context, log *logger.Logger, isLocal bool) {
+func start(ctx context.Context, serviceCfg *config.ServiceConfig, router *chi.Mux, log *logger.Logger, isLocal bool) {
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", serviceCfg.Port),
 		Handler:      router,

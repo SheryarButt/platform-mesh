@@ -376,7 +376,7 @@ func TestRunWatch_ContextCancellation_StopsRetryLoop(t *testing.T) {
 	case _, ok := <-resultChannel:
 		if ok {
 			// Drain remaining
-			for range resultChannel {
+			for range resultChannel { //nolint:revive // will be potentially fixed by https://github.com/mgechev/revive/pull/1710
 			}
 		}
 	}

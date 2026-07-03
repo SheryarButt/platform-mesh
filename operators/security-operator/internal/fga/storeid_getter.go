@@ -41,7 +41,7 @@ type CachingStoreIDGetter struct {
 	logger *logger.Logger
 }
 
-func NewCachingStoreIDGetter(fga openfgav1.OpenFGAServiceClient, ttl time.Duration, loadCtx context.Context, log *logger.Logger) *CachingStoreIDGetter {
+func NewCachingStoreIDGetter(loadCtx context.Context, fga openfgav1.OpenFGAServiceClient, ttl time.Duration, log *logger.Logger) *CachingStoreIDGetter {
 	loader := &storeIDLoader{fga: fga, loadCtx: loadCtx}
 
 	cache := ttlcache.New(

@@ -88,7 +88,10 @@ tasks:
   boilerplate:
     desc: Verifies the boilerplate comment in each source file.
     cmds:
-      - ./hack/verify_boilerplate.py --boilerplate-dir hack/boilerplate/
+      - |
+        # --skip args from hack/boilerplate/skip.txt, ignoring blank lines and '#' comment lines.
+        skip_args=$(grep -vE '^[[:space:]]*(#|$)' hack/boilerplate/skip.txt | sed 's/^/--skip /' | tr '\n' ' ')
+        ./hack/verify_boilerplate.py --boilerplate-dir hack/boilerplate/ $skip_args
   test:
     desc: Run unit tests for every component.
     cmds:
@@ -174,7 +177,10 @@ tasks:
           echo "unknown component '$comp' (not under ./, ./operators/ or ./services/)" >&2
           exit 1
         fi
-        root=$PWD && cd "$dir" && "$root/hack/verify_boilerplate.py" --boilerplate-dir "$root/hack/boilerplate/"
+        root=$PWD
+        # --skip args from hack/boilerplate/skip.txt, ignoring blank lines and '#' comment lines.
+        skip_args=$(grep -vE '^[[:space:]]*(#|$)' "$root/hack/boilerplate/skip.txt" | sed 's/^/--skip /' | tr '\n' ' ')
+        cd "$dir" && "$root/hack/verify_boilerplate.py" --boilerplate-dir "$root/hack/boilerplate/" $skip_args
   "verify-*":
     desc: "Run all checks for one component (e.g. task verify-account-operator)."
     cmds:

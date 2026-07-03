@@ -99,7 +99,3 @@ type IdentityProviderConfigurationList struct {
 }
 
 var _ conditions.ConditionAccessor = &IdentityProviderConfiguration{}
-
-func init() {
-	SchemeBuilder.Register(&IdentityProviderConfiguration{}, &IdentityProviderConfigurationList{})
-}

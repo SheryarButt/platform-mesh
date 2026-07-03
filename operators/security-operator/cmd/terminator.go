@@ -97,9 +97,9 @@ var terminatorCmd = &cobra.Command{
 		defer func() { _ = conn.Close() }()
 		fgaClient := openfgav1.NewOpenFGAServiceClient(conn)
 		storeIDGetter := fga.NewCachingStoreIDGetter(
+			cmd.Context(),
 			fgaClient,
 			terminatorCfg.FGA.StoreIDCacheTTL,
-			cmd.Context(),
 			log,
 		)
 		kcpClientGetter := iclient.NewConfigSchemeKCPClientGetter(mgr.GetLocalManager().GetConfig(), mgr.GetLocalManager().GetScheme())

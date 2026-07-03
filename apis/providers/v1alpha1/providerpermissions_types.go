@@ -24,17 +24,23 @@ import (
 
 // ProviderPermissionsSpec defines the desired state of ProviderPermissions.
 type ProviderPermissionsSpec struct {
-	// APIExportRef references the APIExport this configuration applies to
-	APIExportRef APIExportReference `json:"apiExportRef"`
+	// APIExport references the APIExport this configuration applies to
+	APIExport APIExport `json:"apiExport"`
 
 	// Roles defines custom roles grouped by resource type
 	// +optional
 	Roles []ResourceRoles `json:"roles,omitempty"`
 
 	// Permissions defines per-resource permission configuration
-	// Key format: {resource}.{group} (e.g., "httpbin.orchestrate.platform-mesh.io")
+	// Key format: {group}.{resource} (e.g., "orchestrate.platform-mesh.io.httpbin")
 	// +optional
 	Permissions map[string]ResourcePermissions `json:"permissions,omitempty"`
+}
+
+// APIExport contains a reference to an APIExport.
+type APIExport struct {
+	// Ref identifies the APIExport
+	Ref APIExportReference `json:"ref"`
 }
 
 // APIExportReference identifies an APIExport resource.
@@ -45,8 +51,8 @@ type APIExportReference struct {
 
 // ResourceRoles defines roles for a specific resource type.
 type ResourceRoles struct {
-	// GroupResource identifies the resource type in format "{resource}.{group}"
-	// (e.g., "httpbin.orchestrate.platform-mesh.io")
+	// GroupResource identifies the resource type in format "{group}.{resource}"
+	// (e.g., "orchestrate.platform-mesh.io.httpbin")
 	GroupResource string `json:"groupResource"`
 
 	// Roles defines the roles for this resource type

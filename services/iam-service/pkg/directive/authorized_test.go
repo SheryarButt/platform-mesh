@@ -98,12 +98,8 @@ func setupTestContext() (context.Context, *logger.Logger) {
 }
 
 func setupFakeClient(t *testing.T, objects ...ctrlruntimeclient.Object) ctrlruntimeclient.Client {
-	rm := meta.NewDefaultRESTMapper([]schema.GroupVersion{pmcorev1alpha1.GroupVersion})
-	rm.Add(schema.GroupVersionKind{
-		Group:   pmcorev1alpha1.GroupVersion.Group,
-		Version: pmcorev1alpha1.GroupVersion.Version,
-		Kind:    "AccountInfo",
-	}, meta.RESTScopeNamespace)
+	rm := meta.NewDefaultRESTMapper([]schema.GroupVersion{pmcorev1alpha1.SchemeGroupVersion})
+	rm.Add(pmcorev1alpha1.SchemeGroupVersion.WithKind("AccountInfo"), meta.RESTScopeNamespace)
 
 	scheme := runtime.NewScheme()
 	require.NoError(t, pmcorev1alpha1.AddToScheme(scheme))
@@ -826,12 +822,8 @@ func TestTestIfResourceExists(t *testing.T) {
 				// Setup with cluster-scoped REST mapping
 				ai := createTestAccountInfo()
 
-				rm := meta.NewDefaultRESTMapper([]schema.GroupVersion{pmcorev1alpha1.GroupVersion})
-				rm.Add(schema.GroupVersionKind{
-					Group:   pmcorev1alpha1.GroupVersion.Group,
-					Version: pmcorev1alpha1.GroupVersion.Version,
-					Kind:    "AccountInfo",
-				}, meta.RESTScopeRoot) // Cluster-scoped
+				rm := meta.NewDefaultRESTMapper([]schema.GroupVersion{pmcorev1alpha1.SchemeGroupVersion})
+				rm.Add(pmcorev1alpha1.SchemeGroupVersion.WithKind("AccountInfo"), meta.RESTScopeRoot) // Cluster-scoped
 
 				scheme := runtime.NewScheme()
 				require.NoError(t, pmcorev1alpha1.AddToScheme(scheme))
@@ -843,7 +835,7 @@ func TestTestIfResourceExists(t *testing.T) {
 					Build()
 			},
 			resourceCtx: &graph.ResourceContext{
-				Group: "core.platform-mesh.io",
+				Group: pmcorev1alpha1.GroupName,
 				Kind:  "AccountInfo",
 				Resource: &graph.Resource{
 					Name:      "account",
@@ -858,7 +850,7 @@ func TestTestIfResourceExists(t *testing.T) {
 				return setupFakeClient(t) // Empty client
 			},
 			resourceCtx: &graph.ResourceContext{
-				Group: "core.platform-mesh.io",
+				Group: pmcorev1alpha1.GroupName,
 				Kind:  "AccountInfo",
 				Resource: &graph.Resource{
 					Name:      "nonexistent-account",
@@ -871,12 +863,8 @@ func TestTestIfResourceExists(t *testing.T) {
 			name: "resource not found - cluster scoped",
 			setupClient: func(t *testing.T) ctrlruntimeclient.Client {
 				// Setup with cluster-scoped REST mapping but no objects
-				rm := meta.NewDefaultRESTMapper([]schema.GroupVersion{pmcorev1alpha1.GroupVersion})
-				rm.Add(schema.GroupVersionKind{
-					Group:   pmcorev1alpha1.GroupVersion.Group,
-					Version: pmcorev1alpha1.GroupVersion.Version,
-					Kind:    "AccountInfo",
-				}, meta.RESTScopeRoot)
+				rm := meta.NewDefaultRESTMapper([]schema.GroupVersion{pmcorev1alpha1.SchemeGroupVersion})
+				rm.Add(pmcorev1alpha1.SchemeGroupVersion.WithKind("AccountInfo"), meta.RESTScopeRoot) // Cluster-scoped
 
 				scheme := runtime.NewScheme()
 				require.NoError(t, pmcorev1alpha1.AddToScheme(scheme))
@@ -887,7 +875,7 @@ func TestTestIfResourceExists(t *testing.T) {
 					Build() // No objects
 			},
 			resourceCtx: &graph.ResourceContext{
-				Group: "core.platform-mesh.io",
+				Group: pmcorev1alpha1.GroupName,
 				Kind:  "AccountInfo",
 				Resource: &graph.Resource{
 					Name:      "nonexistent-account",

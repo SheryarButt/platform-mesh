@@ -42,7 +42,7 @@ func NewBearerHandler(baseRT, unauthorizedRT http.RoundTripper) *BearerHandler {
 }
 
 // RoundTrip implements union.Handler.
-func (h *BearerHandler) RoundTrip(req *http.Request) (*http.Response, error, bool) {
+func (h *BearerHandler) RoundTrip(req *http.Request) (*http.Response, bool, error) {
 	ctx := req.Context()
 	logger := log.FromContext(ctx)
 
@@ -50,7 +50,7 @@ func (h *BearerHandler) RoundTrip(req *http.Request) (*http.Response, error, boo
 	if !ok || token == "" {
 		logger.V(4).WithValues("path", req.URL.Path).Error(nil, "No token found for resource request, denying")
 		resp, err := h.unauthorizedRT.RoundTrip(req)
-		return resp, err, true
+		return resp, true, err
 	}
 
 	req = utilnet.CloneRequest(req)
@@ -58,5 +58,5 @@ func (h *BearerHandler) RoundTrip(req *http.Request) (*http.Response, error, boo
 
 	logger.V(4).WithValues("path", req.URL.Path).Info("Using bearer token authentication")
 	resp, err := h.baseRT.RoundTrip(req)
-	return resp, err, true
+	return resp, true, err
 }

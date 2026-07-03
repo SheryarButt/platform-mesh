@@ -41,7 +41,7 @@ func TestCachingStoreIDGetter_Get(t *testing.T) {
 		}, nil).Once()
 
 		log := testlogger.New()
-		getter := NewCachingStoreIDGetter(client, 5*time.Minute, context.Background(), log.Logger)
+		getter := NewCachingStoreIDGetter(context.Background(), client, 5*time.Minute, log.Logger)
 
 		id, err := getter.Get(context.Background(), "foo")
 		require.NoError(t, err)
@@ -58,7 +58,7 @@ func TestCachingStoreIDGetter_Get(t *testing.T) {
 
 		loadCtx := context.Background()
 		log := testlogger.New()
-		getter := NewCachingStoreIDGetter(client, 5*time.Minute, loadCtx, log.Logger)
+		getter := NewCachingStoreIDGetter(loadCtx, client, 5*time.Minute, log.Logger)
 
 		id1, err := getter.Get(context.Background(), "foo")
 		require.NoError(t, err)
@@ -81,7 +81,7 @@ func TestCachingStoreIDGetter_Get(t *testing.T) {
 
 		loadCtx := context.Background()
 		log := testlogger.New()
-		getter := NewCachingStoreIDGetter(client, 5*time.Minute, loadCtx, log.Logger)
+		getter := NewCachingStoreIDGetter(loadCtx, client, 5*time.Minute, log.Logger)
 
 		id, err := getter.Get(context.Background(), "missing-store")
 		assert.Error(t, err)
@@ -95,7 +95,7 @@ func TestCachingStoreIDGetter_Get(t *testing.T) {
 
 		loadCtx := context.Background()
 		log := testlogger.New()
-		getter := NewCachingStoreIDGetter(client, 5*time.Minute, loadCtx, log.Logger)
+		getter := NewCachingStoreIDGetter(loadCtx, client, 5*time.Minute, log.Logger)
 
 		id, err := getter.Get(context.Background(), "foo")
 		assert.Error(t, err)

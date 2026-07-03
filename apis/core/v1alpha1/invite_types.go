@@ -75,7 +75,3 @@ type InviteList struct {
 }
 
 var _ conditions.ConditionAccessor = &Invite{}
-
-func init() {
-	SchemeBuilder.Register(&Invite{}, &InviteList{})
-}

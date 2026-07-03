@@ -203,12 +203,12 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.Webhooks.CertDir, "webhooks-cert-dir", c.Webhooks.CertDir, "Set webhook certificate directory")
 }
 
-func (config Config) InitializerName() string {
-	return config.WorkspacePath + ":" + config.WorkspaceTypeName
+func (c Config) InitializerName() string {
+	return c.WorkspacePath + ":" + c.WorkspaceTypeName
 }
 
-func (config Config) TerminatorName() string {
-	return config.WorkspacePath + ":" + config.WorkspaceTypeName
+func (c Config) TerminatorName() string {
+	return c.WorkspacePath + ":" + c.WorkspaceTypeName
 }
 
 // MultiProviderName returns a cluster name with provider prefix and separator for multi provider.

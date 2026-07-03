@@ -1,0 +1,123 @@
+# Copyright The Platform Mesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+version: '3'
+
+includes:
+  # Shared go-installable tooling (controller-gen, golangci-lint, mockery,
+  # apigen), installed once into the root bin/ and reused by every component.
+  tools:
+    taskfile: ../../tools/Taskfile.yaml
+    dir: .
+
+tasks:
+  ## Development
+  manifests:
+    desc: Generate CRD manifests
+    cmds:
+      - task: tools:generate-crds
+        vars: { PATH: /broker/..., OUTPUT: config/broker/crd }
+      - task: tools:generate-crds
+        vars: { PATH: /operatorbroker/..., OUTPUT: config/operator/crd }
+      - task: tools:generate-crds
+        vars: { BASEDIR: './api', PATH: /generic/..., OUTPUT: config/generic/crd }
+      - task: tools:generate-crds
+        vars: { BASEDIR: './api', PATH: /example/..., OUTPUT: config/example/crd }
+
+      - task: tools:generate-rbac
+        vars: { PATHS: '{{.TOPLEVEL}}/apis/broker/...', OUTPUT: config/broker/rbac, ROLE: resource-broker }
+      - task: tools:generate-rbac
+        vars: { PATHS: '{{.TOPLEVEL}}/apis/operatorbroker/...', OUTPUT: config/operator/rbac, ROLE: resource-broker-operator }
+      - task: tools:generate-rbac
+        vars: { PATHS: ./api/generic/..., OUTPUT: config/generic/rbac, ROLE: resource-broker }
+      - task: tools:generate-rbac
+        vars: { PATHS: ./api/example/..., OUTPUT: config/example/rbac, ROLE: resource-broker-example }
+
+  generate:
+    desc: Generate code (deepcopy, manifests)
+    cmds:
+      - task: manifests
+      - task: tools:generate-deepcopy
+        vars: { BASEDIR: './api', PATH: /generic/... }
+      - task: tools:generate-deepcopy
+        vars: { BASEDIR: './api', PATH: /example/... }
+
+  build:
+    desc: Build the module
+    cmds:
+      - go build ./...
+
+  docker-build:
+    desc: Build the Docker image
+    cmds:
+      - echo "TBD"
+
+  ## Testing
+  fmt:
+    desc: Run go fmt
+    cmds:
+      - go fmt ./...
+
+  lint:
+    desc: Run linter
+    cmds:
+      - task: fmt
+      - task: tools:lint
+
+  test:
+    cmds:
+      - go test ./pkg/...
+  test-e2e:
+    deps: [tools:envtest]
+    cmds:
+      - |
+        set -ex
+        export KUBEBUILDER_ASSETS=$({{.BIN}}/setup-envtest use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.BIN}} -p path)
+        go test -tags integration ./test/e2e/... {{.ADDITIONAL_COMMAND_ARGS}}
+  cover:
+    cmds:
+      - task: test
+        vars:
+          ADDITIONAL_COMMAND_ARGS: -v -coverprofile=./cover.out -covermode=atomic -coverpkg=./...
+  cover-e2e:
+    cmds:
+      - task: test-e2e
+        vars:
+          ADDITIONAL_COMMAND_ARGS: -v -coverprofile=./cover.out -covermode=atomic -coverpkg=./...
+
+  ## Docker
+  docker:kind:
+    desc: "Build container image and load it into Kind cluster, then restart deployments"
+    vars:
+      CONTAINER_RUNTIME: '{{.CONTAINER_RUNTIME | default "docker"}}'
+      KIND_CLUSTER: '{{.KIND_CLUSTER | default "platform-mesh"}}'
+      DEPLOYMENT_NAMESPACE: '{{.DEPLOYMENT_NAMESPACE | default "platform-mesh-system"}}'
+      IMAGE_TAG:
+        sh: kubectl get deployment resource-broker -n {{.DEPLOYMENT_NAMESPACE}} -o jsonpath='{.spec.template.spec.containers[0].image}' | cut -d':' -f2
+      IMAGE_NAME: ghcr.io/platform-mesh/resource-broker:{{.IMAGE_TAG}}
+    cmds:
+      - echo "Building image with tag {{.IMAGE_TAG}} using {{.CONTAINER_RUNTIME}}"
+      - "{{.CONTAINER_RUNTIME}} build -t {{.IMAGE_NAME}} ."
+      - |
+        if [ "{{.CONTAINER_RUNTIME}}" = "podman" ]; then
+          {{.CONTAINER_RUNTIME}} save {{.IMAGE_NAME}} -o /tmp/kind-image.tar
+          kind load image-archive /tmp/kind-image.tar --name {{.KIND_CLUSTER}}
+          rm -f /tmp/kind-image.tar
+        else
+          kind load docker-image {{.IMAGE_NAME}} --name {{.KIND_CLUSTER}}
+        fi
+      - |
+        echo "Restarting all resource-broker deployments..."
+        kubectl get deployments -n {{.DEPLOYMENT_NAMESPACE}} -o name | grep resource-broker | xargs -I {} kubectl rollout restart {} -n {{.DEPLOYMENT_NAMESPACE}}
+      - echo "Image loaded and deployments restarted"

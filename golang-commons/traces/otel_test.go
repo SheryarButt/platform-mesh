@@ -134,8 +134,6 @@ func TestInitProvider_HappyPath(t *testing.T) {
 
 func TestInitProvider_GRPCClientError(t *testing.T) {
 	cfg := Config{
-		ServiceName:       "fail-service",
-		ServiceVersion:    "1.0.0",
 		CollectorEndpoint: "invalid:endpoint",
 	}
 

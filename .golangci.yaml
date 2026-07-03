@@ -26,6 +26,8 @@ run:
 linters:
   default: none
   enable:
+    - asciicheck
+    - bidichk
     - copyloopvar
     - dupword
     - durationcheck
@@ -39,6 +41,7 @@ linters:
     - nakedret
     - nilerr
     - nolintlint
+    - nosprintfhostport
     - prealloc
     - predeclared
     - revive
@@ -46,6 +49,7 @@ linters:
     - unconvert
     - unused
     - usestdlibvars
+    - wastedassign
     - whitespace
   settings:
     importas:
@@ -70,6 +74,7 @@ linters:
           alias: ctrlruntimeclient
       no-unaliased: true
     revive:
+      enable-default-rules: true
       rules:
         - name: var-naming
           disabled: true
@@ -79,6 +84,15 @@ linters:
           disabled: true
         - name: blank-imports
           disabled: true
+        - name: unused-parameter
+          disabled: true
+        - name: unexported-return
+          disabled: true
+    govet:
+      enable:
+        - nilness # find tautologies / impossible conditions
+        - sortslice # check the argument type of sort.Slice
+        - unusedwrite # checks for unused writes
     paths:
       - third_party$
       - builtin$

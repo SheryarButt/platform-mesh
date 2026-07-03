@@ -72,7 +72,3 @@ type APIExportPolicyList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []APIExportPolicy `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&APIExportPolicy{}, &APIExportPolicyList{})
-}

@@ -95,4 +95,4 @@ tasks:
       - kubectl delete -f config/crd/bases
   run:
     cmds:
-      - go run ./cmd/main.go operator
+      - go run ./main.go operator

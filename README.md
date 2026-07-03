@@ -4,6 +4,7 @@
 # Platform Mesh
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/platform-mesh/platform-mesh/badge)](https://scorecard.dev/viewer/?uri=github.com/platform-mesh/platform-mesh)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12932/badge)](https://www.bestpractices.dev/projects/12932)
 [![REUSE status](https://api.reuse.software/badge/github.com/platform-mesh/platform-mesh)](https://api.reuse.software/info/github.com/platform-mesh/platform-mesh)
 
 ## Description

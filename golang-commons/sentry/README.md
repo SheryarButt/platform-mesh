@@ -28,7 +28,6 @@ are then displayed inside Sentry's error details.
 
 ```go
 sentry.CaptureError(err, tags, extras)
-
 ```
 
 `Tags` and `Extras` are helper data types defined in the Sentry package. Both have an `Add` method that can be used to easily
@@ -54,7 +53,7 @@ err := errors.New("test error")
 sentryError := SentryError(err)
 
 if IsSentryError(err) {
-	// send it to Sentry
+    // send it to Sentry
 }
 ```
 
@@ -72,7 +71,7 @@ newErr := fmt.Errorf("added a new error: %w", sentryError)
 
 sentryErr, ok := AsSentryError(newErr)
 if ok {
-	// sentryErr is loaded from the stack of all errors in the chain
+    // sentryErr is loaded from the stack of all errors in the chain
 }
 ```
 
@@ -115,12 +114,14 @@ functions that are likely to panic (and then recover without crashing). However,
 it prevents not from crashing, it just logs the panic before crashing.
 
 Please note that the `Recover` function has to be called with the `defer` keyword like so:
+
 ```go
 package main
+
 import (
-	"context"
-	"os/signal"
-	"syscall"
+    "context"
+    "os/signal"
+    "syscall"
 
     "go.platform-mesh.io/golang-commons/sentry"
     "go.platform-mesh.io/golang-commons/logger"
@@ -146,9 +147,9 @@ defer `Recover` function call for *every* Go routine. The same holds true for us
 own recover handling. To circumvent this there is a HTTP middleware `Recoverer()` in this `Sentry` package.
 
 ```go
-	router := chi.NewRouter()
-	router.Use(logger.StoreLoggerMiddleware(log))
-	router.Use(sentry.Recoverer)
+router := chi.NewRouter()
+router.Use(logger.StoreLoggerMiddleware(log))
+router.Use(sentry.Recoverer)
 ```
 
 For operators, a good place to use the `Recover()` would be the reconciler function. In this case, if there is any panic in the reconile process it
@@ -157,6 +158,6 @@ it is logged and the application can recover form it and does not crash.
 There is an additional function that can be used as a GraphQL middleware to catch panics and handle them. In your service use it like this:
 
 ```go
-    gqHandler := handler.NewDefaultServer(graphql.NewExecutableSchema(gql))
-    gqHandler.SetRecoverFunc(sentry.GraphQLRecover(log))
+gqHandler := handler.NewDefaultServer(graphql.NewExecutableSchema(gql))
+gqHandler.SetRecoverFunc(sentry.GraphQLRecover(log))
 ```

@@ -25,7 +25,7 @@ Providers:
 ## Commands
 - `task fmt` — format Go code.
 - `task lint` — run formatting plus golangci-lint. For fixing lint issues use `golangci-lint run --fix`
-- `task test` — run the standard local test path with required tooling (kcp + gomplate).
+- `task test` — run the standard local test path with required tooling (kcp).
 - `task cover` — envtest with coverage; thresholds in `.testcoverage.yml`
 - `task manifests` — regenerate CRDs.
 - `task generate` — regenerate deepcopy code and API resource output after API changes

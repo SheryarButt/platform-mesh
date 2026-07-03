@@ -231,10 +231,6 @@ type KCPMigrationList struct {
 	Items           []KCPMigration `json:"items"`
 }
 
-func init() {
-	SchemeBuilder.Register(&KCPMigration{}, &KCPMigrationList{})
-}
-
 // RuntimeObject interface implementation for golang-commons lifecycle framework
 
 func (m *KCPMigration) GetObservedGeneration() int64 {

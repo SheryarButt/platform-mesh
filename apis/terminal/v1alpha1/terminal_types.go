@@ -105,10 +105,6 @@ type TerminalList struct {
 	Items           []Terminal `json:"items"`
 }
 
-func init() {
-	SchemeBuilder.Register(&Terminal{}, &TerminalList{})
-}
-
 // GetObservedGeneration returns the observed generation
 func (t *Terminal) GetObservedGeneration() int64 { return t.Status.ObservedGeneration }
 

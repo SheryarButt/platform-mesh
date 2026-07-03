@@ -23,7 +23,7 @@ import (
 
 // Handler processes HTTP requests and indicates whether it handled the request.
 type Handler interface {
-	RoundTrip(req *http.Request) (resp *http.Response, err error, handled bool)
+	RoundTrip(req *http.Request) (resp *http.Response, handled bool, err error)
 }
 
 type roundTripperUnion struct {
@@ -32,7 +32,7 @@ type roundTripperUnion struct {
 
 func (u *roundTripperUnion) RoundTrip(req *http.Request) (*http.Response, error) {
 	for _, h := range u.handlers {
-		resp, err, handled := h.RoundTrip(req)
+		resp, handled, err := h.RoundTrip(req)
 		if handled {
 			return resp, err
 		}
@@ -56,6 +56,6 @@ type singleHandler struct {
 }
 
 func (s *singleHandler) RoundTrip(req *http.Request) (*http.Response, error) {
-	resp, err, _ := s.h.RoundTrip(req)
+	resp, _, err := s.h.RoundTrip(req)
 	return resp, err
 }

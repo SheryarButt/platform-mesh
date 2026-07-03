@@ -30,6 +30,7 @@ func GetSpiffeUrlValue(header http.Header) *string {
 	if len(uriVal) > 0 {
 		return &uriVal
 	}
+
 	return nil
 }
 
@@ -37,7 +38,7 @@ func GetURIValue(headerVal string) string {
 	match := spiffeUriReg.FindSubmatch([]byte(headerVal))
 	if len(match) == 2 {
 		return string(match[1])
-	} else {
-		return ""
 	}
+
+	return ""
 }

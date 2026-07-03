@@ -57,7 +57,7 @@ Both controllers delegate `Reconcile` to `lifecycle.Lifecycle.Reconcile` from `g
 - `task fmt` — format Go code.
 - `task lint` — run formatting plus golangci-lint.
 - `task envtest` — run Go tests without bootstrapping extra tools.
-- `task test` — run the standard local test path with required tooling (kcp + gomplate).
+- `task test` — run the standard local test path with required tooling (kcp).
 - `task cover` — envtest with coverage; thresholds in `.testcoverage.yml` (80% total, 70% controllers package, 60% per controller file).
 - `go test ./pkg/subroutines/<pkg>/ -run TestName -v` — single-test fallback for targeted verification.
 - `task manifests` — regenerate CRDs.

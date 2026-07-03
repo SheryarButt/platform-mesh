@@ -115,10 +115,9 @@ func TestAddAndGetAuthHeaderToContext(t *testing.T) {
 			if test.expectError {
 				assert.Error(t, err)
 				return
-			} else {
-				assert.NoError(t, err)
 			}
 
+			assert.NoError(t, err)
 			assert.Equal(t, test.authHeader, val)
 		})
 	}

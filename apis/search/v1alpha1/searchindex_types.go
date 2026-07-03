@@ -116,7 +116,3 @@ type SearchIndexList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []SearchIndex `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&SearchIndex{}, &SearchIndexList{})
-}

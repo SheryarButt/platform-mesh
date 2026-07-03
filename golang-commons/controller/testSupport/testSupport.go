@@ -187,7 +187,7 @@ func (f FailureScenarioSubroutine) Finalizers(instance runtimeobject.RuntimeObje
 	return []string{FailureScenarioSubroutineFinalizer}
 }
 
-func (c FailureScenarioSubroutine) GetName() string {
+func (f FailureScenarioSubroutine) GetName() string {
 	return "FailureScenarioSubroutine"
 }
 
@@ -223,21 +223,21 @@ type ContextValueSubroutine struct {
 
 const ContextValueKey = keys.ContextKey("ContextValueKey")
 
-func (f ContextValueSubroutine) Process(ctx context.Context, r runtimeobject.RuntimeObject) (controllerruntime.Result, errors.OperatorError) {
+func (ContextValueSubroutine) Process(ctx context.Context, r runtimeobject.RuntimeObject) (controllerruntime.Result, errors.OperatorError) {
 	if instance, ok := r.(*TestApiObject); ok {
 		instance.Status.Some = ctx.Value(ContextValueKey).(string)
 	}
 	return controllerruntime.Result{}, nil
 }
 
-func (f ContextValueSubroutine) Finalize(_ context.Context, _ runtimeobject.RuntimeObject) (controllerruntime.Result, errors.OperatorError) {
+func (ContextValueSubroutine) Finalize(_ context.Context, _ runtimeobject.RuntimeObject) (controllerruntime.Result, errors.OperatorError) {
 	return controllerruntime.Result{}, nil
 }
 
-func (f ContextValueSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string {
+func (ContextValueSubroutine) Finalizers(instance runtimeobject.RuntimeObject) []string {
 	return []string{}
 }
 
-func (c ContextValueSubroutine) GetName() string {
+func (ContextValueSubroutine) GetName() string {
 	return "ContextValueSubroutine"
 }

@@ -77,7 +77,3 @@ type AuthorizationModelList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []AuthorizationModel `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&AuthorizationModel{}, &AuthorizationModelList{})
-}

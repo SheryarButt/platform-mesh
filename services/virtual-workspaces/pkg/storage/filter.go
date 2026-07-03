@@ -221,7 +221,7 @@ func Marketplace(provider *apiexport.Provider, cfg config.ServiceConfig) forward
 			}
 
 			var results unstructured.UnstructuredList
-			results.SetGroupVersionKind(pmmarketplacev1alpha1.GroupVersion.WithKind("MarketplaceEntryList"))
+			results.SetGroupVersionKind(pmmarketplacev1alpha1.SchemeGroupVersion.WithKind("MarketplaceEntryList"))
 
 			// For each provider, find matching APIExports across all shards
 			for _, provider := range providerList.Items {
@@ -268,7 +268,7 @@ func Marketplace(provider *apiexport.Provider, cfg config.ServiceConfig) forward
 					}
 
 					us := unstructured.Unstructured{Object: unstructuredEntry}
-					us.SetGroupVersionKind(pmmarketplacev1alpha1.GroupVersion.WithKind("MarketplaceEntry"))
+					us.SetGroupVersionKind(pmmarketplacev1alpha1.SchemeGroupVersion.WithKind("MarketplaceEntry"))
 					results.Items = append(results.Items, us)
 				}
 			}
