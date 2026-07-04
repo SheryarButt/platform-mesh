@@ -46,6 +46,7 @@ import (
 	keycloakmw "go.platform-mesh.io/iam-service/pkg/middleware/keycloak"
 	"go.platform-mesh.io/iam-service/pkg/resolver"
 	"go.platform-mesh.io/iam-service/pkg/resolver/pm"
+	"go.platform-mesh.io/iam-service/pkg/roles"
 	iamRouter "go.platform-mesh.io/iam-service/pkg/router"
 	"go.platform-mesh.io/iam-service/pkg/workspace"
 
@@ -56,6 +57,7 @@ import (
 
 	"github.com/kcp-dev/multicluster-provider/apiexport"
 	pathaware "github.com/kcp-dev/multicluster-provider/path-aware"
+	"github.com/kcp-dev/multicluster-provider/pkg/provider"
 	kcpclientset "github.com/kcp-dev/sdk/client/clientset/versioned/cluster"
 )
 
@@ -107,15 +109,30 @@ func setupRouter(ctx context.Context, mgr mcmanager.Manager, fgaClient openfgav1
 		Authorized: ad.Authorized,
 	}
 
+	// Setup role retriever based on feature flag
+	var rolesRetriever roles.RolesRetriever
+	if serviceCfg.Roles.UseProviderPermissionsRetriever {
+		log.Info().Msg("Using ProviderPermissions-based role retriever")
+		provider := setupProvider(ctx, log, "providers.platform-mesh.io")
+		ppCache := roles.NewProviderPermissionsCache(log)
+		if err := ppCache.SetupWithProvider(provider); err != nil {
+			log.Fatal().Err(err).Msg("Failed to setup provider permissions cache")
+		}
+		rolesRetriever = roles.NewProviderPermissionsRetriever(ppCache)
+	} else {
+		log.Info().Str("path", serviceCfg.Roles.FilePath).Msg("Using file-based role retriever")
+		rolesRetriever, err = roles.NewFileBasedRolesRetriever(serviceCfg.Roles.FilePath)
+		if err != nil {
+			log.Fatal().Err(err).Str("path", serviceCfg.Roles.FilePath).Msg("Failed to create file-based roles retriever")
+		}
+	}
+
 	// create Resolver Service
 	idmClient, err := keycloak.New(ctx, serviceCfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create keycloak client")
 	}
-	svc, err := pm.NewResolverService(fgaClient, idmClient, serviceCfg, mgr)
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to create resolver service")
-	}
+	svc := pm.NewResolverService(fgaClient, idmClient, serviceCfg, mgr, rolesRetriever)
 	res := resolver.New(svc, log.ComponentLogger("resolver"))
 	router := iamRouter.CreateRouter(defaultCfg, serviceCfg, res, log, mws, dr)
 	return router
@@ -143,6 +160,26 @@ func setupFGAClient() openfgav1.OpenFGAServiceClient {
 
 	fgaClient := openfgav1.NewOpenFGAServiceClient(fgaConn)
 	return fgaClient
+}
+
+func setupProvider(ctx context.Context, log *logger.Logger, apiExportName string) *provider.Provider {
+	restCfg := ctrl.GetConfigOrDie()
+	restCfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
+		return otelhttp.NewTransport(rt)
+	})
+
+	provider, err := pathaware.New(restCfg, apiExportName, apiexport.Options{Scheme: scheme})
+	if err != nil {
+		log.Fatal().Err(err).Str("apiExport", apiExportName).Msg("unable to construct APIExport provider")
+	}
+
+	go func() {
+		if err := provider.Start(ctx, nil); err != nil {
+			log.Fatal().Err(err).Str("apiExport", apiExportName).Msg("problem running provider")
+		}
+	}()
+
+	return provider.Provider.Provider
 }
 
 func setupManager(ctx context.Context, log *logger.Logger) mcmanager.Manager {

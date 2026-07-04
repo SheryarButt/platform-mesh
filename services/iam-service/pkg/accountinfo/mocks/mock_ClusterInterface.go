@@ -27,8 +27,9 @@ import (
 	"github.com/kcp-dev/sdk/client/clientset/versioned/cluster/typed/apis/v1alpha2"
 	v1alpha10 "github.com/kcp-dev/sdk/client/clientset/versioned/cluster/typed/cache/v1alpha1"
 	v1alpha11 "github.com/kcp-dev/sdk/client/clientset/versioned/cluster/typed/core/v1alpha1"
-	v1alpha12 "github.com/kcp-dev/sdk/client/clientset/versioned/cluster/typed/tenancy/v1alpha1"
-	v1alpha13 "github.com/kcp-dev/sdk/client/clientset/versioned/cluster/typed/topology/v1alpha1"
+	v1alpha12 "github.com/kcp-dev/sdk/client/clientset/versioned/cluster/typed/migration/v1alpha1"
+	v1alpha13 "github.com/kcp-dev/sdk/client/clientset/versioned/cluster/typed/tenancy/v1alpha1"
+	v1alpha14 "github.com/kcp-dev/sdk/client/clientset/versioned/cluster/typed/topology/v1alpha1"
 	mock "github.com/stretchr/testify/mock"
 	"k8s.io/client-go/discovery"
 )
@@ -343,20 +344,66 @@ func (_c *ClusterInterface_Discovery_Call) RunAndReturn(run func() discovery.Dis
 	return _c
 }
 
+// MigrationV1alpha1 provides a mock function for the type ClusterInterface
+func (_mock *ClusterInterface) MigrationV1alpha1() v1alpha12.MigrationV1alpha1ClusterInterface {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for MigrationV1alpha1")
+	}
+
+	var r0 v1alpha12.MigrationV1alpha1ClusterInterface
+	if returnFunc, ok := ret.Get(0).(func() v1alpha12.MigrationV1alpha1ClusterInterface); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(v1alpha12.MigrationV1alpha1ClusterInterface)
+		}
+	}
+	return r0
+}
+
+// ClusterInterface_MigrationV1alpha1_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'MigrationV1alpha1'
+type ClusterInterface_MigrationV1alpha1_Call struct {
+	*mock.Call
+}
+
+// MigrationV1alpha1 is a helper method to define mock.On call
+func (_e *ClusterInterface_Expecter) MigrationV1alpha1() *ClusterInterface_MigrationV1alpha1_Call {
+	return &ClusterInterface_MigrationV1alpha1_Call{Call: _e.mock.On("MigrationV1alpha1")}
+}
+
+func (_c *ClusterInterface_MigrationV1alpha1_Call) Run(run func()) *ClusterInterface_MigrationV1alpha1_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *ClusterInterface_MigrationV1alpha1_Call) Return(migrationV1alpha1ClusterInterface v1alpha12.MigrationV1alpha1ClusterInterface) *ClusterInterface_MigrationV1alpha1_Call {
+	_c.Call.Return(migrationV1alpha1ClusterInterface)
+	return _c
+}
+
+func (_c *ClusterInterface_MigrationV1alpha1_Call) RunAndReturn(run func() v1alpha12.MigrationV1alpha1ClusterInterface) *ClusterInterface_MigrationV1alpha1_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // TenancyV1alpha1 provides a mock function for the type ClusterInterface
-func (_mock *ClusterInterface) TenancyV1alpha1() v1alpha12.TenancyV1alpha1ClusterInterface {
+func (_mock *ClusterInterface) TenancyV1alpha1() v1alpha13.TenancyV1alpha1ClusterInterface {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for TenancyV1alpha1")
 	}
 
-	var r0 v1alpha12.TenancyV1alpha1ClusterInterface
-	if returnFunc, ok := ret.Get(0).(func() v1alpha12.TenancyV1alpha1ClusterInterface); ok {
+	var r0 v1alpha13.TenancyV1alpha1ClusterInterface
+	if returnFunc, ok := ret.Get(0).(func() v1alpha13.TenancyV1alpha1ClusterInterface); ok {
 		r0 = returnFunc()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(v1alpha12.TenancyV1alpha1ClusterInterface)
+			r0 = ret.Get(0).(v1alpha13.TenancyV1alpha1ClusterInterface)
 		}
 	}
 	return r0
@@ -379,30 +426,30 @@ func (_c *ClusterInterface_TenancyV1alpha1_Call) Run(run func()) *ClusterInterfa
 	return _c
 }
 
-func (_c *ClusterInterface_TenancyV1alpha1_Call) Return(tenancyV1alpha1ClusterInterface v1alpha12.TenancyV1alpha1ClusterInterface) *ClusterInterface_TenancyV1alpha1_Call {
+func (_c *ClusterInterface_TenancyV1alpha1_Call) Return(tenancyV1alpha1ClusterInterface v1alpha13.TenancyV1alpha1ClusterInterface) *ClusterInterface_TenancyV1alpha1_Call {
 	_c.Call.Return(tenancyV1alpha1ClusterInterface)
 	return _c
 }
 
-func (_c *ClusterInterface_TenancyV1alpha1_Call) RunAndReturn(run func() v1alpha12.TenancyV1alpha1ClusterInterface) *ClusterInterface_TenancyV1alpha1_Call {
+func (_c *ClusterInterface_TenancyV1alpha1_Call) RunAndReturn(run func() v1alpha13.TenancyV1alpha1ClusterInterface) *ClusterInterface_TenancyV1alpha1_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // TopologyV1alpha1 provides a mock function for the type ClusterInterface
-func (_mock *ClusterInterface) TopologyV1alpha1() v1alpha13.TopologyV1alpha1ClusterInterface {
+func (_mock *ClusterInterface) TopologyV1alpha1() v1alpha14.TopologyV1alpha1ClusterInterface {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for TopologyV1alpha1")
 	}
 
-	var r0 v1alpha13.TopologyV1alpha1ClusterInterface
-	if returnFunc, ok := ret.Get(0).(func() v1alpha13.TopologyV1alpha1ClusterInterface); ok {
+	var r0 v1alpha14.TopologyV1alpha1ClusterInterface
+	if returnFunc, ok := ret.Get(0).(func() v1alpha14.TopologyV1alpha1ClusterInterface); ok {
 		r0 = returnFunc()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(v1alpha13.TopologyV1alpha1ClusterInterface)
+			r0 = ret.Get(0).(v1alpha14.TopologyV1alpha1ClusterInterface)
 		}
 	}
 	return r0
@@ -425,12 +472,12 @@ func (_c *ClusterInterface_TopologyV1alpha1_Call) Run(run func()) *ClusterInterf
 	return _c
 }
 
-func (_c *ClusterInterface_TopologyV1alpha1_Call) Return(topologyV1alpha1ClusterInterface v1alpha13.TopologyV1alpha1ClusterInterface) *ClusterInterface_TopologyV1alpha1_Call {
+func (_c *ClusterInterface_TopologyV1alpha1_Call) Return(topologyV1alpha1ClusterInterface v1alpha14.TopologyV1alpha1ClusterInterface) *ClusterInterface_TopologyV1alpha1_Call {
 	_c.Call.Return(topologyV1alpha1ClusterInterface)
 	return _c
 }
 
-func (_c *ClusterInterface_TopologyV1alpha1_Call) RunAndReturn(run func() v1alpha13.TopologyV1alpha1ClusterInterface) *ClusterInterface_TopologyV1alpha1_Call {
+func (_c *ClusterInterface_TopologyV1alpha1_Call) RunAndReturn(run func() v1alpha14.TopologyV1alpha1ClusterInterface) *ClusterInterface_TopologyV1alpha1_Call {
 	_c.Call.Return(run)
 	return _c
 }

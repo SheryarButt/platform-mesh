@@ -60,7 +60,8 @@ type SortingConfig struct {
 }
 
 type RolesConfig struct {
-	FilePath string
+	FilePath                        string
+	UseProviderPermissionsRetriever bool
 }
 
 type ServiceConfig struct {
@@ -131,4 +132,5 @@ func (c *ServiceConfig) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.Sorting.DefaultField, "sorting-default-field", c.Sorting.DefaultField, "Set default sorting field")
 	fs.StringVar(&c.Sorting.DefaultDirection, "sorting-default-direction", c.Sorting.DefaultDirection, "Set default sorting direction")
 	fs.StringVar(&c.Roles.FilePath, "roles-file-path", c.Roles.FilePath, "Set roles file path")
+	fs.BoolVar(&c.Roles.UseProviderPermissionsRetriever, "use-provider-permissions-retriever", c.Roles.UseProviderPermissionsRetriever, "Use ProviderPermissions resources for role retrieval instead of file-based roles")
 }
