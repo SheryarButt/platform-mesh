@@ -19,6 +19,7 @@ vendor/
 
 # kcp sharded envtest
 .kcp-*/
+.test/
 
 # IDE and editor files
 .idea/

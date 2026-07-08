@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
@@ -76,6 +78,7 @@ func (s *AccountTestSuite) setupKCP() {
 	s.env = &envtest.Sharded{
 		StartTimeout: 2 * time.Minute,
 		StopTimeout:  time.Second * 30,
+		WorkDir:      filepath.Join(os.Getenv("COMPONENT_DIRECTORY"), ".test", "AccountTestSuite"),
 	}
 
 	var err error

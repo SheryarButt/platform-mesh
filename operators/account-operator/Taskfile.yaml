@@ -55,6 +55,9 @@ tasks:
     cmds:
       - docker build .
   ## Testing
+  clean:
+    cmds:
+      - rm -rf -- .test
   fmt:
     cmds:
       - go fmt ./...
@@ -69,13 +72,15 @@ tasks:
       - go test -count=1 $(go list ./... | grep -v '/internal/controller$')
   test-e2e:
     desc: Run envtest integration tests (uses the shared kcp from the root bin).
-    deps: [tools:kcp]
+    deps: [tools:kcp, clean]
     env:
       KCP_ASSET_KCP: '{{.BIN}}/kcp'
       KCP_ASSET_SHARDED_TEST_SERVER: '{{.BIN}}/sharded-test-server'
       KCP_ASSET_KCP_FRONT_PROXY: '{{.BIN}}/kcp-front-proxy'
       KCP_ASSET_CACHE_SERVER: '{{.BIN}}/cache-server'
       NO_GORUN: "true"
+      COMPONENT_DIRECTORY:
+        sh: 'realpath .'
     cmds:
       - go test -count=1 ./internal/controller/... {{.ADDITIONAL_COMMAND_ARGS}}
   cover:
