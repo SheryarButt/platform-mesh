@@ -17,6 +17,9 @@ coverage.html
 # Dependency directories
 vendor/
 
+# kcp sharded envtest
+.kcp-*/
+
 # IDE and editor files
 .idea/
 .vscode/

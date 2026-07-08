@@ -71,7 +71,11 @@ tasks:
     desc: Run envtest integration tests (uses the shared kcp from the root bin).
     deps: [tools:kcp]
     env:
-      TEST_KCP_ASSETS: '{{.BIN}}'
+      KCP_ASSET_KCP: '{{.BIN}}/kcp'
+      KCP_ASSET_SHARDED_TEST_SERVER: '{{.BIN}}/sharded-test-server'
+      KCP_ASSET_KCP_FRONT_PROXY: '{{.BIN}}/kcp-front-proxy'
+      KCP_ASSET_CACHE_SERVER: '{{.BIN}}/cache-server'
+      NO_GORUN: "true"
     cmds:
       - go test -count=1 ./internal/controller/... {{.ADDITIONAL_COMMAND_ARGS}}
   cover:
