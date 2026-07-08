@@ -61,7 +61,10 @@ vars:
 
   # kcp release used by the operators' envtest suites (see component test-e2e).
   KCP_VERSION: 0.32.3
+  CACHE_SERVER: '{{.BIN}}/cache-server-{{.KCP_VERSION}}'
   KCP: '{{.BIN}}/kcp-{{.KCP_VERSION}}'
+  KCP_FRONT_PROXY: '{{.BIN}}/kcp-front-proxy-{{.KCP_VERSION}}'
+  SHARDED_TEST_SERVER: '{{.BIN}}/sharded-test-server-{{.KCP_VERSION}}'
 
   KIND_VERSION: v0.29.0
   KIND: '{{.BIN}}/kind-{{.KIND_VERSION}}'
@@ -145,12 +148,19 @@ tasks:
     internal: true
     cmds:
       - task: uget
-        vars:
-          tool: kcp
-          source: 'https://github.com/kcp-dev/kcp/releases/download/v{VERSION}/kcp_{VERSION}_{GOOS}_{GOARCH}.tar.gz'
-          version: '{{ .KCP_VERSION }}'
-      # kcp's sharded envtest needs a binary called "kcp"
+        vars: { tool: cache-server, source: 'https://github.com/kcp-dev/kcp/releases/download/v{VERSION}/cache-server_{VERSION}_{GOOS}_{GOARCH}.tar.gz', version: '{{ .KCP_VERSION }}' }
+      - task: uget
+        vars: { tool: kcp, source: 'https://github.com/kcp-dev/kcp/releases/download/v{VERSION}/kcp_{VERSION}_{GOOS}_{GOARCH}.tar.gz', version: '{{ .KCP_VERSION }}' }
+      - task: uget
+        vars: { tool: kcp-front-proxy, source: 'https://github.com/kcp-dev/kcp/releases/download/v{VERSION}/kcp-front-proxy_{VERSION}_{GOOS}_{GOARCH}.tar.gz', version: '{{ .KCP_VERSION }}' }
+      - task: uget
+        vars: { tool: sharded-test-server, source: 'https://github.com/kcp-dev/kcp/releases/download/v{VERSION}/sharded-test-server_{VERSION}_{GOOS}_{GOARCH}.tar.gz', version: '{{ .KCP_VERSION }}' }
+
+      # kcp's sharded envtest needs binaries without any suffixes
+      - 'ln -sf {{.KCP_CACHE_SERVER}} {{.BIN}}/cache-server'
       - 'ln -sf {{.KCP}} {{.BIN}}/kcp'
+      - 'ln -sf {{.KCP_FRONT_PROXY}} {{.BIN}}/kcp-front-proxy'
+      - 'ln -sf {{.SHARDED_TEST_SERVER}} {{.BIN}}/sharded-test-server'
   envtest:
     internal: true
     cmds:
