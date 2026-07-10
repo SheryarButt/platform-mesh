@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -30,6 +32,7 @@ import (
 	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
 	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
 	platformeshconfig "go.platform-mesh.io/golang-commons/config"
+	platformmeshcontext "go.platform-mesh.io/golang-commons/context"
 	"go.platform-mesh.io/golang-commons/logger"
 	iclient "go.platform-mesh.io/security-operator/internal/client"
 	"go.platform-mesh.io/security-operator/internal/config"
@@ -102,16 +105,16 @@ var (
 
 func init() {
 	utilruntime.Must(kcpapisv1alpha1.AddToScheme(scheme.Scheme))
+	utilruntime.Must(kcpapisv1alpha2.AddToScheme(scheme.Scheme))
 	utilruntime.Must(kcpcorev1alpha1.AddToScheme(scheme.Scheme))
 	utilruntime.Must(kcptenancyv1alpha1.AddToScheme(scheme.Scheme))
 	utilruntime.Must(pmcorev1alpha1.AddToScheme(scheme.Scheme))
 	utilruntime.Must(pmprovidersv1alpha1.AddToScheme(scheme.Scheme))
-	utilruntime.Must(kcpapisv1alpha2.AddToScheme(scheme.Scheme))
 }
 
 type IntegrationSuite struct {
 	suite.Suite
-	env                              *envtest.Environment
+	env                              *envtest.Sharded
 	kcpConfig                        *rest.Config
 	coreApiExportEndpointSliceConfig *rest.Config
 	providersApiExportEndpointConfig *rest.Config
@@ -133,9 +136,24 @@ func (suite *IntegrationSuite) SetupSuite() {
 	require.NoError(suite.T(), err, "failed to create test logger")
 	ctrl.SetLogger(testLogger.Logr())
 
-	suite.env = &envtest.Environment{}
+	// Do not use T.Context() because that context would be cancelled before the cleanup
+	// functions are executed, which would interfere with a clean test teardown.
+	ctx, cancel, _ := platformmeshcontext.StartContext(testLogger, nil, 0)
 
-	suite.kcpConfig, err = suite.env.Start()
+	// Do not use the Suite's teardown to stop kcp, since this would happen
+	// before the test's Cleanup functions are called. Since we use the envtest's
+	// workspace fixture, we have to keep kcp alive until that fixture can clean up.
+	suite.T().Cleanup(func() {
+		cancel(fmt.Errorf("tearing down test suite"))
+	})
+
+	suite.env = &envtest.Sharded{
+		StartTimeout: 2 * time.Minute,
+		StopTimeout:  time.Second * 30,
+		WorkDir:      filepath.Join(os.Getenv("COMPONENT_DIRECTORY"), ".test", "IntegrationSuite"),
+	}
+
+	err = suite.env.Start(ctx)
 	require.NoError(suite.T(), err, "failed to start envtest environment")
 
 	suite.T().Cleanup(func() {
@@ -144,6 +162,8 @@ func (suite *IntegrationSuite) SetupSuite() {
 		}
 		suite.T().Log("kcp server has been stopped")
 	})
+
+	suite.kcpConfig = suite.env.Config()
 
 	suite.setupPlatformMesh(suite.T())
 	suite.setupControllers(defaultCfg, testLogger)

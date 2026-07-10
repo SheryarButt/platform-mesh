@@ -55,6 +55,9 @@ tasks:
     cmds:
       - docker build .
   ## Testing
+  clean:
+    cmds:
+      - rm -rf -- .test
   fmt:
     cmds:
       - go fmt ./...
@@ -64,10 +67,15 @@ tasks:
       - task: tools:lint
   envtest:
     internal: true
-    deps: [tools:kcp, tools:envtest]
+    deps: [tools:kcp, tools:envtest, clean]
     env:
-      # Shared kcp installed by tools:kcp into the root bin.
-      TEST_KCP_ASSETS: '{{.BIN}}'
+      KCP_ASSET_KCP: '{{.BIN}}/kcp'
+      KCP_ASSET_SHARDED_TEST_SERVER: '{{.BIN}}/sharded-test-server'
+      KCP_ASSET_KCP_FRONT_PROXY: '{{.BIN}}/kcp-front-proxy'
+      KCP_ASSET_CACHE_SERVER: '{{.BIN}}/cache-server'
+      NO_GORUN: "true"
+      COMPONENT_DIRECTORY:
+        sh: 'realpath .'
     cmds:
       - |
         set -ex
