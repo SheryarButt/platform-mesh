@@ -114,12 +114,10 @@ func init() {
 
 type IntegrationSuite struct {
 	suite.Suite
-	env                              *envtest.Sharded
-	kcpConfig                        *rest.Config
-	coreApiExportEndpointSliceConfig *rest.Config
-	providersApiExportEndpointConfig *rest.Config
-	platformMeshSysPath              logicalcluster.Path
-	platformMeshSystemClient         ctrlruntimeclient.Client
+	env                      *envtest.Sharded
+	kcpConfig                *rest.Config
+	platformMeshSysPath      logicalcluster.Path
+	platformMeshSystemClient ctrlruntimeclient.Client
 }
 
 func TestIntegrationSuite(t *testing.T) {
@@ -291,36 +289,12 @@ func (suite *IntegrationSuite) setupPlatformMesh(t *testing.T) {
 
 	suite.Require().NotEmpty(endpointSlice.Status.APIExportEndpoints, "APIExportEndpointSlice should have at least one endpoint")
 	suite.Require().NotEqual("", endpointSlice.Status.APIExportEndpoints[0].URL, "APIExportEndpointSlice endpoint URL should not be empty")
-
-	// set up config for core.platform-mesh.io virtual workspace
-	coreCfg := rest.CopyConfig(suite.kcpConfig)
-	coreCfg.Host = endpointSlice.Status.APIExportEndpoints[0].URL
-	suite.coreApiExportEndpointSliceConfig = coreCfg
-	t.Logf("created coreApiExportEndpointSliceConfig with host: %s", suite.coreApiExportEndpointSliceConfig.Host)
-
-	// Wait for providers.platform-mesh.io APIExportEndpointSlice
-	var providersEndpointSlice kcpapisv1alpha1.APIExportEndpointSlice
-	suite.Assert().Eventually(func() bool {
-		err := cli.Cluster(platformMeshSystemClusterPath).Get(ctx, ctrlruntimeclient.ObjectKey{Name: "providers.platform-mesh.io"}, &providersEndpointSlice)
-		if err != nil {
-			return false
-		}
-		return len(providersEndpointSlice.Status.APIExportEndpoints) > 0 && providersEndpointSlice.Status.APIExportEndpoints[0].URL != ""
-	}, 10*time.Second, 200*time.Millisecond, "KCP should automatically create providers.platform-mesh.io APIExportEndpointSlice with populated endpoints")
-
-	suite.Require().NotEmpty(providersEndpointSlice.Status.APIExportEndpoints, "providers APIExportEndpointSlice should have at least one endpoint")
-
-	// set up config for providers.platform-mesh.io virtual workspace
-	providersCfg := rest.CopyConfig(suite.kcpConfig)
-	providersCfg.Host = providersEndpointSlice.Status.APIExportEndpoints[0].URL
-	suite.providersApiExportEndpointConfig = providersCfg
-	t.Logf("created providersApiExportEndpointConfig with host: %s", suite.providersApiExportEndpointConfig.Host)
 }
 
 func (suite *IntegrationSuite) setupControllers(defaultCfg *platformeshconfig.CommonServiceConfig, testLogger *logger.Logger) {
 	ctx := suite.T().Context()
 
-	coreProviderConfig, err := suite.getPlatformMeshSystemConfig(suite.coreApiExportEndpointSliceConfig)
+	providerConfig, err := suite.getPlatformMeshSystemConfig(suite.kcpConfig)
 	suite.Require().NoError(err)
 
 	coreProvider, err := apiexport.New(coreProviderConfig, "core.platform-mesh.io", apiexport.Options{Scheme: scheme.Scheme})
