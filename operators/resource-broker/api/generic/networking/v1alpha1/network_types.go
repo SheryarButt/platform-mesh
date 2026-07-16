@@ -143,8 +143,3 @@ type PeeringList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Peering `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&VirtualNetwork{}, &VirtualNetworkList{})
-	SchemeBuilder.Register(&Peering{}, &PeeringList{})
-}

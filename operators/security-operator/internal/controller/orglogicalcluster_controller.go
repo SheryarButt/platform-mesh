@@ -86,7 +86,6 @@ func NewOrgLogicalClusterController(log *logger.Logger, kcpClientGetter iclient.
 	if cfg.Initializer.WorkspaceAuthEnabled {
 		subs = append(subs, subroutine.NewWorkspaceAuthConfigurationSubroutine(inClusterClient, mgr, kcpClientGetter, cfg))
 	}
-
 	lc := lifecycle.New(mgr, opts.Name, func() ctrlruntimeclient.Object {
 		return &kcpcorev1alpha1.LogicalCluster{}
 	}, subs...)

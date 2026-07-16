@@ -17,17 +17,178 @@ limitations under the License.
 package generator
 
 import (
+	"context"
+	"fmt"
+	"slices"
 	"testing"
 
+	"github.com/graphql-go/graphql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	pmgateway "go.platform-mesh.io/apis/gateway"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/resolver"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/schema/types"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/internal/testfakes"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/kube-openapi/pkg/validation/spec"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+func TestGenerate_resourcesByCategory(t *testing.T) {
+	t.Run("result for objects in two gvks", func(t *testing.T) {
+		categoryName := "foo-managed"
+		first := schemaWithCategory(
+			"foo.tests.bar",
+			"v1beta1",
+			"Foo",
+			apiextensionsv1.NamespaceScoped,
+			categoryName,
+		)
+		second := schemaWithCategory(
+			"foo.tests.bar",
+			"v1",
+			"Bar",
+			apiextensionsv1.NamespaceScoped,
+			categoryName,
+		)
+
+		foo := unstructured.Unstructured{
+			Object: map[string]any{
+				"apiVersion": "foo.tests.bar/v1beta1",
+				"kind":       "Foo",
+				"metadata": map[string]any{
+					"name": "first",
+				},
+			},
+		}
+		bar := unstructured.Unstructured{
+			Object: map[string]any{
+				"apiVersion": "foo.tests.bar/v1",
+				"kind":       "Bar",
+				"metadata": map[string]any{
+					"name": "second",
+				},
+			},
+		}
+		sut := setup(testfakes.ListItems(foo, bar), first, second)
+
+		schemagen, err := sut.Generate(t.Context())
+		require.NoError(t, err)
+		require.NotNil(t, schemagen)
+
+		reg := types.NewRegistry()
+		fooType := reg.GetUniqueTypeName(&schema.GroupVersionKind{Group: "foo.tests.bar", Version: "v1beta1", Kind: "Foo"})
+		barType := reg.GetUniqueTypeName(&schema.GroupVersionKind{Group: "foo.tests.bar", Version: "v1", Kind: "Bar"})
+
+		query := fmt.Sprintf(`{
+	resourcesByCategory(name: "%s") {
+		items {
+			__typename
+			... on %s { metadata { name } }
+			... on %s { metadata { name } }
+		}
+  }
+	}`, categoryName, fooType, barType)
+
+		result := graphql.Do(graphql.Params{
+			Schema:        *schemagen,
+			Context:       t.Context(),
+			RequestString: query,
+		})
+
+		require.Empty(t, result.Errors)
+
+		data := result.Data.(map[string]any)["resourcesByCategory"].(map[string]any)
+		queryResults := data["items"].([]any)
+		assert.Len(t, queryResults, 2)
+
+		byType := map[string]string{}
+		for _, v := range queryResults {
+			data := v.(map[string]any)
+			meta := data["metadata"].(map[string]any)
+			typeName := data["__typename"].(string)
+			byType[typeName] = meta["name"].(string)
+		}
+
+		assert.Equal(t, "first", byType[fooType])
+		assert.Equal(t, "second", byType[barType])
+	})
+	t.Run("subscription exposes only subscribeToAll", func(t *testing.T) {
+		schemaDef := schemaWithCategory("a.b.c", "v1", "Fooer", apiextensionsv1.NamespaceScoped, "cat")
+		sut := setup(testfakes.ListItems(), schemaDef)
+
+		sch, err := sut.Generate(t.Context())
+		require.NoError(t, err)
+
+		field := sch.SubscriptionType().Fields()["resourcesByCategory"]
+		require.NotNil(t, field)
+
+		hasArg := func(argName string) bool {
+			return slices.ContainsFunc(field.Args, func(a *graphql.Argument) bool { return a.Name() == argName })
+		}
+
+		assert.True(t, hasArg("subscribeToAll"), "subscribeToAll arg should be on the subscription")
+		assert.False(t, hasArg("resourceVersion"), "resourceVersion is not supported in resourcesByCategory")
+	})
+
+	t.Run("resources have no category", func(t *testing.T) {
+		uncategorized := schemaWithCategory(
+			"pm.io",
+			"v1",
+			"Workload",
+			apiextensionsv1.NamespaceScoped,
+		)
+		instance := unstructured.Unstructured{
+			Object: map[string]any{
+				"apiVersion": "pm.io/v1",
+				"kind":       "Workload",
+				"metadata": map[string]any{
+					"name": "foo",
+				},
+			},
+		}
+
+		sut := setup(testfakes.ListItems(instance), uncategorized)
+		sch, err := sut.Generate(t.Context())
+		require.NoError(t, err)
+
+		reg := types.NewRegistry()
+		workloadType := reg.GetUniqueTypeName(&schema.GroupVersionKind{Group: "pm.io", Version: "v1", Kind: "Workload"})
+
+		schemaType := sch.Type(workloadType)
+		require.NotNil(t, schemaType, "resource with no category should be in the schema")
+	})
+}
+
+// setup initializes the Generator with schemas and a fake client
+// returning objects through the provided list function.
+func setup(
+	listFn func(context.Context, ctrlruntimeclient.ObjectList, ...ctrlruntimeclient.ListOption) error,
+	schemas ...*spec.Schema,
+) *SchemaGenerator {
+	client := testfakes.NewClient(
+		listFn,
+		nil,
+	)
+
+	resolver := resolver.New(client, nil)
+	definitions := make(map[string]*spec.Schema)
+	for i, v := range schemas {
+		key := fmt.Sprintf("def-%d", i)
+		definitions[key] = v
+	}
+
+	return New(
+		definitions,
+		resolver,
+		nil,
+		true,
+	)
+}
 
 func TestGroupByAPIGroup(t *testing.T) {
 	tests := []struct {
@@ -316,6 +477,44 @@ func schemaWithGVKAndScope(group, version, kind string, scope apiextensionsv1.Re
 			Extensions: spec.Extensions{
 				pmgateway.GVKExtensionKey:   []any{map[string]any{"group": group, "version": version, "kind": kind}},
 				pmgateway.ScopeExtensionKey: string(scope),
+			},
+		},
+	}
+}
+
+func schemaWithCategory(
+	group, version, kind string,
+	scope apiextensionsv1.ResourceScope,
+	categories ...string,
+) *spec.Schema {
+	cat := make([]any, 0, len(categories))
+	for _, v := range categories {
+		cat = append(cat, v)
+	}
+
+	return &spec.Schema{
+		VendorExtensible: spec.VendorExtensible{
+			Extensions: spec.Extensions{
+				pmgateway.GVKExtensionKey:        []any{map[string]any{"group": group, "version": version, "kind": kind}},
+				pmgateway.ScopeExtensionKey:      scope,
+				pmgateway.CategoriesExtensionKey: cat,
+			},
+		},
+		SchemaProps: spec.SchemaProps{
+			Type: spec.StringOrArray{"object"},
+			Properties: map[string]spec.Schema{
+				"metadata": {
+					SchemaProps: spec.SchemaProps{
+						Type: spec.StringOrArray{"object"},
+						Properties: map[string]spec.Schema{
+							"name": {
+								SchemaProps: spec.SchemaProps{
+									Type: spec.StringOrArray{"string"},
+								},
+							},
+						},
+					},
+				},
 			},
 		},
 	}

@@ -29,7 +29,7 @@ tasks:
       - task: tools:generate-crds
         vars: { PATH: /broker/..., OUTPUT: config/broker/crd }
       - task: tools:generate-crds
-        vars: { PATH: /operatorbroker/..., OUTPUT: config/operator/crd }
+        vars: { PATH: /coordbroker/..., OUTPUT: config/coordbroker/crd }
       - task: tools:generate-crds
         vars: { BASEDIR: './api', PATH: /generic/..., OUTPUT: config/generic/crd }
       - task: tools:generate-crds
@@ -38,7 +38,7 @@ tasks:
       - task: tools:generate-rbac
         vars: { PATHS: '{{.TOPLEVEL}}/apis/broker/...', OUTPUT: config/broker/rbac, ROLE: resource-broker }
       - task: tools:generate-rbac
-        vars: { PATHS: '{{.TOPLEVEL}}/apis/operatorbroker/...', OUTPUT: config/operator/rbac, ROLE: resource-broker-operator }
+        vars: { PATHS: '{{.TOPLEVEL}}/apis/coordbroker/...', OUTPUT: config/coordbroker/rbac, ROLE: resource-broker }
       - task: tools:generate-rbac
         vars: { PATHS: ./api/generic/..., OUTPUT: config/generic/rbac, ROLE: resource-broker }
       - task: tools:generate-rbac
@@ -52,6 +52,22 @@ tasks:
         vars: { BASEDIR: './api', PATH: /generic/... }
       - task: tools:generate-deepcopy
         vars: { BASEDIR: './api', PATH: /example/... }
+      - task: e2e-fixtures
+
+  e2e-fixtures:
+    desc: Generate kcp fixtures (APIResourceSchemas, APIExports) for the e2e suite
+    deps: [tools:apigen]
+    cmds:
+      # apigen chokes on kustomization.yaml, so stage the CRDs in a tmp dir.
+      - |
+        set -e
+        tmp=$(mktemp -d)
+        trap 'rm -rf "$tmp"' EXIT
+        cp config/broker/crd/broker.platform-mesh.io_acceptapis.yaml "$tmp"
+        cp config/example/crd/example.platform-mesh.io_certificates.yaml "$tmp"
+        cp config/example/crd/example.platform-mesh.io_dnszones.yaml "$tmp"
+        cp config/example/crd/example.platform-mesh.io_vms.yaml "$tmp"
+        {{.BIN}}/apigen --input-dir "$tmp" --output-dir test/e2e/setup --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt
 
   build:
     desc: Build the module
@@ -60,8 +76,34 @@ tasks:
 
   docker-build:
     desc: Build the Docker image
+    vars:
+      IMG: '{{.IMG | default "localhost/resource-broker:dev"}}'
     cmds:
-      - echo "TBD"
+      - docker build -t {{.IMG}} -f Dockerfile ../../
+
+  kind-load:
+    desc: Load the Docker image into a kind cluster
+    vars:
+      IMG: '{{.IMG | default "localhost/resource-broker:dev"}}'
+      KIND_CLUSTER: '{{.KIND_CLUSTER | default "kind"}}'
+    cmds:
+      - kind load docker-image --name {{.KIND_CLUSTER}} {{.IMG}}
+
+  ## Examples
+  example-*:
+    desc: Run an example (extracts the ci blocks from its README)
+    vars:
+      EXAMPLE: '{{index .MATCH 0}}'
+    cmds:
+      - defer: rm -f run.bash
+      - go run github.com/ntnn/mdextract@main -output run.bash -tags bash,ci ./examples/{{.EXAMPLE}}/README.md
+      - bash -xe ./run.bash
+
+  examples:
+    desc: Run all examples
+    cmds:
+      - task: example-broker-certificates
+      - task: example-broker-postgres
 
   ## Testing
   fmt:
@@ -79,12 +121,11 @@ tasks:
     cmds:
       - go test ./pkg/...
   test-e2e:
-    deps: [tools:envtest]
+    deps: [tools:kcp]
+    env:
+      TEST_KCP_ASSETS: '{{.BIN}}'
     cmds:
-      - |
-        set -ex
-        export KUBEBUILDER_ASSETS=$({{.BIN}}/setup-envtest use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.BIN}} -p path)
-        go test -tags integration ./test/e2e/... {{.ADDITIONAL_COMMAND_ARGS}}
+      - go test -count=1 ./test/e2e/... {{.ADDITIONAL_COMMAND_ARGS}}
   cover:
     cmds:
       - task: test

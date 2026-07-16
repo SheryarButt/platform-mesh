@@ -32,7 +32,7 @@ tasks:
         vars:
           PATH: /gateway/...
           OUTPUT: config/crd
-      - "{{.BIN}}/apigen --output-dir config/kcp --input-dir config/crd"
+      - "{{.BIN}}/apigen --output-dir config/kcp --input-dir config/crd --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
 
   ## Development
   build:

@@ -60,6 +60,7 @@ func NewWorkspaceInitializer(cfg config.Config, mgr mcmanager.Manager, kcpClient
 var (
 	_ subroutines.Initializer = &workspaceInitializer{}
 	_ subroutines.Processor   = &workspaceInitializer{}
+	_ subroutines.Terminator  = &workspaceInitializer{}
 )
 
 type workspaceInitializer struct {
@@ -170,6 +171,31 @@ func (w *workspaceInitializer) reconcile(ctx context.Context, obj ctrlruntimecli
 	if store.Status.StoreID == "" {
 		// Store is not ready yet, requeue
 		return subroutines.StopWithRequeue(5*time.Second, "store id is empty"), nil
+	}
+
+	return subroutines.OK(), nil
+}
+
+// Terminate deletes the Store created during org init.
+func (w *workspaceInitializer) Terminate(ctx context.Context, obj ctrlruntimeclient.Object) (subroutines.Result, error) {
+	lc := obj.(*kcpcorev1alpha1.LogicalCluster)
+
+	storeName := generateStoreName(lc)
+	if storeName == "" {
+		return subroutines.OK(), fmt.Errorf("failed to get workspace name")
+	}
+
+	orgsClient, err := w.kcpClientGetter.NewClientForLogicalCluster(ctx, config.OrgsClusterPath)
+	if err != nil {
+		return subroutines.OK(), fmt.Errorf("getting orgs client: %w", err)
+	}
+
+	pending, err := deleteOrgResource(ctx, orgsClient, &pmcorev1alpha1.Store{}, storeName)
+	if err != nil {
+		return subroutines.OK(), fmt.Errorf("deleting Store %s: %w", storeName, err)
+	}
+	if pending {
+		return subroutines.StopWithRequeue(orgResourceDeleteRequeue, "waiting for Store to be deleted"), nil
 	}
 
 	return subroutines.OK(), nil

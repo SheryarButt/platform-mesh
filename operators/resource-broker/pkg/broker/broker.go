@@ -14,807 +14,334 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package broker wires the resource broker controllers into a single
+// multicluster manager.
 package broker
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"maps"
-	"net/url"
-	"slices"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/go-logr/logr"
-	"golang.org/x/sync/errgroup"
 
-	pmbrokerv1alpha1 "go.platform-mesh.io/apis/broker/v1alpha1"
-	"go.platform-mesh.io/resource-broker/pkg/broker/acceptapi"
-	genericreconciler "go.platform-mesh.io/resource-broker/pkg/broker/generic"
-	"go.platform-mesh.io/resource-broker/pkg/broker/migration"
-	"go.platform-mesh.io/resource-broker/pkg/broker/stagingworkspace"
+	"go.platform-mesh.io/resource-broker/pkg/controller/broker/acceptapi"
+	"go.platform-mesh.io/resource-broker/pkg/controller/coordbroker/migration"
+	"go.platform-mesh.io/resource-broker/pkg/controller/coordbroker/stagingworkspace"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	mctrl "sigs.k8s.io/multicluster-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
-	"sigs.k8s.io/multicluster-runtime/providers/clusters"
 	"sigs.k8s.io/multicluster-runtime/providers/multi"
 	"sigs.k8s.io/multicluster-runtime/providers/single"
 
 	"github.com/kcp-dev/multicluster-provider/apiexport"
 	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
 	kcpapisv1alpha2 "github.com/kcp-dev/sdk/apis/apis/v1alpha2"
-	kcpcore "github.com/kcp-dev/sdk/apis/core"
 )
 
 const (
-	// stagingConsumerClusterLabel is the label key on StagingWorkspace objects
-	// that stores the consumer cluster name for efficient lookup.
-	stagingConsumerClusterLabel = "broker.platform-mesh.io/consumer-cluster"
+	// AcceptAPIProviderName is the multi-provider name under which the
+	// AcceptAPI virtual workspace is engaged.
+	AcceptAPIProviderName = "acceptapi"
 
-	// stagingProviderClusterLabel is the label key on StagingWorkspace objects
-	// that stores the provider cluster name used to look up AcceptAPIs.
-	stagingProviderClusterLabel = "broker.platform-mesh.io/provider-cluster"
+	// CoordinationClusterName is the multi-provider name under which the
+	// coordination workspace is engaged.
+	CoordinationClusterName = "coordination"
 
-	// stagingAPIExportLabel is the label key on StagingWorkspace objects that
-	// stores the APIExport name bound in that workspace. Together with the
-	// consumer and provider labels it forms a unique (consumer, provider,
-	// apiexport) tuple, allowing one provider to serve multiple APIExports to
-	// the same consumer via separate staging workspaces.
-	stagingAPIExportLabel = "broker.platform-mesh.io/api-export"
-
-	// stagingNewClusterAnn is the annotation key on a StagingWorkspace used to
-	// record the migration-target staging cluster during a provider migration.
-	stagingNewClusterAnn = "broker.platform-mesh.io/new-staging-cluster"
+	// clusterNameSeparator separates the provider name from the cluster name
+	// in multi-provider cluster names.
+	clusterNameSeparator = "#"
 )
 
-// Options are the options for creating a Broker.
+// Options configures the broker.
 type Options struct {
-	Name       string
-	Log        logr.Logger
-	WatchKinds []string
+	// Log is the logger used by the broker.
+	Log logr.Logger
 
-	LocalConfig           *rest.Config
-	KcpConfig             *rest.Config
-	MigrationCoordination *rest.Config
-	ComputeConfig         *rest.Config
+	// LocalConfig is the config for the cluster hosting the broker manager.
+	// Required.
+	LocalConfig *rest.Config
 
-	AcceptAPIName     string
-	BrokerAPIName     string
-	WorkspaceTreeRoot string
+	// KcpConfig is the config for the kcp workspace holding the broker's
+	// APIExportEndpointSlices. It is also the base for workspace-scoped
+	// clients.
+	// Required.
+	KcpConfig *rest.Config
+
+	// ComputeConfig is the config for the compute cluster migrations deploy
+	// their stage templates into.
+	// Required.
+	ComputeConfig *rest.Config
+
+	// AcceptAPIName is the name of the APIExportEndpointSlice serving
+	// AcceptAPIs. All other APIExportEndpointSlices in the broker workspace
+	// serve brokered resources.
+	// Required.
+	AcceptAPIName string
+
+	// CoordinationWorkspace is the kcp workspace path holding Assignments
+	// and StagingWorkspaces.
+	// Required.
+	CoordinationWorkspace string
+
+	// VerificationTreeRoot is the workspace path under which verification
+	// workspaces are created.
+	// Required.
+	VerificationTreeRoot string
+
+	// StagingTreeRoot is the workspace path under which staging workspaces
+	// are created.
+	// Required.
+	StagingTreeRoot string
+
+	// StageNamespace is the namespace in the compute cluster migrations
+	// deploy their stage templates into.
+	// Defaults to the migration controller's default.
+	StageNamespace string
+
+	// SkipNameValidation disables controller name uniqueness validation.
+	// Set when running multiple brokers in one process, e.g. in tests.
+	SkipNameValidation *bool
+
+	// RequeueInterval is the requeue interval passed to all controllers.
+	// Defaults to each controller's default.
+	RequeueInterval time.Duration
 }
 
-func (o Options) validate() error {
-	if o.Name == "" {
-		return fmt.Errorf("name is required")
+func (opts *Options) validate() error {
+	if opts.LocalConfig == nil {
+		return errors.New("options: LocalConfig is required")
 	}
-	if o.Log.GetSink() == nil {
-		return fmt.Errorf("log is required")
+	if opts.KcpConfig == nil {
+		return errors.New("options: KcpConfig is required")
 	}
-	if o.LocalConfig == nil {
-		return fmt.Errorf("local config is required")
+	if opts.ComputeConfig == nil {
+		return errors.New("options: ComputeConfig is required")
 	}
-	if o.KcpConfig == nil {
-		return fmt.Errorf("kcp config is required")
+	if opts.AcceptAPIName == "" {
+		return errors.New("options: AcceptAPIName is required")
 	}
-	if o.MigrationCoordination == nil {
-		return fmt.Errorf("migration coordination config is required")
+	if opts.CoordinationWorkspace == "" {
+		return errors.New("options: CoordinationWorkspace is required")
 	}
-	if o.ComputeConfig == nil {
-		return fmt.Errorf("compute config is required")
+	if opts.VerificationTreeRoot == "" {
+		return errors.New("options: VerificationTreeRoot is required")
 	}
-	if o.AcceptAPIName == "" {
-		return fmt.Errorf("accept api name is required")
-	}
-	if o.BrokerAPIName == "" {
-		return fmt.Errorf("broker api name is required")
-	}
-	if o.WorkspaceTreeRoot == "" {
-		return fmt.Errorf("workspace tree root is required")
-	}
-	if len(o.WatchKinds) == 0 {
-		return fmt.Errorf("at least one watch kinds is required")
+	if opts.StagingTreeRoot == "" {
+		return errors.New("options: StagingTreeRoot is required")
 	}
 	return nil
 }
 
-// Broker brokers API resources to clusters that have accepted given APIs.
+// Broker runs the resource broker manager.
 type Broker struct {
-	opts Options
-
-	lock     sync.RWMutex
-	managers map[string]mctrl.Manager
-
-	// apiAccepters maps GVRs to provider cluster names to AcceptAPIs.
-	// GVR -> providerClusterName -> acceptAPI.Name -> AcceptAPI
-	apiAccepters map[metav1.GroupVersionResource]map[string]map[string]pmbrokerv1alpha1.AcceptAPI
-
-	// migrationConfigurations maps source GVKs to target GVKs.
-	migrationConfigurations map[metav1.GroupVersionKind]map[metav1.GroupVersionKind]pmbrokerv1alpha1.MigrationConfiguration
-
-	// stagingToProvider maps staging cluster names to provider cluster names.
-	stagingToProvider map[string]string
-
-	// localClient is used to read/write StagingWorkspace CRs in the local cluster.
-	localClient ctrlruntimeclient.Client
-
-	// multiProvider is the multi-cluster provider that aggregates consumer and
-	// staging provider clusters.
-	multiProvider *multi.Provider
+	log logr.Logger
+	mgr mcmanager.Manager
 }
 
-// New creates a new broker that acts on the given manager.
-func New(opts Options) (*Broker, error) { //nolint:gocyclo
+// New validates opts and wires all broker controllers.
+func New(opts Options) (*Broker, error) {
 	if err := opts.validate(); err != nil {
-		return nil, fmt.Errorf("invalid options: %w", err)
+		return nil, err
 	}
 
-	b := new(Broker)
-	b.opts = opts
-	b.managers = make(map[string]mctrl.Manager)
-	b.stagingToProvider = make(map[string]string)
-	b.multiProvider = multi.New(multi.Options{})
-
-	/////////////////////////////////////////////////////////////////////////////
-	// AcceptAPI Controller
-
-	b.apiAccepters = make(map[metav1.GroupVersionResource]map[string]map[string]pmbrokerv1alpha1.AcceptAPI)
-	acceptAPIScheme := runtime.NewScheme()
-	if err := pmbrokerv1alpha1.AddToScheme(acceptAPIScheme); err != nil {
-		return nil, fmt.Errorf("unable to add broker v1alpha1 to acceptapi scheme: %w", err)
-	}
-	if err := kcpapisv1alpha1.AddToScheme(acceptAPIScheme); err != nil {
-		return nil, fmt.Errorf("unable to add kcp apis to acceptapi scheme: %w", err)
-	}
-	if err := kcpapisv1alpha2.AddToScheme(acceptAPIScheme); err != nil {
-		return nil, fmt.Errorf("unable to add kcp apis to acceptapi scheme: %w", err)
-	}
-	if err := clientgoscheme.AddToScheme(acceptAPIScheme); err != nil {
-		return nil, fmt.Errorf("unable to add client-go scheme to acceptapi scheme: %w", err)
-	}
-
-	kcpAcceptAPI, err := acceptapi.New(acceptapi.Options{
-		KcpConfig:     opts.KcpConfig,
-		APIExportName: opts.AcceptAPIName,
-		Scheme:        acceptAPIScheme,
-		SetAcceptAPI: func(gvr metav1.GroupVersionResource, cn multicluster.ClusterName, acceptAPI pmbrokerv1alpha1.AcceptAPI) {
-			clusterName := ProviderPrefix + "#" + string(cn)
-			b.opts.Log.Info("SetAcceptAPI", "gvr", gvr, "cluster", clusterName, "acceptAPI", acceptAPI.Name)
-			b.lock.Lock()
-			defer b.lock.Unlock()
-			if _, ok := b.apiAccepters[gvr]; !ok {
-				b.apiAccepters[gvr] = make(map[string]map[string]pmbrokerv1alpha1.AcceptAPI)
-			}
-			if _, ok := b.apiAccepters[gvr][clusterName]; !ok {
-				b.apiAccepters[gvr][clusterName] = make(map[string]pmbrokerv1alpha1.AcceptAPI)
-			}
-			b.apiAccepters[gvr][clusterName][acceptAPI.Name] = acceptAPI
-		},
-		DeleteAcceptAPI: func(gvr metav1.GroupVersionResource, cn multicluster.ClusterName, acceptAPIName string) {
-			clusterName := ProviderPrefix + "#" + string(cn)
-			b.opts.Log.Info("DeleteAcceptAPI", "gvr", gvr, "cluster", clusterName, "acceptAPI", acceptAPIName)
-			b.lock.Lock()
-			defer b.lock.Unlock()
-			clusterAcceptedAPIs, ok := b.apiAccepters[gvr][clusterName]
-			if ok {
-				delete(clusterAcceptedAPIs, acceptAPIName)
-				if len(clusterAcceptedAPIs) == 0 {
-					delete(b.apiAccepters[gvr], clusterName)
-				}
-			}
-		},
-	})
+	scheme, err := newScheme()
 	if err != nil {
-		return nil, fmt.Errorf("unable to create acceptapi provider: %w", err)
+		return nil, fmt.Errorf("building scheme: %w", err)
 	}
 
-	kcpAcceptAPIMgr, err := mcmanager(opts.LocalConfig, acceptAPIScheme, kcpAcceptAPI.Input)
+	wcf, err := workspaceClientFunc(opts.KcpConfig, scheme)
 	if err != nil {
-		return nil, fmt.Errorf("unable to create acceptapi manager: %w", err)
+		return nil, fmt.Errorf("building workspace client factory: %w", err)
 	}
-	if err := mcbuilder.ControllerManagedBy(kcpAcceptAPIMgr).
-		Named(b.opts.Name + "-kcp-acceptapi").
-		For(&pmbrokerv1alpha1.AcceptAPI{}).
-		Complete(kcpAcceptAPI); err != nil {
-		return nil, fmt.Errorf("failed to create acceptapi reconciler: %w", err)
-	}
-	b.managers["kcp-acceptapi"] = kcpAcceptAPIMgr
 
-	/////////////////////////////////////////////////////////////////////////////
-	// Migration Controllers
+	multiProvider := multi.New(multi.Options{})
 
-	b.migrationConfigurations = make(map[metav1.GroupVersionKind]map[metav1.GroupVersionKind]pmbrokerv1alpha1.MigrationConfiguration)
-	migrationScheme := runtime.NewScheme()
-	if err := pmbrokerv1alpha1.AddToScheme(migrationScheme); err != nil {
-		return nil, fmt.Errorf("unable to add broker v1alpha1 to migration scheme: %w", err)
-	}
-	migrationClient, err := ctrlruntimeclient.New(opts.MigrationCoordination, ctrlruntimeclient.Options{
-		Scheme: migrationScheme,
-	})
+	mgr, err := newManager(opts.LocalConfig, scheme, multiProvider, opts.SkipNameValidation)
 	if err != nil {
-		return nil, fmt.Errorf("error creating migration coordination client: %w", err)
+		return nil, fmt.Errorf("creating manager: %w", err)
 	}
-	migrationCluster, err := cluster.New(b.opts.MigrationCoordination,
-		func(o *cluster.Options) {
-			o.Scheme = migrationClient.Scheme()
-		},
-	)
+
+	b := &Broker{log: opts.Log, mgr: mgr}
+
+	acceptAPIProvider, err := setupAcceptAPI(mgr, multiProvider, opts, scheme, wcf)
 	if err != nil {
-		return nil, fmt.Errorf("error creating migration coordination cluster: %w", err)
-	}
-	migrationProvider := single.New("migration-coordination", migrationCluster)
-	migrationMgr, err := mcmanager(opts.MigrationCoordination, migrationClient.Scheme(), migrationProvider)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create migration manager: %w", err)
-	}
-	if err := migrationMgr.GetLocalManager().Add(manager.RunnableFunc(migrationCluster.Start)); err != nil {
-		return nil, fmt.Errorf("error adding migration coordination cluster to migration manager: %w", err)
+		return nil, fmt.Errorf("setting up acceptapi controller: %w", err)
 	}
 
-	migrationConfigOptions := migration.ConfigurationOptions{
-		GetCluster:           migrationMgr.GetCluster,
-		ControllerNamePrefix: b.opts.Name,
-		SetMigrationConfiguration: func(from metav1.GroupVersionKind, to metav1.GroupVersionKind, config pmbrokerv1alpha1.MigrationConfiguration) {
-			b.lock.Lock()
-			defer b.lock.Unlock()
-			if _, ok := b.migrationConfigurations[from]; !ok {
-				b.migrationConfigurations[from] = make(map[metav1.GroupVersionKind]pmbrokerv1alpha1.MigrationConfiguration)
-			}
-			b.migrationConfigurations[from][to] = config
-		},
-		DeleteMigrationConfiguration: func(from metav1.GroupVersionKind, to metav1.GroupVersionKind) {
-			b.lock.Lock()
-			defer b.lock.Unlock()
-			delete(b.migrationConfigurations[from], to)
-			if len(b.migrationConfigurations[from]) == 0 {
-				delete(b.migrationConfigurations, from)
-			}
-		},
-	}
-	if err := migration.SetupConfigurationController(migrationMgr, migrationConfigOptions); err != nil {
-		return nil, fmt.Errorf("failed to create migration reconciler: %w", err)
+	if err := setupCoordination(mgr, multiProvider, opts, scheme, wcf); err != nil {
+		return nil, fmt.Errorf("setting up coordination controllers: %w", err)
 	}
 
-	computeClient, err := ctrlruntimeclient.New(b.opts.ComputeConfig, ctrlruntimeclient.Options{
-		Scheme: runtime.NewScheme(),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("error creating compute client: %w", err)
-	}
-	migrationOptions := migration.Options{
-		Compute:                computeClient,
-		ControllerNamePrefix:   b.opts.Name,
-		GetCoordinationCluster: migrationMgr.GetCluster,
-		GetProviderCluster: func(ctx context.Context, clusterName multicluster.ClusterName) (cluster.Cluster, error) {
-			if !strings.HasPrefix(string(clusterName), ProviderPrefix) {
-				return nil, fmt.Errorf("cluster %q is not a provider cluster: %w", clusterName, multicluster.ErrClusterNotFound)
-			}
-			return b.multiProvider.Get(ctx, clusterName)
-		},
-		GetMigrationConfiguration: func(fromGVK metav1.GroupVersionKind, toGVK metav1.GroupVersionKind) (pmbrokerv1alpha1.MigrationConfiguration, bool) {
-			b.lock.RLock()
-			defer b.lock.RUnlock()
-			toMap, ok := b.migrationConfigurations[fromGVK]
-			if !ok {
-				return pmbrokerv1alpha1.MigrationConfiguration{}, false
-			}
-			v, ok := toMap[toGVK]
-			return v, ok
-		},
-	}
-	if err := migration.SetupController(migrationMgr, migrationOptions); err != nil {
-		return nil, fmt.Errorf("failed to create migration reconciler: %w", err)
-	}
-
-	/////////////////////////////////////////////////////////////////////////////
-	// Staging Workspace Reconciler + General Manager
-
-	generalScheme := runtime.NewScheme()
-	if err := pmbrokerv1alpha1.AddToScheme(generalScheme); err != nil {
-		return nil, fmt.Errorf("unable to add broker v1alpha1 to general scheme: %w", err)
-	}
-
-	stagingOutput := clusters.New()
-
-	// Consumer clusters come from the broker API VW.
-	brokerAPIScheme := runtime.NewScheme()
-	if err := kcpapisv1alpha1.AddToScheme(brokerAPIScheme); err != nil {
-		return nil, fmt.Errorf("unable to add kcp apis to broker api scheme: %w", err)
-	}
-	if err := kcpapisv1alpha2.AddToScheme(brokerAPIScheme); err != nil {
-		return nil, fmt.Errorf("unable to add kcp apis to broker api scheme: %w", err)
-	}
-	brokerAPIs, err := apiexport.New(opts.KcpConfig, opts.BrokerAPIName, apiexport.Options{
-		Scheme: brokerAPIScheme,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("unable to create brokerapi provider: %w", err)
-	}
-	if err := b.multiProvider.AddProvider(ConsumerPrefix, brokerAPIs); err != nil {
-		return nil, fmt.Errorf("error adding brokerapi provider to multi provider: %w", err)
-	}
-	if err := b.multiProvider.AddProvider(ProviderPrefix, stagingOutput); err != nil {
-		return nil, fmt.Errorf("error adding staging output to multi provider: %w", err)
-	}
-
-	generalMgr, err := mcmanager(opts.LocalConfig, generalScheme, b.multiProvider)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create general manager: %w", err)
-	}
-	b.managers["general"] = generalMgr
-
-	// The staging workspace reconciler uses the local manager so it can CRUD
-	// StagingWorkspace objects in the local cluster.
-	b.localClient = generalMgr.GetLocalManager().GetClient()
-
-	treeRootCfg, err := treeRootConfig(opts.KcpConfig, opts.WorkspaceTreeRoot)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build tree-root config: %w", err)
-	}
-
-	stagingReconciler, err := stagingworkspace.New(stagingworkspace.Options{
-		TreeRootConfig: treeRootCfg,
-		Scheme:         generalScheme,
-		Output:         stagingOutput,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create staging workspace reconciler: %w", err)
-	}
-	if err := stagingReconciler.SetupWithManager(generalMgr.GetLocalManager()); err != nil {
-		return nil, fmt.Errorf("failed to setup staging workspace reconciler: %w", err)
-	}
-
-	// Pre-populate stagingToProvider from existing StagingWorkspace objects so
-	// the map survives operator restarts (EnsureStagingCluster is the only other
-	// writer, so the map is empty until each workspace is re-encountered).
-	if err := generalMgr.GetLocalManager().Add(manager.RunnableFunc(func(ctx context.Context) error {
-		swList := &pmbrokerv1alpha1.StagingWorkspaceList{}
-		if err := b.localClient.List(ctx, swList); err != nil {
-			return fmt.Errorf("failed to list StagingWorkspaces on startup: %w", err)
-		}
-		b.lock.Lock()
-		defer b.lock.Unlock()
-		for i := range swList.Items {
-			sw := &swList.Items[i]
-			stagingLabel := sw.Labels[stagingworkspace.StagingClusterLabelKey]
-			providerLabel := sw.Labels[stagingProviderClusterLabel]
-			if stagingLabel == "" || providerLabel == "" {
-				continue
-			}
-			clusterName := ProviderPrefix + "#" + stagingLabel
-			providerClusterName := strings.ReplaceAll(providerLabel, ".", "#")
-			b.stagingToProvider[clusterName] = providerClusterName
-		}
-		return nil
-	})); err != nil {
-		return nil, fmt.Errorf("failed to add staging-to-provider startup runnable: %w", err)
-	}
-
-	// Generic Sync Controllers
-
-	genericOpts := genericreconciler.Options{
-		CoordinationClient:   migrationClient,
-		ControllerNamePrefix: b.opts.Name,
-		GetProviderCluster: func(ctx context.Context, clusterName multicluster.ClusterName) (cluster.Cluster, error) {
-			if !strings.HasPrefix(string(clusterName), ProviderPrefix) {
-				return nil, fmt.Errorf("cluster %q is not a provider cluster: %w", clusterName, multicluster.ErrClusterNotFound)
-			}
-			b.opts.Log.Info("GetProviderCluster", "clusterName", clusterName)
-			return b.multiProvider.Get(ctx, clusterName)
-		},
-		GetConsumerCluster: func(ctx context.Context, clusterName multicluster.ClusterName) (cluster.Cluster, error) {
-			if !strings.HasPrefix(string(clusterName), ConsumerPrefix) {
-				return nil, fmt.Errorf("cluster %q is not a consumer cluster: %w", clusterName, multicluster.ErrClusterNotFound)
-			}
-			return b.multiProvider.Get(ctx, clusterName)
-		},
-		GetProviders: func(gvr metav1.GroupVersionResource) map[string]map[string]pmbrokerv1alpha1.AcceptAPI {
-			b.lock.RLock()
-			defer b.lock.RUnlock()
-			ret := make(map[string]map[string]pmbrokerv1alpha1.AcceptAPI, len(b.apiAccepters[gvr]))
-			for providerClusterName, acceptors := range b.apiAccepters[gvr] {
-				cloned := make(map[string]pmbrokerv1alpha1.AcceptAPI, len(acceptors))
-				maps.Copy(cloned, acceptors)
-				ret[providerClusterName] = cloned
-			}
-			return ret
-		},
-		GetProviderAcceptedAPIs: func(providerOrStagingName string, gvr metav1.GroupVersionResource) ([]pmbrokerv1alpha1.AcceptAPI, error) {
-			b.lock.RLock()
-			defer b.lock.RUnlock()
-			if acceptAPIs, ok := b.apiAccepters[gvr][providerOrStagingName]; ok {
-				return slices.Collect(maps.Values(acceptAPIs)), nil
-			}
-			// Translate staging cluster name -> provider cluster name.
-			if providerName, ok := b.stagingToProvider[providerOrStagingName]; ok {
-				if acceptAPIs, ok := b.apiAccepters[gvr][providerName]; ok {
-					return slices.Collect(maps.Values(acceptAPIs)), nil
-				}
-			}
-			return nil, nil
-		},
-		GetMigrationConfiguration: func(fromGVK metav1.GroupVersionKind, toGVK metav1.GroupVersionKind) (pmbrokerv1alpha1.MigrationConfiguration, bool) {
-			b.lock.RLock()
-			defer b.lock.RUnlock()
-			toMap, ok := b.migrationConfigurations[fromGVK]
-			if !ok {
-				return pmbrokerv1alpha1.MigrationConfiguration{}, false
-			}
-			v, ok := toMap[toGVK]
-			return v, ok
-		},
-
-		// Staging workspace callbacks — these replace annotation-based routing.
-		GetStagingCluster: func(ctx context.Context, consumerCluster string, gvr metav1.GroupVersionResource) (string, bool, error) {
-			swList := &pmbrokerv1alpha1.StagingWorkspaceList{}
-			if err := b.localClient.List(ctx, swList, ctrlruntimeclient.MatchingLabels{
-				stagingConsumerClusterLabel: labelSafeClusterName(consumerCluster),
-			}); err != nil {
-				return "", false, err
-			}
-
-			// Collect candidate staging cluster names under the lock, then verify
-			// each is registered in multiProvider without holding the lock (to avoid
-			// a potential deadlock if multiProvider.Get acquires any lock we hold).
-			var candidates []string
-			b.lock.RLock()
-			for i := range swList.Items {
-				sw := &swList.Items[i]
-				// Skip workspaces being torn down — no new CRs should be routed there.
-				if sw.Status.Phase == pmbrokerv1alpha1.StagingWorkspacePhaseTerminating ||
-					!sw.DeletionTimestamp.IsZero() {
-					continue
-				}
-				// Label stores "."-separated form; convert back to "#"-separated for apiAccepters lookup.
-				providerCluster := strings.ReplaceAll(sw.Labels[stagingProviderClusterLabel], ".", "#")
-				acceptAPIs, ok := b.apiAccepters[gvr][providerCluster]
-				if !ok {
-					continue
-				}
-				// Match the staging workspace against the APIExport it was created for.
-				swAPIExport := sw.Labels[stagingAPIExportLabel]
-				for _, a := range acceptAPIs {
-					if a.Annotations[acceptapi.AnnotationAPIExportName] != swAPIExport {
-						continue
-					}
-					// Label stores bare name (no "provider#" prefix); restore it for multi-provider routing.
-					if rawName := sw.Labels[stagingworkspace.StagingClusterLabelKey]; rawName != "" {
-						candidates = append(candidates, rawName)
-					}
-				}
-			}
-			b.lock.RUnlock()
-
-			// Only return a staging cluster that is already registered and reachable.
-			// Skipping unregistered clusters prevents GetProviderCluster from failing
-			// with a hard error (which causes exponential backoff); the caller will
-			// fall through to EnsureStagingCluster which returns ErrRequeueAfter
-			// (fixed 5-second requeue) instead.
-			for _, rawName := range candidates {
-				clusterName := ProviderPrefix + "#" + rawName
-				if _, err := b.multiProvider.Get(ctx, multicluster.ClusterName(clusterName)); err == nil {
-					return clusterName, true, nil
-				}
-			}
-			return "", false, nil
-		},
-
-		EnsureStagingCluster: func(ctx context.Context, consumerCluster, providerClusterName string, gvr metav1.GroupVersionResource) (string, error) {
-			b.lock.RLock()
-			acceptAPIs := maps.Clone(b.apiAccepters[gvr][providerClusterName])
-			b.lock.RUnlock()
-
-			if len(acceptAPIs) == 0 {
-				return "", fmt.Errorf("no AcceptAPI found for provider %q and GVR %v", providerClusterName, gvr)
-			}
-
-			// Pick the first AcceptAPI to retrieve provider path and export name.
-			var acceptAPI pmbrokerv1alpha1.AcceptAPI
-			for _, a := range acceptAPIs {
-				acceptAPI = a
-				break
-			}
-			providerPath := acceptAPI.Annotations[kcpcore.LogicalClusterPathAnnotationKey]
-			if providerPath == "" {
-				return "", fmt.Errorf("AcceptAPI for provider %q missing %s annotation", providerClusterName, kcpcore.LogicalClusterPathAnnotationKey)
-			}
-			apiExportName := acceptAPI.Annotations[acceptapi.AnnotationAPIExportName]
-			if apiExportName == "" {
-				return "", fmt.Errorf("AcceptAPI for provider %q missing %s annotation", providerClusterName, acceptapi.AnnotationAPIExportName)
-			}
-
-			swName := stagingWorkspaceName(consumerCluster, providerClusterName, apiExportName)
-			clusterName := stagingClusterName(consumerCluster, providerClusterName, apiExportName)
-
-			sw := &pmbrokerv1alpha1.StagingWorkspace{}
-			err := b.localClient.Get(ctx, types.NamespacedName{Name: swName}, sw)
-			if apierrors.IsNotFound(err) {
-				// Before creating the new staging workspace, record the pending
-				// migration on every existing staging workspace for this consumer.
-				// This ensures GetActiveMigration can find the migration state even
-				// if SetNewStagingCluster is never called (e.g. the object is deleted
-				// while EnsureStagingCluster is still returning ErrRequeueAfter).
-				// Note: clusterName already includes the "provider#" prefix.
-				newClusterFullName := clusterName
-				existingList := &pmbrokerv1alpha1.StagingWorkspaceList{}
-				if lerr := b.localClient.List(ctx, existingList, ctrlruntimeclient.MatchingLabels{
-					stagingConsumerClusterLabel: labelSafeClusterName(consumerCluster),
-				}); lerr == nil {
-					for i := range existingList.Items {
-						existing := &existingList.Items[i]
-						if existing.Name == swName {
-							continue // new SW shouldn't exist yet, but be safe
-						}
-						if existing.Annotations[stagingNewClusterAnn] == newClusterFullName {
-							continue // already annotated
-						}
-						if existing.Annotations == nil {
-							existing.Annotations = make(map[string]string)
-						}
-						existing.Annotations[stagingNewClusterAnn] = newClusterFullName
-						// Best-effort: ignore errors so we still proceed to create the new SW.
-						_ = b.localClient.Update(ctx, existing)
-					}
-				}
-
-				sw = &pmbrokerv1alpha1.StagingWorkspace{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: swName,
-						Labels: map[string]string{
-							stagingConsumerClusterLabel:             labelSafeClusterName(consumerCluster),
-							stagingProviderClusterLabel:             labelSafeClusterName(providerClusterName),
-							stagingAPIExportLabel:                   apiExportName,
-							stagingworkspace.StagingClusterLabelKey: clusterNameToStagingLabel(clusterName),
-						},
-					},
-					Spec: pmbrokerv1alpha1.StagingWorkspaceSpec{
-						ConsumerCluster:   consumerCluster,
-						ProviderPath:      providerPath,
-						APIExportName:     apiExportName,
-						WorkspaceTreeRoot: b.opts.WorkspaceTreeRoot,
-					},
-				}
-				if err := b.localClient.Create(ctx, sw); err != nil {
-					return "", fmt.Errorf("failed to create StagingWorkspace %q: %w", swName, err)
-				}
-				return "", fmt.Errorf("staging workspace %q created, waiting for it to be ready: %w", swName, genericreconciler.ErrRequeueAfter)
-			}
-			if err != nil {
-				return "", err
-			}
-
-			if sw.Status.Phase != pmbrokerv1alpha1.StagingWorkspacePhaseReady {
-				return "", fmt.Errorf("staging workspace %q not yet ready (phase: %s): %w", swName, sw.Status.Phase, genericreconciler.ErrRequeueAfter)
-			}
-
-			// Verify the cluster is registered and reachable.
-			if _, err := b.multiProvider.Get(ctx, multicluster.ClusterName(clusterName)); err != nil {
-				return "", fmt.Errorf("staging workspace %q ready but cluster not yet registered: %w", clusterName, genericreconciler.ErrRequeueAfter)
-			}
-
-			b.lock.Lock()
-			b.stagingToProvider[clusterName] = providerClusterName
-			b.lock.Unlock()
-
-			return clusterName, nil
-		},
-
-		GetActiveMigration: func(ctx context.Context, consumerCluster, currentProviderCluster string) (string, string, bool, error) {
-			swList := &pmbrokerv1alpha1.StagingWorkspaceList{}
-			if err := b.localClient.List(ctx, swList, ctrlruntimeclient.MatchingLabels{
-				stagingConsumerClusterLabel: labelSafeClusterName(consumerCluster),
-			}); err != nil {
-				return "", "", false, err
-			}
-			for i := range swList.Items {
-				sw := &swList.Items[i]
-				newCluster, ok := sw.Annotations[stagingNewClusterAnn]
-				if !ok || newCluster == "" {
-					continue
-				}
-				oldCluster := ProviderPrefix + "#" + sw.Labels[stagingworkspace.StagingClusterLabelKey]
-				// Only return the migration whose old or new cluster matches the
-				// current event to handle multiple concurrent migrations correctly.
-				if oldCluster == currentProviderCluster || newCluster == currentProviderCluster {
-					return oldCluster, newCluster, true, nil
-				}
-			}
-			return "", "", false, nil
-		},
-
-		SetNewStagingCluster: func(ctx context.Context, currentStagingCluster, newStagingCluster string) error {
-			swList := &pmbrokerv1alpha1.StagingWorkspaceList{}
-			if err := b.localClient.List(ctx, swList, ctrlruntimeclient.MatchingLabels{
-				stagingworkspace.StagingClusterLabelKey: clusterNameToStagingLabel(currentStagingCluster),
-			}); err != nil {
-				return err
-			}
-			if len(swList.Items) == 0 {
-				return fmt.Errorf("staging workspace for cluster %q not found", currentStagingCluster)
-			}
-			sw := &swList.Items[0]
-			if sw.Annotations == nil {
-				sw.Annotations = make(map[string]string)
-			}
-			sw.Annotations[stagingNewClusterAnn] = newStagingCluster
-			return b.localClient.Update(ctx, sw)
-		},
-
-		ClearNewStagingCluster: func(ctx context.Context, oldStagingCluster string) error {
-			swList := &pmbrokerv1alpha1.StagingWorkspaceList{}
-			if err := b.localClient.List(ctx, swList, ctrlruntimeclient.MatchingLabels{
-				stagingworkspace.StagingClusterLabelKey: clusterNameToStagingLabel(oldStagingCluster),
-			}); err != nil {
-				return err
-			}
-			if len(swList.Items) == 0 {
-				return nil // already gone
-			}
-			sw := &swList.Items[0]
-			if sw.Annotations == nil {
-				return nil
-			}
-			delete(sw.Annotations, stagingNewClusterAnn)
-			return b.localClient.Update(ctx, sw)
-		},
-
-		TrackResourceInStagingWorkspace: func(ctx context.Context, stagingCluster, namespace, name string) error {
-			swList := &pmbrokerv1alpha1.StagingWorkspaceList{}
-			if err := b.localClient.List(ctx, swList, ctrlruntimeclient.MatchingLabels{
-				stagingworkspace.StagingClusterLabelKey: clusterNameToStagingLabel(stagingCluster),
-			}); err != nil {
-				return err
-			}
-			if len(swList.Items) == 0 {
-				return fmt.Errorf("staging workspace for cluster %q not found", stagingCluster)
-			}
-			sw := &swList.Items[0]
-			finalizer := stagingworkspace.ResourceFinalizerPrefix + genericreconciler.SanitizeClusterName(namespace+"/"+name)
-			changed := false
-			if !containsFinalizer(sw.Finalizers, finalizer) {
-				sw.Finalizers = append(sw.Finalizers, finalizer)
-				changed = true
-			}
-			if sw.Annotations == nil {
-				sw.Annotations = make(map[string]string)
-			}
-			if sw.Annotations[stagingworkspace.ResourceTrackedAnnotation] != "true" {
-				sw.Annotations[stagingworkspace.ResourceTrackedAnnotation] = "true"
-				changed = true
-			}
-			if changed {
-				return b.localClient.Update(ctx, sw)
-			}
-			return nil
-		},
-
-		UntrackResourceFromStagingWorkspace: func(ctx context.Context, stagingCluster, namespace, name string) error {
-			swList := &pmbrokerv1alpha1.StagingWorkspaceList{}
-			if err := b.localClient.List(ctx, swList, ctrlruntimeclient.MatchingLabels{
-				stagingworkspace.StagingClusterLabelKey: clusterNameToStagingLabel(stagingCluster),
-			}); err != nil {
-				return err
-			}
-			if len(swList.Items) == 0 {
-				return nil // already gone
-			}
-			sw := &swList.Items[0]
-			finalizer := stagingworkspace.ResourceFinalizerPrefix + genericreconciler.SanitizeClusterName(namespace+"/"+name)
-			sw.Finalizers = removeFinalizer(sw.Finalizers, finalizer)
-			// The staging-workspace reconciler watches StagingWorkspace updates and
-			// deletes the SW once all resource finalizers are gone.
-			return b.localClient.Update(ctx, sw)
-		},
-
-		GetConsumerFromStagingCluster: func(ctx context.Context, stagingCluster string) (string, error) {
-			swList := &pmbrokerv1alpha1.StagingWorkspaceList{}
-			if err := b.localClient.List(ctx, swList, ctrlruntimeclient.MatchingLabels{
-				stagingworkspace.StagingClusterLabelKey: clusterNameToStagingLabel(stagingCluster),
-			}); err != nil {
-				return "", err
-			}
-			if len(swList.Items) == 0 {
-				return "", nil // staging workspace gone, nothing to do
-			}
-			return swList.Items[0].Spec.ConsumerCluster, nil
-		},
-	}
-
-	for _, gvk := range ParseKinds(b.opts.WatchKinds) {
-		if err := genericreconciler.SetupController(generalMgr, gvk, genericOpts); err != nil {
-			return nil, fmt.Errorf("failed to create generic reconciler for %v: %w", gvk, err)
-		}
+	if err := setupDiscovery(mgr, multiProvider, opts, scheme, wcf, acceptAPIProvider); err != nil {
+		return nil, fmt.Errorf("setting up discovery controller: %w", err)
 	}
 
 	return b, nil
 }
 
-// Start starts all managers of the broker.
+// Start runs the manager until ctx is cancelled or it fails.
 func (b *Broker) Start(ctx context.Context) error {
-	g, ctx := errgroup.WithContext(ctx)
-	for _, mgr := range b.managers {
-		g.Go(func() error {
-			return mgr.Start(ctx)
-		})
-	}
-	return g.Wait()
+	return b.mgr.Start(ctx)
 }
 
-// treeRootConfig derives a REST config pointing at the given kcp workspace
-// path by replacing the /clusters/<path> segment in the kcp host URL.
-func treeRootConfig(kcpConfig *rest.Config, workspaceTreeRoot string) (*rest.Config, error) {
-	cfg := rest.CopyConfig(kcpConfig)
-	u, err := url.Parse(cfg.Host)
+// providerClusters returns a cluster filter matching only clusters engaged by
+// the named multi-provider entry.
+func providerClusters(name string) mcbuilder.ClusterFilterFunc {
+	prefix := name + clusterNameSeparator
+	return func(clusterName multicluster.ClusterName, _ cluster.Cluster) bool {
+		return strings.HasPrefix(string(clusterName), prefix)
+	}
+}
+
+// setupAcceptAPI wires the AcceptAPI reconciler on the AcceptAPI virtual
+// workspace and returns the provider for listing AcceptAPIs.
+func setupAcceptAPI(mgr mcmanager.Manager, multiProvider *multi.Provider, opts Options, scheme *runtime.Scheme, wcf workspaceClientFn) (*apiexport.Provider, error) {
+	provider, err := apiexport.New(opts.KcpConfig, opts.AcceptAPIName, apiexport.Options{Scheme: scheme})
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse kcp host URL %q: %w", cfg.Host, err)
+		return nil, fmt.Errorf("creating acceptapi provider: %w", err)
 	}
-	idx := strings.Index(u.Path, "/clusters/")
-	if idx < 0 {
-		return nil, fmt.Errorf("kcp host URL %q does not contain /clusters/ path segment", cfg.Host)
+	if err := multiProvider.AddProvider(AcceptAPIProviderName, provider); err != nil {
+		return nil, fmt.Errorf("adding acceptapi provider: %w", err)
 	}
-	u.Path = u.Path[:idx] + "/clusters/" + workspaceTreeRoot
-	cfg.Host = u.String()
-	return cfg, nil
+
+	reconciler, err := acceptapi.NewReconciler(mgr, acceptapi.Options{
+		VerificationTreeRoot: opts.VerificationTreeRoot,
+		WorkspaceClientFunc:  wcf,
+		ClusterFilter:        providerClusters(AcceptAPIProviderName),
+		RequeueInterval:      opts.RequeueInterval,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating acceptapi reconciler: %w", err)
+	}
+	if err := reconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("setting up acceptapi reconciler: %w", err)
+	}
+
+	return provider, nil
 }
 
-// stagingWorkspaceName returns the deterministic kcp Workspace name for the
-// given (consumerCluster, providerCluster, apiExportName) tuple.
-func stagingWorkspaceName(consumerCluster, providerCluster, apiExportName string) string {
-	consumer := strings.TrimPrefix(consumerCluster, ConsumerPrefix+"#")
-	provider := strings.TrimPrefix(providerCluster, ProviderPrefix+"#")
-	return "staging-" + genericreconciler.SanitizeClusterName(consumer) + "-" + genericreconciler.SanitizeClusterName(provider) + "-" + genericreconciler.SanitizeClusterName(apiExportName)
+// setupCoordination wires the Assignment and StagingWorkspace reconcilers on
+// the coordination workspace.
+func setupCoordination(mgr mcmanager.Manager, multiProvider *multi.Provider, opts Options, scheme *runtime.Scheme, wcf workspaceClientFn) error {
+	coordConfig, err := configForClusterPath(opts.KcpConfig, opts.CoordinationWorkspace)
+	if err != nil {
+		return fmt.Errorf("building coordination config: %w", err)
+	}
+
+	coordCluster, err := cluster.New(coordConfig, func(o *cluster.Options) { o.Scheme = scheme })
+	if err != nil {
+		return fmt.Errorf("creating coordination cluster: %w", err)
+	}
+
+	if err := multiProvider.AddProvider(CoordinationClusterName, single.New(CoordinationClusterName, coordCluster)); err != nil {
+		return fmt.Errorf("adding coordination provider: %w", err)
+	}
+	if err := mgr.GetLocalManager().Add(manager.RunnableFunc(coordCluster.Start)); err != nil {
+		return fmt.Errorf("adding coordination cluster runnable: %w", err)
+	}
+
+	filter := providerClusters(CoordinationClusterName)
+
+	stagingReconciler, err := stagingworkspace.NewReconciler(mgr, stagingworkspace.Options{
+		StagingTreeRoot:     opts.StagingTreeRoot,
+		WorkspaceClientFunc: wcf,
+		ClusterFilter:       filter,
+		RequeueInterval:     opts.RequeueInterval,
+	})
+	if err != nil {
+		return fmt.Errorf("creating stagingworkspace reconciler: %w", err)
+	}
+	if err := stagingReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("setting up stagingworkspace reconciler: %w", err)
+	}
+
+	computeClient, err := ctrlruntimeclient.New(opts.ComputeConfig, ctrlruntimeclient.Options{Scheme: scheme})
+	if err != nil {
+		return fmt.Errorf("building compute client: %w", err)
+	}
+
+	migrationReconciler, err := migration.NewReconciler(mgr, migration.Options{
+		ComputeClient:       computeClient,
+		WorkspaceClientFunc: wcf,
+		StagingTreeRoot:     opts.StagingTreeRoot,
+		StageNamespace:      opts.StageNamespace,
+		ClusterFilter:       filter,
+		RequeueInterval:     opts.RequeueInterval,
+	})
+	if err != nil {
+		return fmt.Errorf("creating migration reconciler: %w", err)
+	}
+	if err := migrationReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("setting up migration reconciler: %w", err)
+	}
+
+	return nil
 }
 
-// stagingClusterName returns the multi-provider key used to register the
-// staging cluster for the given (consumerCluster, providerCluster, apiExportName) tuple.
-// Uses '.' instead of '#' so the name is also a valid Kubernetes label value.
-func stagingClusterName(consumerCluster, providerCluster, apiExportName string) string {
-	consumer := strings.TrimPrefix(consumerCluster, ConsumerPrefix+"#")
-	provider := strings.TrimPrefix(providerCluster, ProviderPrefix+"#")
-	return ProviderPrefix + "#staging-" + genericreconciler.SanitizeClusterName(consumer) + "-" + genericreconciler.SanitizeClusterName(provider) + "-" + genericreconciler.SanitizeClusterName(apiExportName)
-}
+// setupDiscovery wires the discovery controller watching
+// APIExportEndpointSlices in the broker workspace. Each slice except the
+// AcceptAPI one gets a provider and controllers for its brokered resources.
+func setupDiscovery(mgr mcmanager.Manager, multiProvider *multi.Provider, opts Options, scheme *runtime.Scheme, wcf workspaceClientFn, acceptAPIProvider *apiexport.Provider) error {
+	coordinationClient, err := wcf(opts.CoordinationWorkspace)
+	if err != nil {
+		return fmt.Errorf("building coordination client: %w", err)
+	}
 
-// labelSafeClusterName converts a cluster name to a Kubernetes-label-safe form
-// by replacing '#' with '.'. kcp cluster IDs are lowercase hex (no '.'), so
-// the conversion is reversible via strings.ReplaceAll(s, ".", "#").
-func labelSafeClusterName(name string) string {
-	return strings.ReplaceAll(name, "#", ".")
-}
+	kcpCluster, err := cluster.New(opts.KcpConfig, func(o *cluster.Options) { o.Scheme = scheme })
+	if err != nil {
+		return fmt.Errorf("creating kcp workspace cluster: %w", err)
+	}
+	if err := mgr.GetLocalManager().Add(manager.RunnableFunc(kcpCluster.Start)); err != nil {
+		return fmt.Errorf("adding kcp workspace cluster runnable: %w", err)
+	}
 
-// clusterNameToStagingLabel strips the "provider#" prefix from a staging cluster name,
-// yielding the bare "staging-<hash>-<hash>" value stored in StagingClusterLabelKey.
-// This bare name is what stagingOutput registers, and the multi-provider prepends
-// "provider#" automatically via wrappedAware.Engage.
-func clusterNameToStagingLabel(clusterName string) string {
-	return strings.TrimPrefix(clusterName, ProviderPrefix+"#")
-}
+	disc := &discovery{
+		log:           opts.Log.WithName("discovery"),
+		client:        kcpCluster.GetClient(),
+		kcpConfig:     opts.KcpConfig,
+		scheme:        scheme,
+		acceptAPIName: opts.AcceptAPIName,
+		wcf:           wcf,
+		providers:     multiProvider,
+		register:      registerBrokeredResource(mgr, opts, wcf, coordinationClient, acceptAPIProvider),
+	}
 
-// containsFinalizer reports whether s contains the given finalizer string.
-func containsFinalizer(s []string, finalizer string) bool {
-	for _, f := range s {
-		if f == finalizer {
-			return true
+	slicesForExport := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj ctrlruntimeclient.Object) []reconcile.Request {
+		slices := &kcpapisv1alpha1.APIExportEndpointSliceList{}
+		if err := disc.client.List(ctx, slices); err != nil {
+			disc.log.Error(err, "listing APIExportEndpointSlices")
+			return nil
 		}
-	}
-	return false
-}
-
-// removeFinalizer returns a copy of s with all occurrences of finalizer removed.
-func removeFinalizer(s []string, finalizer string) []string {
-	out := s[:0:0]
-	for _, f := range s {
-		if f != finalizer {
-			out = append(out, f)
+		var reqs []reconcile.Request
+		for _, slice := range slices.Items {
+			if slice.Spec.APIExport.Name == obj.GetName() {
+				reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{Name: slice.Name}})
+			}
 		}
+		return reqs
+	})
+
+	if err := ctrl.NewControllerManagedBy(mgr.GetLocalManager()).
+		Named("discovery").
+		WatchesRawSource(source.Kind(kcpCluster.GetCache(), ctrlruntimeclient.Object(&kcpapisv1alpha1.APIExportEndpointSlice{}), &handler.EnqueueRequestForObject{})).
+		WatchesRawSource(source.Kind(kcpCluster.GetCache(), ctrlruntimeclient.Object(&kcpapisv1alpha2.APIExport{}), slicesForExport)).
+		Complete(disc); err != nil {
+		return fmt.Errorf("setting up discovery controller: %w", err)
 	}
-	return out
+
+	return nil
 }

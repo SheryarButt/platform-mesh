@@ -25,8 +25,9 @@ import (
 	"github.com/kcp-dev/sdk/client/clientset/versioned/typed/apis/v1alpha2"
 	v1alpha10 "github.com/kcp-dev/sdk/client/clientset/versioned/typed/cache/v1alpha1"
 	v1alpha11 "github.com/kcp-dev/sdk/client/clientset/versioned/typed/core/v1alpha1"
-	v1alpha12 "github.com/kcp-dev/sdk/client/clientset/versioned/typed/tenancy/v1alpha1"
-	v1alpha13 "github.com/kcp-dev/sdk/client/clientset/versioned/typed/topology/v1alpha1"
+	v1alpha12 "github.com/kcp-dev/sdk/client/clientset/versioned/typed/migration/v1alpha1"
+	v1alpha13 "github.com/kcp-dev/sdk/client/clientset/versioned/typed/tenancy/v1alpha1"
+	v1alpha14 "github.com/kcp-dev/sdk/client/clientset/versioned/typed/topology/v1alpha1"
 	mock "github.com/stretchr/testify/mock"
 	"k8s.io/client-go/discovery"
 )
@@ -288,20 +289,66 @@ func (_c *Interface_Discovery_Call) RunAndReturn(run func() discovery.DiscoveryI
 	return _c
 }
 
+// MigrationV1alpha1 provides a mock function for the type Interface
+func (_mock *Interface) MigrationV1alpha1() v1alpha12.MigrationV1alpha1Interface {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for MigrationV1alpha1")
+	}
+
+	var r0 v1alpha12.MigrationV1alpha1Interface
+	if returnFunc, ok := ret.Get(0).(func() v1alpha12.MigrationV1alpha1Interface); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(v1alpha12.MigrationV1alpha1Interface)
+		}
+	}
+	return r0
+}
+
+// Interface_MigrationV1alpha1_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'MigrationV1alpha1'
+type Interface_MigrationV1alpha1_Call struct {
+	*mock.Call
+}
+
+// MigrationV1alpha1 is a helper method to define mock.On call
+func (_e *Interface_Expecter) MigrationV1alpha1() *Interface_MigrationV1alpha1_Call {
+	return &Interface_MigrationV1alpha1_Call{Call: _e.mock.On("MigrationV1alpha1")}
+}
+
+func (_c *Interface_MigrationV1alpha1_Call) Run(run func()) *Interface_MigrationV1alpha1_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *Interface_MigrationV1alpha1_Call) Return(migrationV1alpha1Interface v1alpha12.MigrationV1alpha1Interface) *Interface_MigrationV1alpha1_Call {
+	_c.Call.Return(migrationV1alpha1Interface)
+	return _c
+}
+
+func (_c *Interface_MigrationV1alpha1_Call) RunAndReturn(run func() v1alpha12.MigrationV1alpha1Interface) *Interface_MigrationV1alpha1_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // TenancyV1alpha1 provides a mock function for the type Interface
-func (_mock *Interface) TenancyV1alpha1() v1alpha12.TenancyV1alpha1Interface {
+func (_mock *Interface) TenancyV1alpha1() v1alpha13.TenancyV1alpha1Interface {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for TenancyV1alpha1")
 	}
 
-	var r0 v1alpha12.TenancyV1alpha1Interface
-	if returnFunc, ok := ret.Get(0).(func() v1alpha12.TenancyV1alpha1Interface); ok {
+	var r0 v1alpha13.TenancyV1alpha1Interface
+	if returnFunc, ok := ret.Get(0).(func() v1alpha13.TenancyV1alpha1Interface); ok {
 		r0 = returnFunc()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(v1alpha12.TenancyV1alpha1Interface)
+			r0 = ret.Get(0).(v1alpha13.TenancyV1alpha1Interface)
 		}
 	}
 	return r0
@@ -324,30 +371,30 @@ func (_c *Interface_TenancyV1alpha1_Call) Run(run func()) *Interface_TenancyV1al
 	return _c
 }
 
-func (_c *Interface_TenancyV1alpha1_Call) Return(tenancyV1alpha1Interface v1alpha12.TenancyV1alpha1Interface) *Interface_TenancyV1alpha1_Call {
+func (_c *Interface_TenancyV1alpha1_Call) Return(tenancyV1alpha1Interface v1alpha13.TenancyV1alpha1Interface) *Interface_TenancyV1alpha1_Call {
 	_c.Call.Return(tenancyV1alpha1Interface)
 	return _c
 }
 
-func (_c *Interface_TenancyV1alpha1_Call) RunAndReturn(run func() v1alpha12.TenancyV1alpha1Interface) *Interface_TenancyV1alpha1_Call {
+func (_c *Interface_TenancyV1alpha1_Call) RunAndReturn(run func() v1alpha13.TenancyV1alpha1Interface) *Interface_TenancyV1alpha1_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // TopologyV1alpha1 provides a mock function for the type Interface
-func (_mock *Interface) TopologyV1alpha1() v1alpha13.TopologyV1alpha1Interface {
+func (_mock *Interface) TopologyV1alpha1() v1alpha14.TopologyV1alpha1Interface {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for TopologyV1alpha1")
 	}
 
-	var r0 v1alpha13.TopologyV1alpha1Interface
-	if returnFunc, ok := ret.Get(0).(func() v1alpha13.TopologyV1alpha1Interface); ok {
+	var r0 v1alpha14.TopologyV1alpha1Interface
+	if returnFunc, ok := ret.Get(0).(func() v1alpha14.TopologyV1alpha1Interface); ok {
 		r0 = returnFunc()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(v1alpha13.TopologyV1alpha1Interface)
+			r0 = ret.Get(0).(v1alpha14.TopologyV1alpha1Interface)
 		}
 	}
 	return r0
@@ -370,12 +417,12 @@ func (_c *Interface_TopologyV1alpha1_Call) Run(run func()) *Interface_TopologyV1
 	return _c
 }
 
-func (_c *Interface_TopologyV1alpha1_Call) Return(topologyV1alpha1Interface v1alpha13.TopologyV1alpha1Interface) *Interface_TopologyV1alpha1_Call {
+func (_c *Interface_TopologyV1alpha1_Call) Return(topologyV1alpha1Interface v1alpha14.TopologyV1alpha1Interface) *Interface_TopologyV1alpha1_Call {
 	_c.Call.Return(topologyV1alpha1Interface)
 	return _c
 }
 
-func (_c *Interface_TopologyV1alpha1_Call) RunAndReturn(run func() v1alpha13.TopologyV1alpha1Interface) *Interface_TopologyV1alpha1_Call {
+func (_c *Interface_TopologyV1alpha1_Call) RunAndReturn(run func() v1alpha14.TopologyV1alpha1Interface) *Interface_TopologyV1alpha1_Call {
 	_c.Call.Return(run)
 	return _c
 }

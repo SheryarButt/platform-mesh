@@ -19,33 +19,23 @@ package broker
 import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
-	mctrl "sigs.k8s.io/multicluster-runtime"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 )
 
-// manager creates a new multicluster manager that disables metrics
-// etcpp. to allow running multiple manager instances in the same
-// process.
-// Background is that mcr stops clusters if a cluster doesn't have all
-// of the resources installed it expects.
-// Since e.g. the VW for AcceptAPI won't have the brokered resources
-// installed this will always result in failures.
-func mcmanager(local *rest.Config, scheme *runtime.Scheme, provider multicluster.Provider) (mctrl.Manager, error) {
-	return mctrl.NewManager(
-		local,
-		provider,
-		mctrl.Options{
-			Scheme:           scheme,
-			PprofBindAddress: "0", // disable pprof
-			Controller: config.Controller{
-				SkipNameValidation: ptr.To(true),
-			},
-			Metrics: metricsserver.Options{
-				BindAddress: "0", // disable metrics
-			},
+// newManager returns a multicluster manager configured to coexist with other
+// managers in the same process.
+func newManager(cfg *rest.Config, scheme *runtime.Scheme, provider multicluster.Provider, skipNameValidation *bool) (mcmanager.Manager, error) {
+	return mcmanager.New(cfg, provider, mcmanager.Options{
+		Scheme:           scheme,
+		PprofBindAddress: "0",
+		Controller: config.Controller{
+			SkipNameValidation: skipNameValidation,
 		},
-	)
+		Metrics: metricsserver.Options{
+			BindAddress: "0",
+		},
+	})
 }

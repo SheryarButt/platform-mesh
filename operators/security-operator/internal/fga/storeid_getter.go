@@ -18,15 +18,32 @@ package fga
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"go.platform-mesh.io/golang-commons/logger"
 )
+
+// ErrStoreNotFound is returned when an OpenFGA store name cannot be resolved.
+var ErrStoreNotFound = errors.New("store not found")
+
+// IsStoreNotFound reports whether err indicates the org store no longer exists.
+func IsStoreNotFound(err error) bool {
+	if errors.Is(err, ErrStoreNotFound) {
+		return true
+	}
+	if st, ok := status.FromError(err); ok && st.Code() == codes.Code(openfgav1.NotFoundErrorCode_store_id_not_found) {
+		return true
+	}
+	return false
+}
 
 // StoreIDGetter should return the OpenFGA store ID for a store name.
 type StoreIDGetter interface {
@@ -86,7 +103,7 @@ func (m *CachingStoreIDGetter) Get(ctx context.Context, storeName string) (strin
 		return item.Value(), nil
 	}
 
-	return "", fmt.Errorf("store %q not found", storeName)
+	return "", fmt.Errorf("store %q not found: %w", storeName, ErrStoreNotFound)
 }
 
 type storeIDLoader struct {

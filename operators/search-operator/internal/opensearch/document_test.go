@@ -22,7 +22,7 @@ import (
 )
 
 func TestDefaultIndexMappingIsValidJSON(t *testing.T) {
-	mapping, err := DefaultIndexMapping(nil, "")
+	mapping, err := DefaultIndexMapping(nil, nil, nil, "")
 	if err != nil {
 		t.Fatalf("DefaultIndexMapping() returned error: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestDefaultIndexMappingIsValidJSON(t *testing.T) {
 }
 
 func TestDefaultIndexMappingIncludesSemanticFields(t *testing.T) {
-	mapping, err := DefaultIndexMapping([]string{"description", "spec.summary"}, "model-123")
+	mapping, err := DefaultIndexMapping(nil, []string{"description", "spec.summary"}, nil, "model-123")
 	if err != nil {
 		t.Fatalf("DefaultIndexMapping() returned error: %v", err)
 	}
@@ -44,8 +44,10 @@ func TestDefaultIndexMappingIncludesSemanticFields(t *testing.T) {
 	}
 
 	properties := js["properties"].(map[string]any)
+	semanticFields := properties["semantic_fields"].(map[string]any)
+	semanticProperties := semanticFields["properties"].(map[string]any)
 
-	description := properties["description"].(map[string]any)
+	description := semanticProperties["description"].(map[string]any)
 
 	//nolint:goconst
 	if got := description["type"]; got != "semantic" {
@@ -55,7 +57,7 @@ func TestDefaultIndexMappingIncludesSemanticFields(t *testing.T) {
 		t.Fatalf("description model_id = %v, want model-123", got)
 	}
 
-	spec := properties["spec"].(map[string]any)
+	spec := semanticProperties["spec"].(map[string]any)
 	specProperties := spec["properties"].(map[string]any)
 	summary := specProperties["summary"].(map[string]any)
 
@@ -69,7 +71,42 @@ func TestDefaultIndexMappingIncludesSemanticFields(t *testing.T) {
 }
 
 func TestDefaultIndexMappingRequiresSemanticModelID(t *testing.T) {
-	if _, err := DefaultIndexMapping([]string{"description"}, ""); err == nil {
+	if _, err := DefaultIndexMapping(nil, []string{"description"}, nil, ""); err == nil {
 		t.Fatal("DefaultIndexMapping() error = nil, want semantic model id validation error")
+	}
+}
+
+func TestDefaultIndexMappingMapsDocumentBuckets(t *testing.T) {
+	mapping, err := DefaultIndexMapping(nil, nil, []string{"spec.region"}, "")
+	if err != nil {
+		t.Fatalf("DefaultIndexMapping() returned error: %v", err)
+	}
+
+	var js map[string]any
+	if err := json.Unmarshal([]byte(mapping), &js); err != nil {
+		t.Fatalf("DefaultIndexMapping() returned invalid JSON: %v\nMapping content:\n%s", err, mapping)
+	}
+
+	properties := js["properties"].(map[string]any)
+	defaultFields := properties["default_fields"].(map[string]any)
+	if got := defaultFields["dynamic"]; got != true {
+		t.Fatalf("default_fields dynamic = %v, want true", got)
+	}
+	filterableFields := properties["filterable_fields"].(map[string]any)
+	if got := filterableFields["dynamic"]; got != true {
+		t.Fatalf("filterable_fields dynamic = %v, want true", got)
+	}
+
+	templates := js["dynamic_templates"].([]any)
+	if len(templates) != 1 {
+		t.Fatalf("dynamic_templates len = %d, want 1", len(templates))
+	}
+	template := templates[0].(map[string]any)["filterable_fields_keywords"].(map[string]any)
+	if got := template["path_match"]; got != "filterable_fields.*" {
+		t.Fatalf("path_match = %v, want filterable_fields.*", got)
+	}
+	mappingTemplate := template["mapping"].(map[string]any)
+	if got := mappingTemplate["type"]; got != "keyword" {
+		t.Fatalf("filterable dynamic template type = %v, want keyword", got)
 	}
 }

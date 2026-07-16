@@ -67,6 +67,7 @@ func NewIDPSubroutine(mgr mcmanager.Manager, kcpClientGetter iclient.KCPClientGe
 var (
 	_ subroutines.Initializer = &IDPSubroutine{}
 	_ subroutines.Processor   = &IDPSubroutine{}
+	_ subroutines.Terminator  = &IDPSubroutine{}
 )
 
 type IDPSubroutine struct {
@@ -185,6 +186,31 @@ func (i *IDPSubroutine) reconcile(ctx context.Context, obj ctrlruntimeclient.Obj
 	}
 
 	log.Info().Str("workspace", workspaceName).Msg("idp resource is ready")
+	return subroutines.OK(), nil
+}
+
+// Terminate deletes the IdentityProviderConfiguration created during org init.
+func (i *IDPSubroutine) Terminate(ctx context.Context, obj ctrlruntimeclient.Object) (subroutines.Result, error) {
+	lc := obj.(*kcpcorev1alpha1.LogicalCluster)
+
+	workspaceName := getWorkspaceName(lc)
+	if workspaceName == "" {
+		return subroutines.OK(), fmt.Errorf("failed to get workspace name")
+	}
+
+	orgsClient, err := i.kcpClientGetter.NewClientForLogicalCluster(ctx, config.OrgsClusterPath)
+	if err != nil {
+		return subroutines.OK(), fmt.Errorf("getting orgs client: %w", err)
+	}
+
+	pending, err := deleteOrgResource(ctx, orgsClient, &pmcorev1alpha1.IdentityProviderConfiguration{}, workspaceName)
+	if err != nil {
+		return subroutines.OK(), fmt.Errorf("deleting IdentityProviderConfiguration %s: %w", workspaceName, err)
+	}
+	if pending {
+		return subroutines.StopWithRequeue(orgResourceDeleteRequeue, "waiting for IdentityProviderConfiguration to be deleted"), nil
+	}
+
 	return subroutines.OK(), nil
 }
 

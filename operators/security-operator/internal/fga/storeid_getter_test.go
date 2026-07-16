@@ -19,6 +19,7 @@ package fga
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -26,6 +27,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"go.platform-mesh.io/golang-commons/logger/testlogger"
 	"go.platform-mesh.io/security-operator/internal/subroutine/mocks"
@@ -85,6 +88,7 @@ func TestCachingStoreIDGetter_Get(t *testing.T) {
 
 		id, err := getter.Get(context.Background(), "missing-store")
 		assert.Error(t, err)
+		assert.True(t, errors.Is(err, ErrStoreNotFound))
 		assert.Contains(t, err.Error(), "store \"missing-store\" not found")
 		assert.Empty(t, id)
 	})
@@ -100,5 +104,20 @@ func TestCachingStoreIDGetter_Get(t *testing.T) {
 		id, err := getter.Get(context.Background(), "foo")
 		assert.Error(t, err)
 		assert.Empty(t, id)
+	})
+}
+
+func TestIsStoreNotFound(t *testing.T) {
+	t.Run("sentinel error", func(t *testing.T) {
+		assert.True(t, IsStoreNotFound(fmt.Errorf("store %q not found: %w", "myorg", ErrStoreNotFound)))
+	})
+
+	t.Run("grpc store_id_not_found", func(t *testing.T) {
+		err := status.Error(codes.Code(openfgav1.NotFoundErrorCode_store_id_not_found), "not found")
+		assert.True(t, IsStoreNotFound(err))
+	})
+
+	t.Run("unrelated error", func(t *testing.T) {
+		assert.False(t, IsStoreNotFound(errors.New("connection refused")))
 	})
 }

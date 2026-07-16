@@ -21,6 +21,8 @@ rules:
   - example.platform-mesh.io
   resources:
   - certificates
+  - dnszones
+  - postgres
   - vms
   verbs:
   - create
@@ -34,6 +36,8 @@ rules:
   - example.platform-mesh.io
   resources:
   - certificates/finalizers
+  - dnszones/finalizers
+  - postgres/finalizers
   - vms/finalizers
   verbs:
   - update
@@ -41,6 +45,8 @@ rules:
   - example.platform-mesh.io
   resources:
   - certificates/status
+  - dnszones/status
+  - postgres/status
   - vms/status
   verbs:
   - get

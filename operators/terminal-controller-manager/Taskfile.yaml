@@ -40,7 +40,7 @@ tasks:
       - task: tools:generate-deepcopy
         vars:
           PATH: /terminal/...
-      - "{{.BIN}}/apigen --input-dir config/crd/bases --output-dir ./config/resources"
+      - "{{.BIN}}/apigen --input-dir config/crd/bases --output-dir ./config/resources --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
 
   build:
     cmds:

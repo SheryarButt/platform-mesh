@@ -192,9 +192,3 @@ type FileList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []File `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&Object{}, &ObjectList{})
-	SchemeBuilder.Register(&Block{}, &BlockList{})
-	SchemeBuilder.Register(&File{}, &FileList{})
-}

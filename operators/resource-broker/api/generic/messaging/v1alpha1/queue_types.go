@@ -200,9 +200,3 @@ type MessageBrokerList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []MessageBroker `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&PubSub{}, &PubSubList{})
-	SchemeBuilder.Register(&EventStreaming{}, &EventStreamingList{})
-	SchemeBuilder.Register(&MessageBroker{}, &MessageBrokerList{})
-}

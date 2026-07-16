@@ -42,7 +42,7 @@ tasks:
       - task: tools:generate-deepcopy
         vars:
           PATH: /marketplace/...
-      - "{{.BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources"
+      - "{{.BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
   build:
     cmds:
       - go build ./...

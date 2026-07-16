@@ -596,3 +596,57 @@ func TestIDPSubroutine_Process(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, subroutines.OK(), result)
 }
+
+func TestIDPSubroutine_TerminateDeletesIDPAndWaitsForFinalizers(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	sub, cl := newIDPTerminateSubroutine(t,
+		orgIdentityProvider(orgTerminateTestOrg, "core.platform-mesh.io/idp-finalizer"),
+	)
+
+	result, err := sub.Terminate(ctx, logicalClusterForOrg(orgTerminateTestOrg))
+
+	require.NoError(t, err)
+	assert.True(t, result.IsStopWithRequeue())
+	assert.Equal(t, orgResourceDeleteRequeue, result.Requeue())
+
+	var idp pmcorev1alpha1.IdentityProviderConfiguration
+	requireDeleting(t, cl, &idp, orgTerminateTestOrg)
+}
+
+func TestIDPSubroutine_TerminateReturnsOKWhenIDPIsGone(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	sub, _ := newIDPTerminateSubroutine(t)
+
+	result, err := sub.Terminate(ctx, logicalClusterForOrg(orgTerminateTestOrg))
+
+	require.NoError(t, err)
+	assert.Equal(t, subroutines.OK(), result)
+}
+
+func TestIDPSubroutine_TerminateRequiresWorkspaceName(t *testing.T) {
+	t.Parallel()
+
+	mgr := mocks.NewMockManager(t)
+	kcpHelper := mocks.NewMockKCPClientGetter(t)
+	sub, err := NewIDPSubroutine(mgr, kcpHelper, config.Config{})
+	require.NoError(t, err)
+
+	result, err := sub.Terminate(context.Background(), &kcpcorev1alpha1.LogicalCluster{})
+
+	require.Error(t, err)
+	assert.Equal(t, subroutines.OK(), result)
+}
+
+func newIDPTerminateSubroutine(t *testing.T, objs ...ctrlruntimeclient.Object) (*IDPSubroutine, ctrlruntimeclient.Client) {
+	t.Helper()
+
+	cl := newOrgResourceFakeClient(t, objs...)
+	clientGetter := mocks.NewMockKCPClientGetter(t)
+	clientGetter.EXPECT().NewClientForLogicalCluster(context.Background(), config.OrgsClusterPath).Return(cl, nil).Once()
+
+	return &IDPSubroutine{kcpClientGetter: clientGetter}, cl
+}

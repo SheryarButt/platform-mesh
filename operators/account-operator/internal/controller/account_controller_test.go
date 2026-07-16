@@ -80,7 +80,6 @@ type AccountTestSuite struct {
 
 	logger *logger.Logger
 	ctx    context.Context
-	cancel context.CancelCauseFunc
 }
 
 func TestAccountTestSuite(t *testing.T) {
@@ -97,7 +96,16 @@ func (s *AccountTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 	ctrl.SetLogger(logger.Logr())
 	s.logger = logger
-	s.ctx, s.cancel, _ = platformmeshcontext.StartContext(logger, nil, 0)
+
+	var cancel context.CancelCauseFunc
+	s.ctx, cancel, _ = platformmeshcontext.StartContext(logger, nil, 0)
+
+	// Do not use the Suite's teardown to stop kcp, since this would happen
+	// before the test's Cleanup functions are called. Since we use the envtest's
+	// workspace fixture, we have to keep kcp alive until that fixture can clean up.
+	s.T().Cleanup(func() {
+		cancel(fmt.Errorf("tearing down test suite"))
+	})
 
 	s.scheme = runtime.NewScheme()
 	utilruntime.Must(pmcorev1alpha1.AddToScheme(s.scheme))
@@ -125,13 +133,6 @@ func (s *AccountTestSuite) SetupSuite() {
 	s.setupDefaultOrg()
 }
 
-func (s *AccountTestSuite) TearDownSuite() {
-	if err := s.env.Stop(); err != nil {
-		s.T().Logf("Error stopping kcp environment: %v", err)
-	}
-	s.cancel(fmt.Errorf("tearing down test suite"))
-}
-
 func (s *AccountTestSuite) TestAddingFinalizer() {
 	testContext := context.Background()
 	accountName := "test-account-finalizer"
@@ -145,11 +146,11 @@ func (s *AccountTestSuite) TestAddingFinalizer() {
 		},
 	}
 
-	s.Require().NoError(s.rootOrgsDefaultClient.Create(testContext, account))
+	s.Require().NoError(s.rootOrgsClient.Create(testContext, account))
 
 	createdAccount := pmcorev1alpha1.Account{}
 	s.Assert().Eventually(func() bool {
-		err := s.rootOrgsDefaultClient.Get(testContext, types.NamespacedName{Name: accountName, Namespace: defaultNamespace}, &createdAccount)
+		err := s.rootOrgsClient.Get(testContext, types.NamespacedName{Name: accountName, Namespace: defaultNamespace}, &createdAccount)
 
 		return err == nil && len(createdAccount.Finalizers) == 2
 	}, defaultTestTimeout*2, defaultTickInterval)

@@ -16,11 +16,11 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: resource-broker-system
 resources:
-- ../crd
 - ../rbac
+- namespace.yaml
 - deployment.yaml
 
 images:
 - name: broker
   newName: ghcr.io/platform-mesh/resource-broker
-  newTag: latest@sha256:6a459bc55a7748173bdd5c7f78730c9c5a09c4e3caf7908a45253569115f3704
+  newTag: latest

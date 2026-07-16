@@ -139,10 +139,7 @@ func chunkRanges(total, chunkSize int) [][2]int {
 
 	ranges := make([][2]int, 0, (total+chunkSize-1)/chunkSize)
 	for start := 0; start < total; start += chunkSize {
-		end := start + chunkSize
-		if end > total {
-			end = total
-		}
+		end := min(start+chunkSize, total)
 		ranges = append(ranges, [2]int{start, end})
 	}
 

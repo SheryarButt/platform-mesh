@@ -16,7 +16,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: certificates.example.platform-mesh.io
 spec:
   group: example.platform-mesh.io
@@ -163,6 +163,10 @@ spec:
                   type: object
                 description: RelatedResources lists resources related to this VM.
                 type: object
+              status:
+                description: Status reports the provider-side availability of the
+                  Certificate.
+                type: string
             type: object
         required:
         - spec
