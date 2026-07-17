@@ -51,7 +51,7 @@ func NewOrgContextMiddleware(validator search.OrgAccessValidator, localDevelopme
 	}
 }
 
-func (m *OrgContextMiddleware) SetRequestContext() func(http.Handler) http.Handler {
+func (o *OrgContextMiddleware) SetRequestContext() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
@@ -63,8 +63,8 @@ func (m *OrgContextMiddleware) SetRequestContext() func(http.Handler) http.Handl
 				return
 			}
 			localHost := isLocalHost(r.Host)
-			if localHost {
-				org = m.localOrg
+			if o.localDevelopment || localHost {
+				org = o.localOrg
 			}
 
 			token, err := pmcontext.GetWebTokenFromContext(ctx)
@@ -73,7 +73,7 @@ func (m *OrgContextMiddleware) SetRequestContext() func(http.Handler) http.Handl
 				return
 			}
 
-			if !m.localDevelopment && !localHost {
+			if !o.localDevelopment && !localHost {
 				authHeader, err := pmcontext.GetAuthHeaderFromContext(ctx)
 				if err != nil {
 					http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
@@ -85,7 +85,7 @@ func (m *OrgContextMiddleware) SetRequestContext() func(http.Handler) http.Handl
 					return
 				}
 
-				allowed, err := m.validator.ValidateTokenForOrg(ctx, authHeader, org)
+				allowed, err := o.validator.ValidateTokenForOrg(ctx, authHeader, org)
 				if err != nil {
 					log.Error().
 						Err(err).

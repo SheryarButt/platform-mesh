@@ -7,8 +7,8 @@ require (
 	github.com/coreos/go-oidc v2.5.0+incompatible
 	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/kcp-dev/logicalcluster/v3 v3.0.5
-	github.com/kcp-dev/multicluster-provider v0.7.1
-	github.com/kcp-dev/sdk v0.32.0
+	github.com/kcp-dev/multicluster-provider v0.8.0
+	github.com/kcp-dev/sdk v0.32.3
 	github.com/oapi-codegen/runtime v1.4.1
 	github.com/openfga/api/proto v0.0.0-20260319214821-f153694bfc20
 	github.com/prometheus/client_golang v1.23.2
@@ -20,8 +20,8 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0
 	go.opentelemetry.io/otel v1.44.0
 	go.platform-mesh.io/account-operator v0.0.0-20260622214312-00032b10b96f
-	go.platform-mesh.io/apis v0.0.2
-	go.platform-mesh.io/golang-commons v0.18.0
+	go.platform-mesh.io/apis v0.0.3
+	go.platform-mesh.io/golang-commons v0.18.1
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.21.0
 	google.golang.org/grpc v1.81.1
@@ -31,9 +31,9 @@ require (
 	sigs.k8s.io/multicluster-runtime v0.24.1
 )
 
-replace github.com/kcp-dev/multicluster-provider => github.com/kcp-dev/multicluster-provider v0.8.1-0.20260703185807-e3fcb715925a
+require golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a // indirect
 
-replace github.com/kcp-dev/multicluster-provider/client => github.com/kcp-dev/multicluster-provider/client v0.8.1-0.20260703185807-e3fcb715925a
+replace github.com/kcp-dev/multicluster-provider/client => github.com/kcp-dev/multicluster-provider/client v0.8.0
 
 require (
 	github.com/agnivade/levenshtein v1.2.1 // indirect
@@ -78,7 +78,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/kcp-dev/apimachinery/v2 v2.32.0 // indirect
+	github.com/kcp-dev/apimachinery/v2 v2.32.3 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.21 // indirect
@@ -104,7 +104,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
-	go.platform-mesh.io/subroutines v0.6.0 // indirect
+	go.platform-mesh.io/subroutines v0.6.1 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.52.0 // indirect

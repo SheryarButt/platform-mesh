@@ -41,7 +41,7 @@ import (
 
 var terminatorCmd = &cobra.Command{
 	Use:   "terminator",
-	Short: "FGA terminator for account workspaces",
+	Short: "FGA terminator for organization and account workspaces",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		kcpCfg, err := getKubeconfigFromPath(terminatorCfg.KCP.Kubeconfig)
 		if err != nil {
@@ -103,6 +103,19 @@ var terminatorCmd = &cobra.Command{
 			log,
 		)
 		kcpClientGetter := iclient.NewConfigSchemeKCPClientGetter(mgr.GetLocalManager().GetConfig(), mgr.GetLocalManager().GetScheme())
+
+		orgReconciler, err := controller.NewOrgLogicalClusterController(log, kcpClientGetter, terminatorCfg, nil, mgr, controller.ControllerOptions{
+			Name:           "OrgLogicalClusterTerminator",
+			TerminatorName: terminatorCfg.TerminatorName(),
+		})
+		if err != nil {
+			log.Error().Err(err).Msg("unable to create OrgLogicalCluster reconciler")
+			os.Exit(1)
+		}
+		if err := orgReconciler.SetupWithManager(mgr, defaultCfg, predicates.LogicalClusterIsAccountTypeOrg()); err != nil {
+			log.Error().Err(err).Msg("Unable to create OrgLogicalClusterTerminator")
+			os.Exit(1)
+		}
 
 		alcReconciler, err := controller.NewAccountLogicalClusterController(log, terminatorCfg, fgaClient, storeIDGetter, mgr, kcpClientGetter, controller.ControllerOptions{
 			Name:           "AccountLogicalClusterTerminator",

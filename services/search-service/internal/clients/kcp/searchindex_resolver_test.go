@@ -33,7 +33,7 @@ func TestListIndicesBuildsResourceDescriptors(t *testing.T) {
 		switch r.URL.Path {
 		case "/clusters/root:orgs/apis/tenancy.kcp.io/v1alpha1/workspaces/acme":
 			writeJSON(t, w, workspacePayload("acme", "cluster-123"))
-		case "/clusters/root:orgs/apis/core.platform-mesh.io/v1alpha1/searchindexes":
+		case "/clusters/root:providers:search/apis/search.platform-mesh.io/v1alpha1/searchindexes":
 			writeJSON(t, w, searchIndexListPayload(map[string]any{
 				"items": []map[string]any{
 					{
@@ -83,7 +83,7 @@ func TestResolveIndexByResource(t *testing.T) {
 		switch r.URL.Path {
 		case "/clusters/root:orgs/apis/tenancy.kcp.io/v1alpha1/workspaces/acme":
 			writeJSON(t, w, workspacePayload("acme", "cluster-123"))
-		case "/clusters/root:orgs/apis/core.platform-mesh.io/v1alpha1/searchindexes":
+		case "/clusters/root:providers:search/apis/search.platform-mesh.io/v1alpha1/searchindexes":
 			writeJSON(t, w, searchIndexListPayload(map[string]any{
 				"items": []map[string]any{
 					{
@@ -115,12 +115,51 @@ func TestResolveIndexByResource(t *testing.T) {
 	}
 }
 
+func TestListIndicesFallsBackToOrgWorkspace(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/clusters/root:orgs/apis/tenancy.kcp.io/v1alpha1/workspaces/acme":
+			writeJSON(t, w, workspacePayload("acme", "cluster-123"))
+		case "/clusters/root:providers:search/apis/search.platform-mesh.io/v1alpha1/searchindexes":
+			writeJSON(t, w, searchIndexListPayload(map[string]any{"items": []map[string]any{}}))
+		case "/clusters/root:orgs/apis/search.platform-mesh.io/v1alpha1/searchindexes":
+			writeJSON(t, w, searchIndexListPayload(map[string]any{
+				"items": []map[string]any{
+					{
+						"metadata": map[string]any{"name": "pm-orgs-cluster-123-components"},
+						"spec": map[string]any{
+							"indexPrefix":           "pm-orgs",
+							"organizationClusterID": "cluster-123",
+						},
+						"status": map[string]any{"indexName": "pm-orgs-cluster-123-components"},
+					},
+				},
+			}))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	resolver := newTestResolver(t, server.URL)
+	refs, err := resolver.ListIndices(context.Background(), "acme")
+	if err != nil {
+		t.Fatalf("ListIndices returned error: %v", err)
+	}
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 ref, got %d", len(refs))
+	}
+	if refs[0].Resource != "components" {
+		t.Fatalf("unexpected resource: %s", refs[0].Resource)
+	}
+}
+
 func TestListIndicesReturnsErrorWhenResourceIsAmbiguous(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/clusters/root:orgs/apis/tenancy.kcp.io/v1alpha1/workspaces/acme":
 			writeJSON(t, w, workspacePayload("acme", "cluster-123"))
-		case "/clusters/root:orgs/apis/core.platform-mesh.io/v1alpha1/searchindexes":
+		case "/clusters/root:providers:search/apis/search.platform-mesh.io/v1alpha1/searchindexes":
 			writeJSON(t, w, searchIndexListPayload(map[string]any{
 				"items": []map[string]any{
 					{
@@ -157,10 +196,11 @@ func newTestResolver(t *testing.T, base string) *SearchIndexResolver {
 	t.Helper()
 
 	resolver, err := NewSearchIndexResolver(&rest.Config{Host: base}, config.SearchIndexConfig{
-		WorkspacePath: "root:orgs",
-		Group:         "core.platform-mesh.io",
-		Version:       "v1alpha1",
-		Resource:      "searchindexes",
+		WorkspacePath:    "root:providers:search",
+		OrgWorkspacePath: "root:orgs",
+		Group:            "search.platform-mesh.io",
+		Version:          "v1alpha1",
+		Resource:         "searchindexes",
 	}, nil)
 	if err != nil {
 		t.Fatalf("create resolver: %v", err)
@@ -191,7 +231,7 @@ func workspacePayload(name, clusterID string) map[string]any {
 }
 
 func searchIndexListPayload(payload map[string]any) map[string]any {
-	payload["apiVersion"] = "core.platform-mesh.io/v1alpha1"
+	payload["apiVersion"] = "search.platform-mesh.io/v1alpha1"
 	payload["kind"] = "SearchIndexList"
 	return payload
 }

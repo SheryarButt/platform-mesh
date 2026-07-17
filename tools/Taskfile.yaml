@@ -35,16 +35,17 @@ vars:
     sh: echo "$(git rev-parse --show-toplevel)"
   BIN: '{{.TOPLEVEL}}/bin'
   HACK: '{{.TOPLEVEL}}/hack'
-  CONTROLLER_TOOLS_VERSION: v0.20.1
-  ENVTEST_K8S_VERSION: "1.35.0"
-  ENVTEST_VERSION: release-0.23
+  CONTROLLER_TOOLS_VERSION: v0.21.0
+  ENVTEST_K8S_VERSION: "1.36.0"
+  ENVTEST_VERSION: release-0.24
   GOLANGCI_LINT_VERSION: 2.12.2
   GO_TEST_COVERAGE_VERSION: v2.18.8
   MOCKERY_VERSION: v3.7.0
   OAPI_VERSION: v2.7.1
-  KCP_APIGEN_VERSION: v0.31.1
+  KCP_APIGEN_VERSION: v0.32.3
+
   # kcp release used by the operators' envtest suites (see component test-e2e).
-  KCP_VERSION: 0.31.1
+  KCP_VERSION: 0.32.3
 
 env:
   UGET_DIRECTORY: '{{.BIN}}'
@@ -55,10 +56,10 @@ tasks:
   # `task tools` installs everything; `task tools:all` is an explicit alias.
   default:
     desc: Install all shared tools into the root bin.
-    deps: [controller-gen, golangci-lint, mockery, apigen, boilerplate]
+    deps: [controller-gen, golangci-lint, mockery, apigen]
   all:
     desc: Install all shared tools into the root bin.
-    deps: [controller-gen, golangci-lint, mockery, apigen, boilerplate]
+    deps: [controller-gen, golangci-lint, mockery, apigen]
 
   controller-gen:
     desc: Install controller-gen into the root bin.
@@ -66,6 +67,7 @@ tasks:
       - GOBIN={{.BIN}} GOWORK=off go install sigs.k8s.io/controller-tools/cmd/controller-gen@{{.CONTROLLER_TOOLS_VERSION}}
     status:
       - test -s {{.BIN}}/controller-gen
+      - '{{.BIN}}/controller-gen --version | grep -qw {{.CONTROLLER_TOOLS_VERSION}}'
   golangci-lint:
     silent: true
     desc: Install golangci-lint into the root bin.
@@ -88,14 +90,20 @@ tasks:
     desc: Install mockery into the root bin.
     cmds:
       - GOBIN={{.BIN}} GOWORK=off go install github.com/vektra/mockery/v3@{{.MOCKERY_VERSION}}
+      - rm -f {{.BIN}}/.mockery.*.stamp
+      - touch {{.BIN}}/.mockery.{{.MOCKERY_VERSION}}.stamp
     status:
       - test -s {{.BIN}}/mockery
+      - test -f {{.BIN}}/.mockery.{{.MOCKERY_VERSION}}.stamp
   apigen:
     desc: Install kcp apigen into the root bin.
     cmds:
       - GOBIN={{.BIN}} GOWORK=off go install github.com/kcp-dev/sdk/cmd/apigen@{{.KCP_APIGEN_VERSION}}
+      - rm -f {{.BIN}}/.apigen.*.stamp
+      - touch {{.BIN}}/.apigen.{{.KCP_APIGEN_VERSION}}.stamp
     status:
       - test -s {{.BIN}}/apigen
+      - test -f {{.BIN}}/.apigen.{{.KCP_APIGEN_VERSION}}.stamp
   kcp:
     silent: true
     desc: Install kcp into the root bin (shared by the operators' envtest suites).
@@ -105,14 +113,20 @@ tasks:
     internal: true
     status:
       - test -s {{.BIN}}/setup-envtest
+      - test -f {{.BIN}}/.setup-envtest.{{.ENVTEST_VERSION}}.stamp
     cmds:
       - GOBIN={{.BIN}} GOWORK=off go install sigs.k8s.io/controller-runtime/tools/setup-envtest@{{.ENVTEST_VERSION}}
+      - rm -f {{.BIN}}/.setup-envtest.*.stamp
+      - touch {{.BIN}}/.setup-envtest.{{.ENVTEST_VERSION}}.stamp
   go-test-coverage:
     internal: true
     status:
       - test -s {{.BIN}}/go-test-coverage
+      - test -f {{.BIN}}/.go-test-coverage.{{.GO_TEST_COVERAGE_VERSION}}.stamp
     cmds:
       - GOBIN={{.BIN}} GOWORK=off go install github.com/vladopajic/go-test-coverage/v2@{{.GO_TEST_COVERAGE_VERSION}}
+      - rm -f {{.BIN}}/.go-test-coverage.*.stamp
+      - touch {{.BIN}}/.go-test-coverage.{{.GO_TEST_COVERAGE_VERSION}}.stamp
   docker-compose:
     internal: true
     status:
@@ -123,8 +137,11 @@ tasks:
     internal: true
     status:
       - test -s {{.BIN}}/oapi-codegen
+      - test -f {{.BIN}}/.oapi-codegen.{{.OAPI_VERSION}}.stamp
     cmds:
       - GOBIN={{.BIN}} GOWORK=off go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@{{.OAPI_VERSION}}
+      - rm -f {{.BIN}}/.oapi-codegen.*.stamp
+      - touch {{.BIN}}/.oapi-codegen.{{.OAPI_VERSION}}.stamp
 
   generate-crds:
     internal: true

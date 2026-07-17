@@ -86,6 +86,7 @@ var serverCmd = &cobra.Command{
 			Str("openSearchURL", serviceCfg.OpenSearch.URL).
 			Str("openFGAGRPCAddr", serviceCfg.OpenFGA.GRPCAddr).
 			Str("searchIndexWorkspacePath", serviceCfg.SearchIndex.WorkspacePath).
+			Str("searchIndexOrgWorkspacePath", serviceCfg.SearchIndex.OrgWorkspacePath).
 			Str("searchIndexGVR", fmt.Sprintf("%s/%s/%s", serviceCfg.SearchIndex.Group, serviceCfg.SearchIndex.Version, serviceCfg.SearchIndex.Resource)).
 			Msg("search service backend configuration")
 

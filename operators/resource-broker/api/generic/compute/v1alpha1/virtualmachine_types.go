@@ -88,7 +88,3 @@ type VirtualMachineList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []VirtualMachine `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&VirtualMachine{}, &VirtualMachineList{})
-}

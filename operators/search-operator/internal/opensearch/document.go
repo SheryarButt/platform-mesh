@@ -26,9 +26,12 @@ import (
 )
 
 // DefaultIndexMapping returns the default OpenSearch index mapping for workspace and resource documents.
-// - payload_raw is stored but not indexed (enabled=false).
+// - default_fields stores SearchIndex default fields for lexical search and UI source display.
+// - semantic_fields stores SearchIndex semantic fields for neural search.
+// - filterable_fields stores SearchIndex filterable fields as exact-match facets.
+// - payload_raw_json is stored but not indexed.
 // - payload_text stores the full serialized object for full-text search.
-func DefaultIndexMapping(semanticFields []string, semanticModelID string) (string, error) {
+func DefaultIndexMapping(_ []string, semanticFields, _ []string, semanticModelID string) (string, error) {
 	properties := map[string]any{
 		"id": map[string]any{"type": "keyword"},
 		"name": map[string]any{
@@ -60,26 +63,43 @@ func DefaultIndexMapping(semanticFields []string, semanticModelID string) (strin
 				"object":   map[string]any{"type": "keyword"},
 			},
 		},
-		"created_at":       map[string]any{"type": "date"},
-		"updated_at":       map[string]any{"type": "date"},
+		"created_at":      map[string]any{"type": "date"},
+		"updated_at":      map[string]any{"type": "date"},
+		"default_fields":  map[string]any{"type": "object", "dynamic": true},
+		"semantic_fields": map[string]any{"type": "object", "dynamic": false, "properties": map[string]any{}},
+		"filterable_fields": map[string]any{
+			"type":    "object",
+			"dynamic": true,
+		},
 		"payload_raw_json": map[string]any{"type": "keyword", "index": false, "doc_values": false},
 		"payload_text":     map[string]any{"type": "text"},
 	}
 
-	if len(semanticFields) > 0 {
+	semanticProperties := properties["semantic_fields"].(map[string]any)["properties"].(map[string]any)
+	semanticFieldPaths := normalizedFieldPaths(semanticFields)
+	if len(semanticFieldPaths) > 0 {
 		semanticModelID = strings.TrimSpace(semanticModelID)
 		if semanticModelID == "" {
 			return "", fmt.Errorf("semantic model id is required when semantic fields are configured")
 		}
-		for _, fieldPath := range semanticFields {
-			if err := addSemanticFieldMapping(properties, fieldPath, semanticModelID); err != nil {
+		for _, fieldPath := range semanticFieldPaths {
+			if err := addSemanticFieldMapping(semanticProperties, fieldPath, semanticModelID); err != nil {
 				return "", err
 			}
 		}
 	}
 
 	mapping := map[string]any{
-		"dynamic":    false,
+		"dynamic": false,
+		"dynamic_templates": []map[string]any{
+			{
+				"filterable_fields_keywords": map[string]any{
+					"path_match":         "filterable_fields.*",
+					"match_mapping_type": "string",
+					"mapping":            map[string]any{"type": "keyword"},
+				},
+			},
+		},
 		"properties": properties,
 	}
 
@@ -89,6 +109,23 @@ func DefaultIndexMapping(semanticFields []string, semanticModelID string) (strin
 	}
 
 	return string(raw), nil
+}
+
+func normalizedFieldPaths(fields []string) []string {
+	seen := make(map[string]struct{}, len(fields))
+	out := make([]string, 0, len(fields))
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			continue
+		}
+		if _, exists := seen[field]; exists {
+			continue
+		}
+		seen[field] = struct{}{}
+		out = append(out, field)
+	}
+	return out
 }
 
 func addSemanticFieldMapping(properties map[string]any, fieldPath, semanticModelID string) error {
@@ -240,9 +277,15 @@ type ResourceDocument struct {
 	Spec   map[string]any `json:"spec,omitempty"`
 	Status map[string]any `json:"status,omitempty"`
 
-	// CustomFields holds fields from the unstructured resource that are listed in
+	// DefaultFields holds fields from the unstructured resource that are listed in
 	// the SearchIndex's DefaultFields. These are propagated directly from the resource.
-	CustomFields map[string]any `json:"custom_fields,omitempty"`
+	DefaultFields map[string]any `json:"default_fields,omitempty"`
+
+	// SemanticFields holds string fields listed in the SearchIndex's SemanticFields.
+	SemanticFields map[string]any `json:"semantic_fields,omitempty"`
+
+	// FilterableFields holds scalar fields listed in the SearchIndex's FilterableFields.
+	FilterableFields map[string]any `json:"filterable_fields,omitempty"`
 
 	// Timestamps
 	CreatedAt time.Time `json:"created_at,omitempty"`

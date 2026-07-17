@@ -32,23 +32,24 @@ import (
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// makeCond constructs a metav1.Condition. The status parameter is a boolean
-// where true maps to metav1.ConditionTrue and false to metav1.ConditionFalse.
 const (
 	metadataKey = "metadata"
 	statusKey   = "status"
 )
 
+// makeCond constructs a metav1.Condition. The status parameter is a boolean
+// where true maps to metav1.ConditionTrue and false to metav1.ConditionFalse.
 func makeCond(t ConditionType, ok bool, reason, msg string) metav1.Condition {
 	s := metav1.ConditionFalse
 	if ok {
 		s = metav1.ConditionTrue
 	}
 	return metav1.Condition{
-		Type:    t.String(),
-		Status:  s,
-		Reason:  reason,
-		Message: msg,
+		Type:               t.String(),
+		Status:             s,
+		Reason:             reason,
+		Message:            msg,
+		LastTransitionTime: metav1.Now(),
 	}
 }
 
@@ -82,32 +83,15 @@ func EqualObjects(a, b *unstructured.Unstructured) bool {
 	)
 }
 
-// StatusTransformer is a function that transforms the status before it is
-// synced from target to source. This can be used to rewrite resource names
-// or other fields that differ between clusters.
-type StatusTransformer func(status any) any
-
-// CopyResourceOptions contains optional parameters for CopyResource.
-type CopyResourceOptions struct {
-	// StatusTransformer is called to transform the status before syncing
-	// from target to source. If nil, the status is copied verbatim.
-	StatusTransformer StatusTransformer
-}
-
-// CopyResource copies a resource from source to target and reflects the
-// status back. The sourceName and targetName parameters allow the resource
-// to have different names in the source and target clusters.
-func CopyResource(
+// Spec copies a resource from source to target without touching the status.
+// The sourceName and targetName parameters allow the resource to have
+// different names in the source and target clusters.
+func Spec(
 	ctx context.Context,
 	gvk schema.GroupVersionKind,
 	sourceName, targetName types.NamespacedName,
 	source, target ctrlruntimeclient.Client,
-	opts ...CopyResourceOptions,
 ) (metav1.Condition, error) {
-	var opt CopyResourceOptions
-	if len(opts) > 0 {
-		opt = opts[0]
-	}
 	log := logr.FromContextOrDiscard(ctx).WithValues("sourceName", sourceName, "targetName", targetName)
 
 	sourceObj := &unstructured.Unstructured{}
@@ -134,15 +118,20 @@ func CopyResource(
 
 	if !EqualObjects(sourceObj, existing) {
 		log.V(2).Info("Objects not equal, updating target")
-		// TODO this only copies fields from source to target, omitting
-		// if source deletes a field that exists in target.
-		// A more robust merge strategy would be better.
 		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			// Re-fetch the target object to get the latest resourceVersion
 			if err := target.Get(ctx, targetName, existing); err != nil {
 				return err
 			}
 			toUpdate := existing.DeepCopy()
+			for k := range toUpdate.Object {
+				if k == metadataKey || k == statusKey {
+					continue
+				}
+				if _, ok := sourceObj.Object[k]; !ok {
+					delete(toUpdate.Object, k)
+				}
+			}
 			for k, v := range sourceObj.Object {
 				if k == metadataKey || k == statusKey {
 					continue
@@ -154,39 +143,61 @@ func CopyResource(
 		if err != nil {
 			return makeCond(ConditionResourceCopied, false, "UpdateFailed", err.Error()), err
 		}
-		// After updating, re-fetch target to get updated status for sync
-		if err := target.Get(ctx, targetName, existing); err != nil {
-			return makeCond(ConditionResourceCopied, false, "GetTargetFailed", err.Error()), err
-		}
 	}
 
-	log.Info("Checking status sync",
-		"targetHasStatus", existing.Object[statusKey] != nil,
-		"sourceHasStatus", sourceObj.Object[statusKey] != nil)
+	return makeCond(ConditionResourceCopied, true, "Copied", "Resource copied to destination"), nil
+}
 
-	if status, ok := existing.Object[statusKey]; ok {
-		// Apply status transformation if provided
-		if opt.StatusTransformer != nil {
-			status = opt.StatusTransformer(status)
+// Status reflects the status of the target resource back to the source
+// resource. A target without a status is a no-op.
+func Status(
+	ctx context.Context,
+	gvk schema.GroupVersionKind,
+	sourceName, targetName types.NamespacedName,
+	source, target ctrlruntimeclient.Client,
+) (metav1.Condition, error) {
+	log := logr.FromContextOrDiscard(ctx).WithValues("sourceName", sourceName, "targetName", targetName)
+
+	targetObj := &unstructured.Unstructured{}
+	targetObj.SetGroupVersionKind(gvk)
+	if err := target.Get(ctx, targetName, targetObj); err != nil {
+		return makeCond(ConditionStatusSynced, false, "GetTargetFailed", err.Error()), err
+	}
+
+	status, ok := targetObj.Object[statusKey]
+	if !ok {
+		log.V(2).Info("Target has no status to sync")
+		return makeCond(ConditionStatusSynced, true, "StatusSynced", "Target has no status to sync"), nil
+	}
+
+	sourceObj := &unstructured.Unstructured{}
+	sourceObj.SetGroupVersionKind(gvk)
+	if err := source.Get(ctx, sourceName, sourceObj); err != nil {
+		return makeCond(ConditionStatusSynced, false, "GetSourceFailed", err.Error()), err
+	}
+
+	if !cmp.Equal(sourceObj.Object[statusKey], status, cmpopts.EquateEmpty()) {
+		log.V(2).Info("Syncing status from target to source")
+		sourceObj.Object[statusKey] = status
+		if err := source.Status().Update(ctx, sourceObj); err != nil {
+			return makeCond(ConditionStatusSynced, false, "StatusUpdateFailed", err.Error()), err
 		}
-		if !cmp.Equal(sourceObj.Object[statusKey], status, cmpopts.EquateEmpty()) {
-			log.Info("Syncing status from target to source")
-			// Re-fetch source to get latest resourceVersion before status update
-			if err := source.Get(ctx, sourceName, sourceObj); err != nil {
-				return makeCond(ConditionStatusSynced, false, "GetSourceFailed", err.Error()), err
-			}
-			sourceObj.Object[statusKey] = status
-			if err := source.Status().Update(ctx, sourceObj); err != nil {
-				log.Error(err, "Failed to update status on source")
-				return makeCond(ConditionStatusSynced, false, "StatusUpdateFailed", err.Error()), err
-			}
-			log.Info("Status synced successfully")
-		} else {
-			log.V(2).Info("Status already equal, no update needed")
-		}
-	} else {
-		log.Info("Target has no status to sync")
 	}
 
 	return makeCond(ConditionStatusSynced, true, "StatusSynced", "Status copied back to source"), nil
+}
+
+// Resource copies a resource from source to target and reflects the status
+// back, combining [Spec] and [Status].
+func Resource(
+	ctx context.Context,
+	gvk schema.GroupVersionKind,
+	sourceName, targetName types.NamespacedName,
+	source, target ctrlruntimeclient.Client,
+) (metav1.Condition, error) {
+	if cond, err := Spec(ctx, gvk, sourceName, targetName, source, target); err != nil {
+		return cond, err
+	}
+
+	return Status(ctx, gvk, sourceName, targetName, source, target)
 }

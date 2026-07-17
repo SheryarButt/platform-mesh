@@ -24,7 +24,7 @@ import (
 	structuralschema "k8s.io/apiextensions-apiserver/pkg/apiserver/schema"
 	"k8s.io/apiextensions-apiserver/pkg/apiserver/validation"
 	"k8s.io/apiextensions-apiserver/pkg/registry/customresource"
-	genericpath "k8s.io/apimachinery/pkg/api/validation/path"
+	"k8s.io/apimachinery/pkg/api/validate/content"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/registry/rest"
@@ -47,7 +47,12 @@ func CreateStorageProviderFunc(clusterClient dynamic.ClusterInterface, filters .
 				typer,
 				namespaceScoped,
 				kind,
-				genericpath.ValidatePathSegmentName,
+				func(name string, prefix bool) []string {
+					if prefix {
+						return content.IsPathSegmentPrefix(name)
+					}
+					return content.IsPathSegmentName(name)
+				},
 				schemaValidator,
 				statusSchemaValidate,
 				structuralSchema,

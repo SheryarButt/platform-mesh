@@ -95,6 +95,12 @@ func (s *AccountTestSuite) setupKCP() {
 	s.kcpConfig, err = s.env.Start()
 	s.Require().NoError(err)
 
+	s.T().Cleanup(func() {
+		if err := s.env.Stop(); err != nil {
+			s.T().Logf("Error stopping kcp environment: %v", err)
+		}
+	})
+
 	s.kcpClient, err = mcc.New(s.kcpConfig, ctrlruntimeclient.Options{
 		Scheme: s.scheme,
 	})
@@ -102,21 +108,6 @@ func (s *AccountTestSuite) setupKCP() {
 
 	rootClient := s.kcpClient.Cluster(core.RootCluster.Path())
 	s.rootClient = rootClient
-
-	// Create WorkspaceTypes in root workspace
-	for _, workspaceTypeYAML := range [][]byte{
-		workspaceTypeOrgYAML,
-		workspaceTypeOrgsYAML,
-		workspaceTypeAccountYAML,
-	} {
-		var workspaceType kcptenancyv1alpha1.WorkspaceType
-		s.Require().NoError(yaml.Unmarshal(workspaceTypeYAML, &workspaceType))
-		err = rootClient.Create(s.ctx, &workspaceType)
-		if err != nil && !apierrors.IsAlreadyExists(err) {
-			s.Require().NoError(err)
-		}
-		s.logger.Info().Msgf("Created WorkspaceType '%s' in root workspace", workspaceType.Name)
-	}
 
 	// Create :root:platform-mesh-system
 	_, s.platformMeshSysPath = envtest.NewWorkspaceFixture(s.T(), s.kcpClient, core.RootCluster.Path(), envtest.WithName("platform-mesh-system"))
@@ -134,7 +125,9 @@ func (s *AccountTestSuite) setupKCP() {
 	}
 
 	// Fetch identity hash and create "core.platform-mesh.io" APIExport in
-	// platform-mesh-system
+	// platform-mesh-system. This must happen before creating WorkspaceTypes
+	// that reference this APIExport in their defaultAPIBindings, as kcp 0.32+
+	// validates bind permissions at admission time.
 	var aePlatformMesh, aeTenancy kcpapisv1alpha1.APIExport
 	err = rootClient.Get(s.ctx, types.NamespacedName{Name: "tenancy.kcp.io"}, &aeTenancy)
 	s.Require().NoError(err)
@@ -150,6 +143,7 @@ func (s *AccountTestSuite) setupKCP() {
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		s.Require().NoError(err)
 	}
+	s.logger.Info().Msg("Created APIExport 'core.platform-mesh.io' in platform-mesh-system")
 
 	// Create APIBinding in platform-mesh-system
 	var platformMeshBinding kcpapisv1alpha2.APIBinding
@@ -171,6 +165,23 @@ func (s *AccountTestSuite) setupKCP() {
 		}
 		return binding.Status.Phase == kcpapisv1alpha2.APIBindingPhaseBound
 	}, 10*time.Second, 200*time.Millisecond, "APIBinding core.platform-mesh.io should be bound")
+
+	// Create WorkspaceTypes in root workspace. These reference the
+	// core.platform-mesh.io APIExport in their defaultAPIBindings, so the
+	// APIExport must exist before this point.
+	for _, workspaceTypeYAML := range [][]byte{
+		workspaceTypeOrgYAML,
+		workspaceTypeOrgsYAML,
+		workspaceTypeAccountYAML,
+	} {
+		var workspaceType kcptenancyv1alpha1.WorkspaceType
+		s.Require().NoError(yaml.Unmarshal(workspaceTypeYAML, &workspaceType))
+		err = rootClient.Create(s.ctx, &workspaceType)
+		if err != nil && !apierrors.IsAlreadyExists(err) {
+			s.Require().NoError(err)
+		}
+		s.logger.Info().Msgf("Created WorkspaceType '%s' in root workspace", workspaceType.Name)
+	}
 
 	// create :root:orgs
 	orgsWs, orgsClusterPath := envtest.NewWorkspaceFixture(s.T(), s.kcpClient, core.RootCluster.Path(), envtest.WithName("orgs"), envtest.WithType(core.RootCluster.Path(), "orgs"))

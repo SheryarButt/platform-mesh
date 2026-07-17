@@ -123,8 +123,12 @@ func (m *EndpointMetrics) Record(cluster, operation string, d time.Duration, res
 
 // ResolverMetrics tracks Kubernetes API calls made by GraphQL resolvers.
 type ResolverMetrics struct {
-	RequestsTotal   *prometheus.CounterVec
-	RequestDuration *prometheus.HistogramVec
+	RequestsTotal           *prometheus.CounterVec
+	RequestDuration         *prometheus.HistogramVec
+	CategoryFanoutTypes     *prometheus.HistogramVec
+	CategoryObjectsReturned *prometheus.HistogramVec
+	CategoryWatchesActive   *prometheus.GaugeVec
+	WatchInitialItems       *prometheus.HistogramVec
 }
 
 func NewResolverMetrics(reg prometheus.Registerer) *ResolverMetrics {
@@ -138,8 +142,34 @@ func NewResolverMetrics(reg prometheus.Registerer) *ResolverMetrics {
 			Help:    "Duration of Kubernetes API calls in seconds by operation and kind.",
 			Buckets: prometheus.DefBuckets,
 		}, []string{"operation", "kind"}),
+		CategoryFanoutTypes: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "kubernetes_graphql_gateway_category_fanout_types",
+			Help:    "Number of resource types a category query expanded out to, by category.",
+			Buckets: prometheus.ExponentialBuckets(1, 2, 8),
+		}, []string{"category"}),
+		CategoryObjectsReturned: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "kubernetes_graphql_gateway_category_objects_returned",
+			Help:    "Total objects returned across all types in a category query, by category.",
+			Buckets: prometheus.ExponentialBuckets(1, 4, 8),
+		}, []string{"category"}),
+		CategoryWatchesActive: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "kubernetes_graphql_gateway_category_watches_active",
+			Help: "Current number of open resource watches held by category subscriptions.",
+		}, []string{"category"}),
+		WatchInitialItems: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "kubernetes_graphql_gateway_watch_initial_items",
+			Help:    "Number of objects returned during a subscription's list phase.",
+			Buckets: prometheus.ExponentialBuckets(1, 4, 8),
+		}, []string{"kind"}),
 	}
-	reg.MustRegister(m.RequestsTotal, m.RequestDuration)
+	reg.MustRegister(
+		m.RequestsTotal,
+		m.RequestDuration,
+		m.CategoryFanoutTypes,
+		m.CategoryObjectsReturned,
+		m.CategoryWatchesActive,
+		m.WatchInitialItems,
+	)
 	return m
 }
 
@@ -147,6 +177,22 @@ func NewResolverMetrics(reg prometheus.Registerer) *ResolverMetrics {
 func (m *ResolverMetrics) Record(operation, kind string, d time.Duration, result string) {
 	m.RequestsTotal.WithLabelValues(operation, kind, result).Inc()
 	m.RequestDuration.WithLabelValues(operation, kind).Observe(d.Seconds())
+}
+
+// RecordCategoryFanout records the resource types and individual object counts a category query expanded to.
+func (m *ResolverMetrics) RecordCategoryFanout(category string, types, objects int) {
+	m.CategoryFanoutTypes.WithLabelValues(category).Observe(float64(types))
+	m.CategoryObjectsReturned.WithLabelValues(category).Observe(float64(objects))
+}
+
+// UpdateCategoryWatches adds or subtracts the delta and updates the gauge.
+func (m *ResolverMetrics) UpdateCategoryWatches(category string, delta int) {
+	m.CategoryWatchesActive.WithLabelValues(category).Add(float64(delta))
+}
+
+// ObserveWatchInitialItems records the item count during the initial list, labelled by kind.
+func (m *ResolverMetrics) ObserveWatchInitialItems(kind string, n int) {
+	m.WatchInitialItems.WithLabelValues(kind).Observe(float64(n))
 }
 
 // AuthMetrics tracks token authentication attempts.

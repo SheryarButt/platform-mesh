@@ -18,12 +18,15 @@ package subroutine_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
 	"go.platform-mesh.io/security-operator/internal/fga"
@@ -297,6 +300,25 @@ func TestAccountTuplesSubroutine_Terminate(t *testing.T) {
 				storeIDGetter.EXPECT().Get(mock.Anything, "myorg").Return("", assert.AnError)
 			},
 			expectError: true,
+		},
+		{
+			name: "success: org store already deleted",
+			obj:  newAccountLogicalCluster(),
+			mockSetup: func(storeIDGetter *mocks.MockStoreIDGetter, kcpHelper *mocks.MockKCPClientGetter, parentClient *mocks.MockClient, fgaClient *mocks.MockOpenFGAServiceClient) {
+				mockParentLogicalCluster(kcpHelper, parentClient)
+				storeIDGetter.EXPECT().Get(mock.Anything, "myorg").Return("", fmt.Errorf("store %q not found: %w", "myorg", fga.ErrStoreNotFound))
+			},
+			expectError: false,
+		},
+		{
+			name: "success: stale store ID returns store_id_not_found on Read",
+			obj:  newAccountLogicalCluster(),
+			mockSetup: func(storeIDGetter *mocks.MockStoreIDGetter, kcpHelper *mocks.MockKCPClientGetter, parentClient *mocks.MockClient, fgaClient *mocks.MockOpenFGAServiceClient) {
+				mockParentLogicalCluster(kcpHelper, parentClient)
+				storeIDGetter.EXPECT().Get(mock.Anything, "myorg").Return("store-id", nil)
+				fgaClient.EXPECT().Read(mock.Anything, mock.Anything).Return(nil, status.Error(codes.Code(openfgav1.NotFoundErrorCode_store_id_not_found), "not found")).Once()
+			},
+			expectError: false,
 		},
 		{
 			name: "error: ListWithKey fails",

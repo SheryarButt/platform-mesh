@@ -136,6 +136,12 @@ func (s *AccountTuplesSubroutine) Terminate(ctx context.Context, obj ctrlruntime
 
 	storeID, err := s.storeIDGetter.Get(ctx, accountPath.Org().Base())
 	if err != nil {
+		if fga.IsStoreNotFound(err) {
+			logger.LoadLoggerFromContext(ctx).Info().
+				Str("org", accountPath.Org().Base()).
+				Msg("org store already deleted, skipping account tuple cleanup")
+			return subroutines.OK(), nil
+		}
 		return subroutines.OK(), fmt.Errorf("getting store ID: %w", err)
 	}
 
@@ -143,6 +149,9 @@ func (s *AccountTuplesSubroutine) Terminate(ctx context.Context, obj ctrlruntime
 	tm := fga.NewTupleManager(s.fga, storeID, fga.AuthorizationModelIDLatest, logger.LoadLoggerFromContext(ctx))
 	accountReferenceTuples, err := tm.ListWithKey(ctx, fga.ReferencingAccountTupleKey(s.objectType, parentClusterID, accountPath.Base()))
 	if err != nil {
+		if fga.IsStoreNotFound(err) {
+			return subroutines.OK(), nil
+		}
 		return subroutines.OK(), fmt.Errorf("listing tuples referencing Account: %w", err)
 	}
 	accountTuples := make([]pmcorev1alpha1.Tuple, 0, len(accountReferenceTuples)*2)
@@ -155,6 +164,9 @@ func (s *AccountTuplesSubroutine) Terminate(ctx context.Context, obj ctrlruntime
 			role := strings.TrimSuffix(t.User, "#assignee")
 			roleReferences, err := tm.ListWithKey(ctx, &openfgav1.ReadRequestTupleKey{Object: role})
 			if err != nil {
+				if fga.IsStoreNotFound(err) {
+					return subroutines.OK(), nil
+				}
 				return subroutines.OK(), fmt.Errorf("listing tuples for role %s: %w", role, err)
 			}
 			accountTuples = append(accountTuples, roleReferences...)
@@ -163,6 +175,9 @@ func (s *AccountTuplesSubroutine) Terminate(ctx context.Context, obj ctrlruntime
 
 	// Delete all collected tuples.
 	if err := tm.Delete(ctx, accountTuples); err != nil {
+		if fga.IsStoreNotFound(err) {
+			return subroutines.OK(), nil
+		}
 		return subroutines.OK(), fmt.Errorf("deleting tuples for Account: %w", err)
 	}
 

@@ -154,7 +154,3 @@ type ProviderPermissionsList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []ProviderPermissions `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&ProviderPermissions{}, &ProviderPermissionsList{})
-}

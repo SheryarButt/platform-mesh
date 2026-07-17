@@ -50,6 +50,10 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&VMList{},
 		&Certificate{},
 		&CertificateList{},
+		&DNSZone{},
+		&DNSZoneList{},
+		&Postgres{},
+		&PostgresList{},
 	)
 
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)

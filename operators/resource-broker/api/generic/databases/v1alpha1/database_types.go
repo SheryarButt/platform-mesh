@@ -249,10 +249,3 @@ type VectorList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Vector `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&SQL{}, &SQLList{})
-	SchemeBuilder.Register(&NoSQL{}, &NoSQLList{})
-	SchemeBuilder.Register(&KeyValue{}, &KeyValueList{})
-	SchemeBuilder.Register(&Vector{}, &VectorList{})
-}

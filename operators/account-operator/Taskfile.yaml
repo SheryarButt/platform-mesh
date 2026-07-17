@@ -39,8 +39,8 @@ tasks:
       - task: tools:generate-deepcopy
         vars:
           PATH: /core/...
-      - "{{.BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources"
-      - "{{.BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir {{ .TEST_SETUP_DIRECTORY }}"
+      - "{{.BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
+      - "{{.BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir {{ .TEST_SETUP_DIRECTORY }} --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
   generate:mocks:
     desc: Generate mocks using mockery
     deps: [tools:mockery]

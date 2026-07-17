@@ -36,11 +36,14 @@ type AcceptAPISpec struct {
 	// +kubebuilder:validation:Required
 	GVR metav1.GroupVersionResource `json:"gvr"`
 
+	// APIExportName is the name of the APIExport in the provider's
+	// workspace that serves the accepted GVR.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	APIExportName string `json:"apiExportName"`
+
 	// Filters to select which resources of the GVR to accept.
 	Filters []Filter `json:"filters,omitempty"`
-
-	// // Template is the template to use for the accepted resources.
-	// Template metav1.RawExtension `json:"template,omitempty"`
 }
 
 // Filter defines a filter to select resources.
@@ -166,15 +169,34 @@ type AcceptAPIDenyReason struct {
 	Rule string
 }
 
+// Condition types for AcceptAPI. The condition types for the
+// subroutines match the subroutine names; reasons are set by the
+// subroutines lifecycle (Complete, Pending, Error, Stopped, Skipped).
+const (
+	// AcceptAPIConditionBindingVerified indicates whether the broker
+	// successfully bound the referenced APIExport in a verification
+	// workspace.
+	AcceptAPIConditionBindingVerified = "BindingVerified"
+
+	// AcceptAPIConditionReady indicates whether the AcceptAPI is fully
+	// processed and resources can be routed to the provider.
+	AcceptAPIConditionReady = "Ready"
+)
+
 // AcceptAPIStatus defines the observed state of AcceptAPI.
 type AcceptAPIStatus struct {
+	// VerificationWorkspace is the name of the verification workspace
+	// this AcceptAPI holds a reference finalizer on. Used to clean up
+	// the old workspace when the spec changes. Set by the broker.
+	// +optional
+	VerificationWorkspace string `json:"verificationWorkspace,omitempty"`
+
 	// conditions represent the current state of the AcceptAPI resource.
 	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
 	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
+	// Condition types used by the broker:
+	// - "BindingVerified": the referenced APIExport was successfully bound in a verification workspace
+	// - "Ready": the AcceptAPI is fully processed and resources can be routed to the provider
 	//
 	// The status of each condition is one of True, False, or Unknown.
 	// +listType=map
@@ -184,6 +206,7 @@ type AcceptAPIStatus struct {
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Cluster
 // +kubebuilder:subresource:status
 
 // AcceptAPI is the Schema for the acceptapis API.
@@ -193,6 +216,16 @@ type AcceptAPI struct {
 
 	Spec   AcceptAPISpec   `json:"spec,omitempty"`
 	Status AcceptAPIStatus `json:"status,omitempty"`
+}
+
+// GetConditions returns the conditions of the AcceptAPI.
+func (acceptAPI *AcceptAPI) GetConditions() []metav1.Condition {
+	return acceptAPI.Status.Conditions
+}
+
+// SetConditions sets the conditions of the AcceptAPI.
+func (acceptAPI *AcceptAPI) SetConditions(conditions []metav1.Condition) {
+	acceptAPI.Status.Conditions = conditions
 }
 
 // +kubebuilder:object:root=true

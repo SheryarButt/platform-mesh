@@ -214,17 +214,22 @@ func run(args []string) error {
 	}
 	fmt.Println()
 
+	remote, err := resolveRemote()
+	if err != nil {
+		return err
+	}
+
 	if opts.dryRun {
 		fmt.Println("dry-run — would run:")
 		for _, p := range plans {
-			fmt.Printf("  git tag %s %s && git push origin %s\n", p.fullTag, opts.ref, p.fullTag)
+			fmt.Printf("  git tag %s %s && git push %s %s\n", p.fullTag, opts.ref, remote, p.fullTag)
 		}
 		printBumpHints(plans)
 		return nil
 	}
 
 	if !opts.yes {
-		ok, err := confirm(fmt.Sprintf("Create and push %d tag(s)? [y/N] ", len(plans)))
+		ok, err := confirm(fmt.Sprintf("Create and push %d tag(s) to %s? [y/N] ", len(plans), remote))
 		if err != nil {
 			return err
 		}
@@ -242,8 +247,8 @@ func run(args []string) error {
 		}
 	}
 	for _, p := range plans {
-		if err := gitRun("push", "origin", p.fullTag); err != nil {
-			return fmt.Errorf("pushing tag %s: %w (other tags were created locally; `git push origin <tag>` to retry)", p.fullTag, err)
+		if err := gitRun("push", remote, p.fullTag); err != nil {
+			return fmt.Errorf("pushing tag %s: %w (other tags were created locally; `git push %s <tag>` to retry)", p.fullTag, err, remote)
 		}
 		fmt.Printf("pushed %s\n", p.fullTag)
 	}
@@ -432,6 +437,31 @@ func gitRun(args ...string) error {
 	cmd := exec.Command("git", args...)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	return cmd.Run()
+}
+
+// canonicalRepo is the owner/repo combination tags should be pushed to.
+const canonicalRepo = "platform-mesh/platform-mesh"
+
+// resolveRemote returns the name of the git remote whose URL (git or https) matches canonicalRepo.
+func resolveRemote() (string, error) {
+	out, err := gitOut("remote", "-v")
+	if err != nil {
+		return "", fmt.Errorf("listing git remotes: %w", err)
+	}
+	seen := map[string]bool{}
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || seen[fields[0]] {
+			continue
+		}
+		url := strings.ToLower(fields[1])
+		// Match so any <git|https>://<host>/<canonicalRepo>[.git] matches, but not forks.
+		if strings.Contains(url, "/"+canonicalRepo+".git") || strings.HasSuffix(url, "/"+canonicalRepo) || strings.Contains(url, ":"+canonicalRepo+".git") || strings.HasSuffix(url, ":"+canonicalRepo) {
+			seen[fields[0]] = true
+			return fields[0], nil
+		}
+	}
+	return "", fmt.Errorf("no git remote points at %s — add one with `git remote add upstream https://github.com/%s`", canonicalRepo, canonicalRepo)
 }
 
 func usage() {
