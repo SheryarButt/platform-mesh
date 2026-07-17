@@ -73,11 +73,7 @@ func (c *ProviderPermissionsCache) GetRoles(groupResource string) []RoleDefiniti
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	roles, ok := c.roles[groupResource]
-	if !ok {
-		return nil
-	}
-	return roles
+	return c.roles[groupResource]
 }
 
 func (c *ProviderPermissionsCache) handleAdd(pp *pmprovidersv1alpha1.ProviderPermissions) {
