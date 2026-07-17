@@ -804,6 +804,7 @@ github.com/franela/goreq v0.0.0-20171204163338-bcd34c9993f8/go.mod h1:ZhphrRTfi2
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
 github.com/fsnotify/fsnotify v1.9.0/go.mod h1:8jBTzvmWwFyi3Pb8djgCCO5IBqzKJ/Jwo8TRcHyHii0=
 github.com/fxamacker/cbor/v2 v2.7.0/go.mod h1:pxXPTn3joSm21Gbwsv0w9OSA2y1HFR9qXEeXQVeNoDQ=
+github.com/fxamacker/cbor/v2 v2.9.0/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
 github.com/gabriel-vasile/mimetype v1.4.3/go.mod h1:d8uq/6HKRL6CGdk+aubisF/M5GcPfT7nKyLpA0lbSSk=
 github.com/ghodss/yaml v1.0.0 h1:wQHKEahhL6wmXdzwWG11gIVCkOv05bNOh+Rxn0yngAk=
 github.com/gin-contrib/sse v0.1.0 h1:Y/yl/+YNO8GZSjAhjMsSuLt29uWRFHdHYUb5lYOV9qE=
@@ -1116,8 +1117,6 @@ github.com/kcp-dev/code-generator/v3 v3.31.2 h1:cApGdB8t4+M1DkMatbf3hHkR6gjt0FOM
 github.com/kcp-dev/code-generator/v3 v3.31.2/go.mod h1:7/dkcn1spP50Btt6qPeGirUf+QnMsRWSX1V0VtnTbP0=
 github.com/kcp-dev/code-generator/v3 v3.32.3/go.mod h1:1OaW64ALeGKyw8G8RRv2vHsXDPgOoDuiNBG0RW6dWNI=
 github.com/kcp-dev/embeddedetcd v1.1.1-0.20260402110232-2cc5c5cce35e/go.mod h1:bv5D/GGLuILI1Y5tZzbBvzOjkdixKS9lM+bbN1vWZTE=
-github.com/kcp-dev/kcp v0.32.3 h1:S39vxIfqk6raBQSZtkbHIOrWoSO4F7LRHCsUa+imPEo=
-github.com/kcp-dev/kcp v0.32.3/go.mod h1:VVEYJp2CjYw+keGioZQeJbPlKsn4mmxWWYlI/ynoxZU=
 github.com/kcp-dev/kubernetes/staging/src/k8s.io/cli-runtime v0.0.0-20260317180031-228ac1412525 h1:2nv9Hi7C+mVw/XzXlp1H11dup+CcTx4DwaKVdi2j1yg=
 github.com/kcp-dev/kubernetes/staging/src/k8s.io/cli-runtime v0.0.0-20260317180031-228ac1412525/go.mod h1:ZJK2sHi3CbLMQnFvFZVIwz9njxOq89xtC5hTRaInXbk=
 github.com/kcp-dev/kubernetes/staging/src/k8s.io/cli-runtime v0.0.0-20260602065202-e006560fc76a/go.mod h1:AqH5f1vSOOVqnnUSYMhVkNAUjzjimM7TCKLWKZ5MysA=
@@ -1127,10 +1126,10 @@ github.com/kcp-dev/kubernetes/staging/src/k8s.io/cri-streaming v0.0.0-2026060206
 github.com/kcp-dev/kubernetes/staging/src/k8s.io/sample-apiserver v0.0.0-20260317180031-228ac1412525/go.mod h1:hUDd9Am5WUFfVQi/DDyBCRhRAbezysYS/dg0PxWJfko=
 github.com/kcp-dev/kubernetes/staging/src/k8s.io/sample-apiserver v0.0.0-20260602065202-e006560fc76a/go.mod h1:8blR+03YTwY2VBKLxBKICaH/vAeGxkRHbSwSa05QRfc=
 github.com/kcp-dev/logicalcluster/v3 v3.0.4/go.mod h1:EWBUBxdr49fUB1cLMO4nOdBWmYifLbP1LfoL20KkXYY=
+github.com/kcp-dev/multicluster-provider/client v0.8.1-0.20260714141811-833f063357f8 h1:zwlGpx3IfUy1yeBZGPHmaEg8SPVnXJ+OobkBfD0eal8=
+github.com/kcp-dev/multicluster-provider/client v0.8.1-0.20260714141811-833f063357f8/go.mod h1:kK9CSLmECoRiOU+xKOhIE4tHpQBcBbBvWOgKORC/eqI=
 github.com/kcp-dev/sdk v0.31.0/go.mod h1:GpNW9wPULY9+UuLVAaB5z/sJ8r0Jo/l0Jgy4BKnIJTE=
 github.com/kcp-dev/sdk v0.32.0/go.mod h1:H6SCvNS25sReJ61YDy6OPEmngTUFP7/CY0fRM576FM4=
-github.com/kcp-dev/virtual-workspace-framework v0.32.3 h1:ClVA2Y5c4Dh5jfR7EEwIo+G2YAugP7RhYmkc0uspbTw=
-github.com/kcp-dev/virtual-workspace-framework v0.32.3/go.mod h1:FLOnOcysbwElni3wjuLwew+j4LQpbITzYSiNmdC1Xck=
 github.com/kisielk/errcheck v1.1.0/go.mod h1:EZBBE59ingxPouuu3KfxchcWSUPOHkagtvWXihfKN4Q=
 github.com/kisielk/errcheck v1.5.0 h1:e8esj/e4R+SAOwFwN+n3zr0nYeCyeweozKfO23MvHzY=
 github.com/kisielk/gotool v1.0.0 h1:AV2c/EiW3KqPNT9ZKl07ehoAGi4C5/01Cfbblndcapg=

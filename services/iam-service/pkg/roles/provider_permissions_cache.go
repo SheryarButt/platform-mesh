@@ -20,12 +20,12 @@ import (
 	"slices"
 	"sync"
 
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
+	"go.platform-mesh.io/golang-commons/logger"
+
 	toolscache "k8s.io/client-go/tools/cache"
 
 	"github.com/kcp-dev/multicluster-provider/pkg/provider"
-
-	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
-	"go.platform-mesh.io/golang-commons/logger"
 )
 
 type ProviderPermissionsCache struct {
