@@ -18,8 +18,10 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"time"
 
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
 	platformeshconfig "go.platform-mesh.io/golang-commons/config"
 	"go.platform-mesh.io/golang-commons/controller/filter"
 	"go.platform-mesh.io/golang-commons/logger"
@@ -29,14 +31,21 @@ import (
 	"go.platform-mesh.io/security-operator/internal/subroutine"
 	"go.platform-mesh.io/subroutines/lifecycle"
 
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	ctrhandler "sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
+	"sigs.k8s.io/multicluster-runtime/pkg/handler"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 
+	"github.com/kcp-dev/logicalcluster/v3"
 	kcpapisv1alpha2 "github.com/kcp-dev/sdk/apis/apis/v1alpha2"
 )
 
@@ -48,12 +57,14 @@ func NewAPIBindingReconciler(logger *logger.Logger, mcMgr mcmanager.Manager, lis
 	return &APIBindingReconciler{
 		log:       logger,
 		lifecycle: lc,
+		lister:    lister,
 	}
 }
 
 type APIBindingReconciler struct {
 	log       *logger.Logger
 	lifecycle *lifecycle.Lifecycle
+	lister    iclient.Lister
 }
 
 func (r *APIBindingReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {
@@ -78,5 +89,52 @@ func (r *APIBindingReconciler) SetupWithManager(mgr mcmanager.Manager, cfg *plat
 		For(&kcpapisv1alpha2.APIBinding{}).
 		WithOptions(opts).
 		WithEventFilter(predicate.And(predicates...)).
+		Watches(
+			&pmprovidersv1alpha1.ProviderPermissions{},
+			func(_ multicluster.ClusterName, _ cluster.Cluster) ctrhandler.TypedEventHandler[ctrlruntimeclient.Object, mcreconcile.Request] {
+				return handler.TypedEnqueueRequestsFromMapFuncWithClusterPreservation(r.mapProviderPermissionsToAPIBindings)
+			},
+			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
+			mcbuilder.WithClusterFilter(func(clusterName multicluster.ClusterName, _ cluster.Cluster) bool {
+				return strings.HasPrefix(string(clusterName), config.ProvidersProviderName)
+			}),
+		).
 		Complete(r)
+}
+
+func (r *APIBindingReconciler) mapProviderPermissionsToAPIBindings(ctx context.Context, obj ctrlruntimeclient.Object) []mcreconcile.Request {
+	pp, ok := obj.(*pmprovidersv1alpha1.ProviderPermissions)
+	if !ok {
+		return nil
+	}
+
+	var bindings kcpapisv1alpha2.APIBindingList
+	if err := r.lister.List(ctx, &bindings); err != nil {
+		r.log.Error().Err(err).Msg("failed to list APIBindings for ProviderPermissions")
+		return nil
+	}
+
+	var requests []mcreconcile.Request
+	for _, binding := range bindings.Items {
+		if binding.Spec.Reference.Export == nil ||
+			binding.Spec.Reference.Export.Name != pp.Spec.APIExport.Ref.Name {
+			continue
+		}
+
+		requests = append(requests, mcreconcile.Request{
+			Request: reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name: binding.Name,
+				},
+			},
+			ClusterName: config.MultiProviderName(config.CoreProviderName, logicalcluster.From(&binding).String()),
+		})
+	}
+
+	r.log.Debug().
+		Str("providerPermissions", pp.Name).
+		Int("affectedBindings", len(requests)).
+		Msg("ProviderPermissions change enqueuing APIBinding reconciliations")
+
+	return requests
 }
