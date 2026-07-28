@@ -31,6 +31,7 @@ import (
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/authorization/union"
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/clustercache"
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/config"
+	"go.platform-mesh.io/rebac-authz-webhook/pkg/handler/batch"
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/handler/contextual"
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/handler/nonresourceattributes"
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/handler/orgs"
@@ -130,6 +131,12 @@ func NewServeCmd() *cobra.Command {
 					orgs.New(fga, mgr, extraAttrClusterKey, storeRes.Stores[0].Id),
 					contextual.New(fga, clusterCache, extraAttrClusterKey, cacheMissTracker, serverCfg.Webhook.CacheMissRetryAfter),
 				),
+			))
+
+			mgr.GetWebhookServer().Register("/batch-authz", batch.New(
+				klog.NewKlogr(),
+				fga,
+				clusterCache,
 			))
 
 			if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
