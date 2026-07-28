@@ -65,6 +65,12 @@ type Gateway struct {
 	// Metrics is optional. When non-nil, all components record Prometheus
 	// metrics. Pass nil to disable instrumentation entirely.
 	Metrics *metrics.Collector
+
+	// KubernetesQPS is the maximum queries per second to the Kubernetes API server.
+	KubernetesQPS float32
+
+	// KubernetesBurst is the maximum burst size for requests to the Kubernetes API server.
+	KubernetesBurst int
 }
 
 // GraphQL holds GraphQL handler configuration.

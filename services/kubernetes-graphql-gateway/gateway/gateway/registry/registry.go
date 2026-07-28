@@ -64,6 +64,8 @@ func (r *Registry) OnSchemaChanged(ctx context.Context, clusterName string, sche
 		r.config.TokenReviewCacheTTL,
 		r.config.Validator,
 		r.config.Metrics,
+		r.config.KubernetesQPS,
+		r.config.KubernetesBurst,
 	)
 	if err != nil {
 		logger.Error(err, "Failed to create endpoint", "cluster", clusterName)

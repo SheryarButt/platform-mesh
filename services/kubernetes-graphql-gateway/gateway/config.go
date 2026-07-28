@@ -59,6 +59,8 @@ func NewConfig(opts *options.CompletedOptions) (*Config, error) {
 		},
 		TokenReviewCacheTTL: cfg.Options.TokenReviewCacheTTL,
 		Metrics:             metrics.NewCollector(prometheus.DefaultRegisterer),
+		KubernetesQPS:       cfg.Options.KubernetesQPS,
+		KubernetesBurst:     cfg.Options.KubernetesBurst,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gateway server: %w", err)

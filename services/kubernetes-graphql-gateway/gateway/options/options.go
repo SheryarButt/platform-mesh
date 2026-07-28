@@ -79,6 +79,10 @@ type ExtraOptions struct {
 	IdleTimeout time.Duration
 	// EndpointSuffix is the suffix appended to the cluster endpoint path (e.g. "/graphql").
 	EndpointSuffix string
+	// KubernetesQPS is the maximum queries per second to the Kubernetes API server.
+	KubernetesQPS float32
+	// KubernetesBurst is the maximum burst size for requests to the Kubernetes API server.
+	KubernetesBurst int
 }
 
 type completedOptions struct {

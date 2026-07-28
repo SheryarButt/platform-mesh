@@ -58,6 +58,8 @@ func New(
 	tokenReviewCacheTTL time.Duration,
 	injectedValidator authn.Validator,
 	m *metrics.Collector,
+	kubernetesQPS float32,
+	kubernetesBurst int,
 ) (*Endpoint, error) {
 	var endpointM *metrics.EndpointMetrics
 	var resolverM *metrics.ResolverMetrics
@@ -73,7 +75,7 @@ func New(
 		return nil, fmt.Errorf("failed to parse schema: %w", err)
 	}
 
-	cl, err := cluster.New(ctx, name, schemaData.ClusterMetadata)
+	cl, err := cluster.New(ctx, name, schemaData.ClusterMetadata, kubernetesQPS, kubernetesBurst)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cluster: %w", err)
 	}

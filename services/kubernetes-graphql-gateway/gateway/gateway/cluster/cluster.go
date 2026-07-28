@@ -46,6 +46,8 @@ func New(
 	ctx context.Context,
 	name string,
 	metadata *pmgatewayv1alpha1.ClusterMetadata,
+	kubernetesQPS float32,
+	kubernetesBurst int,
 ) (*Cluster, error) {
 	if metadata == nil {
 		return nil, fmt.Errorf("cluster %s requires cluster metadata", name)
@@ -60,6 +62,9 @@ func New(
 	if err != nil {
 		return nil, fmt.Errorf("failed to build config from metadata: %w", err)
 	}
+
+	cluster.restCfg.QPS = kubernetesQPS
+	cluster.restCfg.Burst = kubernetesBurst
 
 	cluster.adminCfg = rest.CopyConfig(cluster.restCfg)
 
