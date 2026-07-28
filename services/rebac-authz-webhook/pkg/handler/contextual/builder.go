@@ -23,16 +23,13 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/clustercache"
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/util"
 )
 
-// CheckInput contains preprocessed data for an OpenFGA check.
-// This is the output of BuildCheckInput and can be used to construct
-// a CheckRequest or BatchCheckItem.
+// CheckInput contains preprocessed data for an OpenFGA check
 type CheckInput struct {
 	StoreID          string
 	Object           string
@@ -41,16 +38,8 @@ type CheckInput struct {
 	ContextualTuples []*openfgav1.TupleKey
 }
 
-// BuildCheckInput builds OpenFGA check parameters from resource attributes.
-// This function extracts the contextual tuple building logic so it can be
-// reused by both the single SAR handler and the batch endpoint.
-//
-// It handles:
-// - Version wildcard normalization (* -> "")
-// - GVR to GVK mapping via RESTMapper
-// - Namespaced vs cluster-scoped resource detection
-// - Object type and relation building
-// - Contextual tuple construction based on resource scope
+// BuildCheckInput builds OpenFGA check parameters from resource attributes
+// and extracts the contextual tuple building logic
 func BuildCheckInput(
 	attrs *authorizationv1.ResourceAttributes,
 	user string,
@@ -134,21 +123,6 @@ func BuildCheckInput(
 		Relation:         relation,
 		User:             fmt.Sprintf("user:%s", user),
 		ContextualTuples: contextualTuples,
-	}
-
-	klog.InfoS("built check input",
-		"object", checkInput.Object,
-		"relation", checkInput.Relation,
-		"user", checkInput.User,
-		"storeID", checkInput.StoreID,
-		"contextualTuplesCount", len(checkInput.ContextualTuples))
-
-	for i, tuple := range checkInput.ContextualTuples {
-		klog.InfoS("contextual tuple",
-			"index", i,
-			"tupleObject", tuple.Object,
-			"tupleRelation", tuple.Relation,
-			"tupleUser", tuple.User)
 	}
 
 	return checkInput, nil
