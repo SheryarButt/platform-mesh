@@ -34,17 +34,17 @@ func NewProviderPermissionsRetriever(cache *ProviderPermissionsCache) *ProviderP
 }
 
 func (r *ProviderPermissionsRetriever) GetRoleDefinitions(rctx graph.ResourceContext) ([]RoleDefinition, error) {
-	groupResource := buildGroupResource(rctx.Group, rctx.Kind)
-	roles := r.cache.GetRoles(groupResource)
+	groupKindKey := buildGroupKindKey(rctx.Group, rctx.Kind)
+	roles := r.cache.GetRoles(groupKindKey)
 	if roles == nil {
 		return []RoleDefinition{}, nil
 	}
 	return roles, nil
 }
 
-// buildGroupResource constructs the GroupResource key from group and kind.
-// Format: "{kind}.{group}" or just "{kind}" if group is empty.
-func buildGroupResource(group, kind string) string {
+// buildGroupKindKey constructs a lookup key from group and kind.
+// Format: "{kind-lowercase}.{group}" or just "{kind-lowercase}" if group is empty.
+func buildGroupKindKey(group, kind string) string {
 	// Normalize kind to lowercase for consistent lookup
 	kind = strings.ToLower(kind)
 	if group == "" {
