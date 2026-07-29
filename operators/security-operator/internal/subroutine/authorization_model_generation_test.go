@@ -24,6 +24,8 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
+	"go.platform-mesh.io/security-operator/internal/config"
 	"go.platform-mesh.io/security-operator/internal/subroutine"
 	"go.platform-mesh.io/security-operator/internal/subroutine/mocks"
 
@@ -32,7 +34,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 
 	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
 	kcpapisv1alpha2 "github.com/kcp-dev/sdk/apis/apis/v1alpha2"
@@ -125,10 +126,16 @@ func TestAuthorizationModelGeneration_Process(t *testing.T) {
 					}
 					return nil
 				}).Once()
-				manager.EXPECT().GetCluster(mock.Anything, mock.Anything).Return(cluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, mock.Anything).Return(cluster, nil).Times(2)
 				kcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					if ae, ok := o.(*kcpapisv1alpha2.APIExport); ok {
 						ae.Spec.Resources = []kcpapisv1alpha2.ResourceSchema{{Schema: "schema1"}}
+						return nil
+					}
+					return nil
+				}).Once()
+				kcpClient.EXPECT().List(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, list ctrlruntimeclient.ObjectList, opts ...ctrlruntimeclient.ListOption) error {
+					if _, ok := list.(*pmprovidersv1alpha1.ProviderPermissionsList); ok {
 						return nil
 					}
 					return nil
@@ -164,10 +171,16 @@ func TestAuthorizationModelGeneration_Process(t *testing.T) {
 				manager.EXPECT().ClusterFromContext(mock.Anything).Return(cluster, nil)
 				cluster.EXPECT().GetClient().Return(kcpClient)
 				mockAccountInfo(kcpClient, "org", "origin")
-				manager.EXPECT().GetCluster(mock.Anything, mock.Anything).Return(cluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, mock.Anything).Return(cluster, nil).Times(2)
 				kcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					if ae, ok := o.(*kcpapisv1alpha2.APIExport); ok {
 						ae.Spec.Resources = []kcpapisv1alpha2.ResourceSchema{{Schema: "schema1"}}
+						return nil
+					}
+					return nil
+				}).Once()
+				kcpClient.EXPECT().List(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, list ctrlruntimeclient.ObjectList, opts ...ctrlruntimeclient.ListOption) error {
+					if _, ok := list.(*pmprovidersv1alpha1.ProviderPermissionsList); ok {
 						return nil
 					}
 					return nil
@@ -194,10 +207,16 @@ func TestAuthorizationModelGeneration_Process(t *testing.T) {
 				manager.EXPECT().ClusterFromContext(mock.Anything).Return(cluster, nil)
 				cluster.EXPECT().GetClient().Return(kcpClient)
 				mockAccountInfo(kcpClient, "org", "origin")
-				manager.EXPECT().GetCluster(mock.Anything, mock.Anything).Return(cluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, mock.Anything).Return(cluster, nil).Times(2)
 				kcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					if ae, ok := o.(*kcpapisv1alpha2.APIExport); ok {
 						ae.Spec.Resources = []kcpapisv1alpha2.ResourceSchema{{Schema: "schema1"}}
+						return nil
+					}
+					return nil
+				}).Once()
+				kcpClient.EXPECT().List(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, list ctrlruntimeclient.ObjectList, opts ...ctrlruntimeclient.ListOption) error {
+					if _, ok := list.(*pmprovidersv1alpha1.ProviderPermissionsList); ok {
 						return nil
 					}
 					return nil
@@ -237,10 +256,16 @@ func TestAuthorizationModelGeneration_Process(t *testing.T) {
 				manager.EXPECT().ClusterFromContext(mock.Anything).Return(cluster, nil)
 				cluster.EXPECT().GetClient().Return(kcpClient)
 				mockAccountInfo(kcpClient, "org", "origin")
-				manager.EXPECT().GetCluster(mock.Anything, mock.Anything).Return(cluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, mock.Anything).Return(cluster, nil).Times(2)
 				kcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					if ae, ok := o.(*kcpapisv1alpha2.APIExport); ok {
 						ae.Spec.Resources = []kcpapisv1alpha2.ResourceSchema{{Schema: "schema1"}}
+						return nil
+					}
+					return nil
+				}).Once()
+				kcpClient.EXPECT().List(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, list ctrlruntimeclient.ObjectList, opts ...ctrlruntimeclient.ListOption) error {
+					if _, ok := list.(*pmprovidersv1alpha1.ProviderPermissionsList); ok {
 						return nil
 					}
 					return nil
@@ -255,10 +280,16 @@ func TestAuthorizationModelGeneration_Process(t *testing.T) {
 				manager.EXPECT().ClusterFromContext(mock.Anything).Return(cluster, nil)
 				cluster.EXPECT().GetClient().Return(kcpClient)
 				mockAccountInfo(kcpClient, "org", "origin")
-				manager.EXPECT().GetCluster(mock.Anything, mock.Anything).Return(cluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, mock.Anything).Return(cluster, nil).Times(2)
 				kcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					if ae, ok := o.(*kcpapisv1alpha2.APIExport); ok {
 						ae.Spec.Resources = []kcpapisv1alpha2.ResourceSchema{{Schema: "schema1"}}
+						return nil
+					}
+					return nil
+				}).Once()
+				kcpClient.EXPECT().List(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, list ctrlruntimeclient.ObjectList, opts ...ctrlruntimeclient.ListOption) error {
+					if _, ok := list.(*pmprovidersv1alpha1.ProviderPermissionsList); ok {
 						return nil
 					}
 					return nil
@@ -296,7 +327,64 @@ func TestAuthorizationModelGeneration_Process(t *testing.T) {
 				manager.EXPECT().ClusterFromContext(mock.Anything).Return(cluster, nil)
 				cluster.EXPECT().GetClient().Return(kcpClient)
 				mockAccountInfo(kcpClient, "org", "origin")
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("export-cluster")).Return(nil, assert.AnError)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "export-cluster")).Return(nil, assert.AnError)
+			},
+		},
+		{
+			name:    "generate model with ProviderPermissions not found",
+			binding: newApiBinding("foo", "bar"),
+			mockSetup: func(manager *mocks.MockManager, lister *mocks.MockLister, cluster *mocks.MockCluster, kcpClient *mocks.MockClient) {
+				manager.EXPECT().ClusterFromContext(mock.Anything).Return(cluster, nil)
+				cluster.EXPECT().GetClient().Return(kcpClient)
+				mockAccountInfo(kcpClient, "org", "origin")
+				manager.EXPECT().GetCluster(mock.Anything, mock.Anything).Return(cluster, nil).Times(2)
+				kcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
+					if ae, ok := o.(*kcpapisv1alpha2.APIExport); ok {
+						ae.Spec.Resources = []kcpapisv1alpha2.ResourceSchema{{Schema: "schema1"}}
+						ae.Name = "test-export"
+						return nil
+					}
+					return nil
+				}).Once()
+				kcpClient.EXPECT().List(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, list ctrlruntimeclient.ObjectList, opts ...ctrlruntimeclient.ListOption) error {
+					if _, ok := list.(*pmprovidersv1alpha1.ProviderPermissionsList); ok {
+						return nil
+					}
+					return nil
+				}).Once()
+				kcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
+					if rs, ok := o.(*kcpapisv1alpha1.APIResourceSchema); ok {
+						rs.Spec.Group = "group"
+						rs.Spec.Names.Plural = "foos"
+						rs.Spec.Names.Singular = "foo"
+						rs.Spec.Scope = apiextensionsv1.ClusterScoped
+						return nil
+					}
+					return nil
+				}).Once()
+				kcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+				kcpClient.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Maybe()
+				kcpClient.EXPECT().Create(mock.Anything, mock.Anything).Return(nil).Maybe()
+			},
+		},
+		{
+			name:        "error on ProviderPermissions list",
+			binding:     newApiBinding("foo", "bar"),
+			expectError: true,
+			mockSetup: func(manager *mocks.MockManager, lister *mocks.MockLister, cluster *mocks.MockCluster, kcpClient *mocks.MockClient) {
+				manager.EXPECT().ClusterFromContext(mock.Anything).Return(cluster, nil)
+				cluster.EXPECT().GetClient().Return(kcpClient)
+				mockAccountInfo(kcpClient, "org", "origin")
+				manager.EXPECT().GetCluster(mock.Anything, mock.Anything).Return(cluster, nil).Times(2)
+				kcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
+					if ae, ok := o.(*kcpapisv1alpha2.APIExport); ok {
+						ae.Spec.Resources = []kcpapisv1alpha2.ResourceSchema{{Schema: "schema1"}}
+						ae.Name = "test-export"
+						return nil
+					}
+					return nil
+				}).Once()
+				kcpClient.EXPECT().List(mock.Anything, mock.Anything, mock.Anything).Return(assert.AnError)
 			},
 		},
 	}
@@ -355,7 +443,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("cluster1")).Return(bindingWsCluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "cluster1")).Return(bindingWsCluster, nil)
 				bindingWsCluster.EXPECT().GetClient().Return(bindingWsClient)
 				bindingWsClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "account"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					acc := o.(*pmcorev1alpha1.AccountInfo)
@@ -363,7 +451,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("export-cluster")).Return(apiExportCluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "export-cluster")).Return(apiExportCluster, nil)
 				apiExportCluster.EXPECT().GetClient().Return(apiExportClient)
 				apiExportClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "foo"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					ae := o.(*kcpapisv1alpha2.APIExport)
@@ -438,14 +526,14 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("cluster1")).Return(bindingCluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "cluster1")).Return(bindingCluster, nil)
 				bindingClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "account"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					acc := o.(*pmcorev1alpha1.AccountInfo)
 					acc.Spec.Organization.Name = "org"
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("export-cluster")).Return(apiExportCluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "export-cluster")).Return(apiExportCluster, nil)
 				apiExportCluster.EXPECT().GetClient().Return(apiExportClient)
 				apiExportClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "foo"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					ae := o.(*kcpapisv1alpha2.APIExport)
@@ -486,7 +574,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("cluster1")).Return(bindingWsCluster1, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "cluster1")).Return(bindingWsCluster1, nil)
 				bindingWsCluster1.EXPECT().GetClient().Return(bindingWsClient1)
 				bindingWsClient1.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "account"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					acc := o.(*pmcorev1alpha1.AccountInfo)
@@ -494,7 +582,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("cluster2")).Return(bindingWsCluster2, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "cluster2")).Return(bindingWsCluster2, nil)
 				bindingWsCluster2.EXPECT().GetClient().Return(bindingWsClient2)
 				bindingWsClient2.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "account"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					acc := o.(*pmcorev1alpha1.AccountInfo)
@@ -533,7 +621,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("cluster1")).Return(bindingWsCluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "cluster1")).Return(bindingWsCluster, nil)
 				bindingWsCluster.EXPECT().GetClient().Return(bindingWsClient)
 				bindingWsClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "account"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					acc := o.(*pmcorev1alpha1.AccountInfo)
@@ -541,7 +629,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("export-cluster")).Return(apiExportCluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "export-cluster")).Return(apiExportCluster, nil)
 				apiExportCluster.EXPECT().GetClient().Return(apiExportClient)
 				apiExportClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "foo"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					ae := o.(*kcpapisv1alpha2.APIExport)
@@ -585,7 +673,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("cluster1")).Return(bindingWsCluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "cluster1")).Return(bindingWsCluster, nil)
 				bindingWsCluster.EXPECT().GetClient().Return(bindingWsClient)
 				bindingWsClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "account"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					acc := o.(*pmcorev1alpha1.AccountInfo)
@@ -593,7 +681,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("export-cluster")).Return(apiExportCluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "export-cluster")).Return(apiExportCluster, nil)
 				apiExportCluster.EXPECT().GetClient().Return(apiExportClient)
 				apiExportClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "foo"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					ae := o.(*kcpapisv1alpha2.APIExport)
@@ -671,7 +759,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("cluster1")).Return(bindingWsCluster1, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "cluster1")).Return(bindingWsCluster1, nil)
 				bindingWsCluster1.EXPECT().GetClient().Return(bindingWsClient1)
 				bindingWsClient1.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "account"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					acc := o.(*pmcorev1alpha1.AccountInfo)
@@ -679,11 +767,11 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("cluster2")).Return(bindingWsCluster2, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "cluster2")).Return(bindingWsCluster2, nil)
 				bindingWsCluster2.EXPECT().GetClient().Return(bindingWsClient2)
 				bindingWsClient2.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "account"}, mock.Anything).Return(
 					apierrors.NewNotFound(schema.GroupResource{Group: "account.platform-mesh.org", Resource: "accountinfos"}, "account"))
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("export-cluster")).Return(apiExportCluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "export-cluster")).Return(apiExportCluster, nil)
 				apiExportCluster.EXPECT().GetClient().Return(apiExportClient)
 				apiExportClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "foo"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					ae := o.(*kcpapisv1alpha2.APIExport)
@@ -719,7 +807,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("cluster1")).Return(nil, assert.AnError)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "cluster1")).Return(nil, assert.AnError)
 			},
 			expectError: true,
 		},
@@ -746,7 +834,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("cluster1")).Return(bindingWsCluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "cluster1")).Return(bindingWsCluster, nil)
 				bindingWsCluster.EXPECT().GetClient().Return(bindingWsClient)
 				bindingWsClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "account"}, mock.Anything).Return(assert.AnError)
 			},
@@ -777,7 +865,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("cluster1")).Return(bindingWsCluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "cluster1")).Return(bindingWsCluster, nil)
 				bindingWsCluster.EXPECT().GetClient().Return(bindingWsClient)
 				bindingWsClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "account"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					acc := o.(*pmcorev1alpha1.AccountInfo)
@@ -785,7 +873,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "different-org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("export-cluster")).Return(apiExportCluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "export-cluster")).Return(apiExportCluster, nil)
 				apiExportCluster.EXPECT().GetClient().Return(apiExportClient)
 				apiExportClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "foo"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					ae := o.(*kcpapisv1alpha2.APIExport)
@@ -824,7 +912,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("cluster1")).Return(bindingWsCluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "cluster1")).Return(bindingWsCluster, nil)
 				bindingWsCluster.EXPECT().GetClient().Return(bindingWsClient)
 				bindingWsClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "account"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					acc := o.(*pmcorev1alpha1.AccountInfo)
@@ -832,7 +920,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("export-cluster")).Return(nil, assert.AnError)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "export-cluster")).Return(nil, assert.AnError)
 			},
 		},
 		{
@@ -861,7 +949,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("cluster1")).Return(bindingWsCluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "cluster1")).Return(bindingWsCluster, nil)
 				bindingWsCluster.EXPECT().GetClient().Return(bindingWsClient)
 				bindingWsClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "account"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					acc := o.(*pmcorev1alpha1.AccountInfo)
@@ -869,7 +957,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("export-cluster")).Return(apiExportCluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "export-cluster")).Return(apiExportCluster, nil)
 				apiExportCluster.EXPECT().GetClient().Return(apiExportClient)
 				apiExportClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "foo"}, mock.Anything).Return(assert.AnError)
 			},
@@ -900,7 +988,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("cluster1")).Return(bindingWsCluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "cluster1")).Return(bindingWsCluster, nil)
 				bindingWsCluster.EXPECT().GetClient().Return(bindingWsClient)
 				bindingWsClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "account"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					acc := o.(*pmcorev1alpha1.AccountInfo)
@@ -908,7 +996,7 @@ func TestAuthorizationModelGeneration_Finalize(t *testing.T) {
 					acc.Spec.Organization.GeneratedClusterId = "org-id"
 					return nil
 				})
-				manager.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("export-cluster")).Return(apiExportCluster, nil)
+				manager.EXPECT().GetCluster(mock.Anything, config.MultiProviderName(config.CoreProviderName, "export-cluster")).Return(apiExportCluster, nil)
 				apiExportCluster.EXPECT().GetClient().Return(apiExportClient)
 				apiExportClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "foo"}, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					ae := o.(*kcpapisv1alpha2.APIExport)

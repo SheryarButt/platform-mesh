@@ -25,8 +25,10 @@ import (
 	"text/template"
 
 	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
 	"go.platform-mesh.io/golang-commons/logger"
 	iclient "go.platform-mesh.io/security-operator/internal/client"
+	"go.platform-mesh.io/security-operator/internal/config"
 	"go.platform-mesh.io/subroutines"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -36,7 +38,6 @@ import (
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
-	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 
 	"github.com/kcp-dev/logicalcluster/v3"
 	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
@@ -52,6 +53,10 @@ func toK8sName(parts ...string) string {
 	name := strings.ToLower(strings.Join(parts, "-"))
 	name = strings.ReplaceAll(name, ".", "-")
 	return strings.Trim(name, "-")
+}
+
+func resourceToPermissionKey(singular, group string) string {
+	return singular + "." + group
 }
 
 func NewAuthorizationModelGenerationSubroutine(mcMgr mcmanager.Manager, lister iclient.Lister) *AuthorizationModelGenerationSubroutine {
@@ -95,12 +100,17 @@ type {{ .Group }}_{{ .Singular }}
 		define member: [role#assignee] or owner or member from parent
 		define owner: [role#assignee] or owner from parent
 
-		define get: member
-		define update: member
-		define delete: member
-		define patch: member
-		define watch: member
-
+		define get: {{ or .Get "member" }}
+		define update: {{ or .Update "member" }}
+		define delete: {{ or .Delete "member" }}
+		define patch: {{ or .Patch "member" }}
+		define watch: {{ or .Watch "member" }}
+{{ range .Roles }}
+		define {{ .ID }}: {{ .Definition }}
+{{ end }}
+{{ range $name, $def := .AdditionalPermissions }}
+		define {{ $name }}: {{ $def }}
+{{ end }}
 		define manage_iam_roles: owner
 		define get_iam_roles: member
 		define get_iam_users: member
@@ -112,6 +122,24 @@ type modelInput struct {
 	Group    string
 	Singular string
 	Scope    string
+
+	Get    string
+	Update string
+	Delete string
+	Patch  string
+	Watch  string
+
+	Roles                 []pmprovidersv1alpha1.RoleDefinition
+	AdditionalPermissions map[string]string
+}
+
+func getRolesForResource(resourceRoles []pmprovidersv1alpha1.ResourceRoles, permissionKey string) []pmprovidersv1alpha1.RoleDefinition {
+	for _, rr := range resourceRoles {
+		if rr.GroupResource == permissionKey {
+			return rr.Roles
+		}
+	}
+	return nil
 }
 
 // Finalize implements subroutines.Finalizer.
@@ -144,7 +172,7 @@ func (a *AuthorizationModelGenerationSubroutine) Finalize(ctx context.Context, o
 			continue
 		}
 
-		bindingWsCluster, err := a.mgr.GetCluster(ctx, multicluster.ClusterName(logicalcluster.From(&binding).String()))
+		bindingWsCluster, err := a.mgr.GetCluster(ctx, config.MultiProviderName(config.CoreProviderName, logicalcluster.From(&binding).String()))
 		if err != nil {
 			return subroutines.OK(), fmt.Errorf("getting cluster for binding: %w", err)
 		}
@@ -174,7 +202,7 @@ func (a *AuthorizationModelGenerationSubroutine) Finalize(ctx context.Context, o
 		return subroutines.OK(), nil
 	}
 
-	apiExportCluster, err := a.mgr.GetCluster(ctx, multicluster.ClusterName(bindingToDelete.Status.APIExportClusterName))
+	apiExportCluster, err := a.mgr.GetCluster(ctx, config.MultiProviderName(config.CoreProviderName, bindingToDelete.Status.APIExportClusterName))
 	if err != nil {
 		return subroutines.OK(), fmt.Errorf("failed to get cluster %q: %w", bindingToDelete.Status.APIExportClusterName, err)
 	}
@@ -234,10 +262,10 @@ func (a *AuthorizationModelGenerationSubroutine) GetName() string {
 func (a *AuthorizationModelGenerationSubroutine) Process(ctx context.Context, obj ctrlruntimeclient.Object) (subroutines.Result, error) {
 	binding := obj.(*kcpapisv1alpha2.APIBinding)
 
-	internalAPIBindings := []string{"core.platform-mesh.io", "system.platform-mesh.io"}
+	internalAPIBindings := []string{"core.platform-mesh.io", "system.platform-mesh.io", "providers.platform-mesh.io"}
 
 	if slices.Contains(internalAPIBindings, binding.Spec.Reference.Export.Name) || strings.HasSuffix(binding.Spec.Reference.Export.Name, "kcp.io") {
-		// If the APIExport is the core.platform-mesh.io, system.platform-mesh.io we can skip the model generation.
+		// If the APIExport is the core.platform-mesh.io, system.platform-mesh.io, providers.platform-mesh.io we can skip the model generation.
 		return subroutines.OK(), nil
 	}
 
@@ -252,7 +280,7 @@ func (a *AuthorizationModelGenerationSubroutine) Process(ctx context.Context, ob
 		return subroutines.OK(), fmt.Errorf("getting AccountInfo: %w", err)
 	}
 
-	apiExportCluster, err := a.mgr.GetCluster(ctx, multicluster.ClusterName(binding.Status.APIExportClusterName))
+	apiExportCluster, err := a.mgr.GetCluster(ctx, config.MultiProviderName(config.CoreProviderName, binding.Status.APIExportClusterName))
 	if err != nil {
 		return subroutines.OK(), fmt.Errorf("getting APIExport cluster: %w", err)
 	}
@@ -261,6 +289,25 @@ func (a *AuthorizationModelGenerationSubroutine) Process(ctx context.Context, ob
 	err = apiExportCluster.GetClient().Get(ctx, types.NamespacedName{Name: binding.Spec.Reference.Export.Name}, &apiExport)
 	if err != nil {
 		return subroutines.OK(), fmt.Errorf("getting APIExport: %w", err)
+	}
+
+	providerCluster, err := a.mgr.GetCluster(ctx, config.MultiProviderName(config.ProvidersProviderName, binding.Status.APIExportClusterName))
+	if err != nil {
+		return subroutines.OK(), fmt.Errorf("getting provider cluster: %w", err)
+	}
+
+	var providerPermissionsList pmprovidersv1alpha1.ProviderPermissionsList
+	err = providerCluster.GetClient().List(ctx, &providerPermissionsList)
+	if err != nil {
+		return subroutines.OK(), fmt.Errorf("listing ProviderPermissions: %w", err)
+	}
+
+	var providerPermissions *pmprovidersv1alpha1.ProviderPermissions
+	for i := range providerPermissionsList.Items {
+		if providerPermissionsList.Items[i].Spec.APIExport.Ref.Name == apiExport.Name {
+			providerPermissions = &providerPermissionsList.Items[i]
+			break
+		}
 	}
 
 	for _, latestResourceSchema := range apiExport.Spec.Resources {
@@ -278,14 +325,30 @@ func (a *AuthorizationModelGenerationSubroutine) Process(ctx context.Context, ob
 			group = resourceSchema.Spec.Group[len(longestRelationName)-50:]
 		}
 
-		var buffer bytes.Buffer
-		err = modelTpl.Execute(&buffer, modelInput{
+		permissionKey := resourceToPermissionKey(resourceSchema.Spec.Names.Singular, resourceSchema.Spec.Group)
+
+		input := modelInput{
 			Name:     resourceSchema.Spec.Names.Plural,
 			Group:    strings.ReplaceAll(group, ".", "_"),
 			Singular: resourceSchema.Spec.Names.Singular,
 			Scope:    string(resourceSchema.Spec.Scope),
-		})
-		if err != nil {
+		}
+
+		if providerPermissions != nil {
+			if resourcePerms, ok := providerPermissions.Spec.Permissions[permissionKey]; ok {
+				input.Get = resourcePerms.DefaultPermissions.Get
+				input.Update = resourcePerms.DefaultPermissions.Update
+				input.Delete = resourcePerms.DefaultPermissions.Delete
+				input.Patch = resourcePerms.DefaultPermissions.Patch
+				input.Watch = resourcePerms.DefaultPermissions.Watch
+				input.AdditionalPermissions = resourcePerms.AdditionalPermissions
+			}
+
+			input.Roles = getRolesForResource(providerPermissions.Spec.Roles, permissionKey)
+		}
+
+		var buffer bytes.Buffer
+		if err := modelTpl.Execute(&buffer, input); err != nil {
 			return subroutines.OK(), fmt.Errorf("executing model template: %w", err)
 		}
 
@@ -307,6 +370,22 @@ func (a *AuthorizationModelGenerationSubroutine) Process(ctx context.Context, ob
 		})
 		if err != nil {
 			return subroutines.OK(), fmt.Errorf("creating or updating AuthorizationModel: %w", err)
+		}
+	}
+
+	if providerPermissions != nil {
+		providerPermissions.Status.ObservedGeneration = providerPermissions.Generation
+		meta.SetStatusCondition(&providerPermissions.Status.Conditions, metav1.Condition{
+			Type:               "Applied",
+			Status:             metav1.ConditionTrue,
+			ObservedGeneration: providerPermissions.Generation,
+			LastTransitionTime: metav1.Now(),
+			Reason:             "AuthorizationModelsGenerated",
+			Message:            "ProviderPermissions successfully applied to all AuthorizationModels",
+		})
+
+		if err := providerCluster.GetClient().Status().Update(ctx, providerPermissions); err != nil {
+			return subroutines.OK(), fmt.Errorf("updating ProviderPermissions status: %w", err)
 		}
 	}
 
