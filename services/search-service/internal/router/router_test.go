@@ -158,6 +158,9 @@ func TestCreateRouterSearchResponseContract(t *testing.T) {
 	if _, ok := payload["nextCursor"]; !ok {
 		t.Fatalf("missing nextCursor field")
 	}
+	if _, ok := payload["totalCount"]; ok {
+		t.Fatalf("totalCount should be omitted for cursor pagination")
+	}
 
 	results, ok := payload["results"].([]any)
 	if !ok || len(results) != 1 {
@@ -175,6 +178,51 @@ func TestCreateRouterSearchResponseContract(t *testing.T) {
 	}
 	if _, ok := first["source"]; !ok {
 		t.Fatalf("missing result source field")
+	}
+}
+
+func TestCreateRouterSearchPageResponseContract(t *testing.T) {
+	totalCount := 0
+	svc := &fakeSearchService{
+		response: search.SearchResponse{
+			Results:    []search.SearchHit{},
+			TotalCount: &totalCount,
+		},
+	}
+	r := CreateRouter(svc, []func(http.Handler) http.Handler{
+		withRequestContext(appcontext.RequestContext{Organization: "acme", User: "alice@example.com"}),
+	})
+	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=hello&page=2", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("response is not valid json: %v", err)
+	}
+	if got := payload["totalCount"]; got != float64(totalCount) {
+		t.Fatalf("expected totalCount %d, got %v", totalCount, got)
+	}
+	if _, ok := payload["nextCursor"]; ok {
+		t.Fatalf("nextCursor should be omitted for page pagination")
+	}
+}
+
+func TestCreateRouterSearchTotalCountUnavailable(t *testing.T) {
+	svc := &fakeSearchService{err: search.ErrTotalCountUnavailable}
+	r := CreateRouter(svc, []func(http.Handler) http.Handler{
+		withRequestContext(appcontext.RequestContext{Organization: "acme", User: "alice@example.com"}),
+	})
+	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=hello&page=1", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", rr.Code)
 	}
 }
 

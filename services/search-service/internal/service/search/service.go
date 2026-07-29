@@ -118,6 +118,7 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 		limit = s.cfg.MaxLimit
 	}
 
+	pageMode := req.Cursor == "" && req.Page > 0
 	resultOffset := 0
 	if req.Cursor == "" {
 		if req.Page < 0 {
@@ -212,7 +213,7 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 	var exhausted bool
 
 outer:
-	for len(results) < limit {
+	for pageMode || len(results) < limit {
 		page, err := s.searcher.Search(ctx, OpenSearchQuery{
 			Indices:        indices,
 			Query:          query,
@@ -231,6 +232,15 @@ outer:
 		if len(page.Hits) == 0 {
 			exhausted = true
 			break
+		}
+		if pageMode && totalScanned+len(page.Hits) > s.cfg.MaxScannedHits {
+			// TODO: Replace exhaustive counting with authorization-aware OpenSearch filters
+			// once indexed access scopes are available.
+			return SearchResponse{}, fmt.Errorf(
+				"%w: scan exceeds the maximum of %d hits",
+				ErrTotalCountUnavailable,
+				s.cfg.MaxScannedHits,
+			)
 		}
 
 		authz, err := s.authorizer.FilterAuthorized(ctx, AuthorizationRequest{
@@ -267,12 +277,12 @@ outer:
 				continue
 			}
 			authorizedHits++
-			if authorizedHits <= resultOffset {
+			if authorizedHits <= resultOffset || len(results) == limit {
 				continue
 			}
 
 			results = append(results, mapHit(hit, resolveHitResource(hit, resource, resourceByIndex)))
-			if len(results) == limit {
+			if !pageMode && len(results) == limit {
 				break outer
 			}
 		}
@@ -282,6 +292,12 @@ outer:
 			break
 		}
 		searchAfter = page.Hits[len(page.Hits)-1].Sort
+	}
+	if pageMode {
+		return SearchResponse{
+			Results:    results,
+			TotalCount: &authorizedHits,
+		}, nil
 	}
 
 	var nextCursor *string

@@ -42,9 +42,12 @@ Query params:
 
 If both `page` and `cursor` are provided, cursor-based pagination takes precedence.
 
-Page-based pagination scans and authorizes preceding hits, so it is bounded by
-`MaxScannedHits / limit` (1000 scanned hits by default). Requests beyond that bound are rejected; use cursor-based
-pagination for deep traversal.
+Page-based pagination scans and authorizes the full matching result set to return an exact authorized `totalCount`.
+The scan is bounded by `MaxScannedHits` (1000 hits by default). If the service cannot exhaust the result set within
+that bound, it responds with `422 Unprocessable Entity`; use cursor-based pagination for broader or deeper traversal.
+
+TODO: Replace the exhaustive count with authorization-aware OpenSearch filters after access scopes such as workspace
+and account are indexed. The same fields can then support authorization-safe facet counts.
 
 Semantic mode behavior:
 
@@ -66,8 +69,9 @@ Response shape:
 - `results[]` with compact fields (`id`, `score`, `kind`, `name`, `namespace`, `apiGroup`, `apiVersion`, `workspacePath`, `clusterName`, `organizationId`, `organizationName`, `accountId`, `accountName`)
 - `results[].resource` indicates which resource index produced the hit
 - `source` containing the indexed document source per hit, including `default_fields`, `semantic_fields`, and `filterable_fields`
-- `nextCursor` for sequential continuation. It can also be returned for a page-based request; pass it as `cursor`
-  (without `page`) to continue after that page.
+- `nextCursor` for cursor-based sequential continuation; omitted for page-based requests
+- `totalCount` with the exact number of authorized matching results for page-based requests; omitted for cursor-based
+  requests
 
 ### Resource metadata endpoint
 

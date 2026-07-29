@@ -32,7 +32,8 @@ type SearchRequest struct {
 
 type SearchResponse struct {
 	Results    []SearchHit `json:"results"`
-	NextCursor *string     `json:"nextCursor"`
+	NextCursor *string     `json:"nextCursor,omitempty"`
+	TotalCount *int        `json:"totalCount,omitempty"`
 }
 
 type SearchHit struct {
