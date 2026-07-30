@@ -64,7 +64,7 @@ func TestOpenFGAClient_Check(t *testing.T) {
 			name: "Check_StoreIdError",
 			setupMock: func(ctx context.Context, client *OpenFGAClient, openFGAServiceClientMock *mocks.OpenFGAServiceClient) {
 				openFGAServiceClientMock.EXPECT().
-					ListStores(ctx, &openfgav1.ListStoresRequest{}).
+					ListStores(ctx, listStoresReq("tenant-"+tenantId, "")).
 					Return(&openfgav1.ListStoresResponse{}, assert.AnError).
 					Once()
 			},

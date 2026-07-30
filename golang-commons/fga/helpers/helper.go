@@ -20,13 +20,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/grpc/status"
+
+	"go.platform-mesh.io/golang-commons/fga/store"
 )
 
 var cache = expirable.NewLRU[string, string](10, nil, 10*time.Minute)
@@ -38,20 +39,17 @@ func GetStoreIDForTenant(ctx context.Context, client openfgav1.OpenFGAServiceCli
 		return s, nil
 	}
 
-	res, err := client.ListStores(ctx, &openfgav1.ListStoresRequest{})
+	storeID, found, err := store.FindStoreIDByName(ctx, client, cacheKey)
 	if err != nil {
 		return "", err
 	}
-
-	idx := slices.IndexFunc(res.GetStores(), func(s *openfgav1.Store) bool { return s.Name == cacheKey })
-	if idx < 0 {
+	if !found {
 		return "", fmt.Errorf("could not find store matching key %q", cacheKey)
 	}
 
-	store := res.GetStores()[idx]
-	cache.Add(cacheKey, store.Id)
+	cache.Add(cacheKey, storeID)
 
-	return store.Id, nil
+	return storeID, nil
 }
 
 func GetModelIDForTenant(ctx context.Context, conn openfgav1.OpenFGAServiceClient, tenantID string) (string, error) {
