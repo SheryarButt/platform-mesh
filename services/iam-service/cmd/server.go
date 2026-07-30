@@ -52,10 +52,12 @@ import (
 
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"github.com/kcp-dev/multicluster-provider/apiexport"
+	mcclient "github.com/kcp-dev/multicluster-provider/client"
 	pathaware "github.com/kcp-dev/multicluster-provider/path-aware"
 	"github.com/kcp-dev/multicluster-provider/pkg/provider"
 	kcpclientset "github.com/kcp-dev/sdk/client/clientset/versioned/cluster"
@@ -97,12 +99,16 @@ func setupRouter(ctx context.Context, mgr mcmanager.Manager, fgaClient openfgav1
 	}
 
 	// Prepare Directives
-	wsClientFactory := workspace.NewClientFactory(mgr)
+	mcClusterClient, err := mcclient.New(restcfg, ctrlruntimeclient.Options{Scheme: scheme})
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to create multicluster client")
+	}
+	wsClient := workspace.NewClusterClientFactory(mcClusterClient)
 	ad := directive.NewAuthorizedDirective(
 		fgaClient,
 		accountInfoRetriever,
 		serviceCfg.OpenFGA.StoreCacheTTL,
-		wsClientFactory,
+		wsClient,
 		log,
 	)
 	dr := graph.DirectiveRoot{
