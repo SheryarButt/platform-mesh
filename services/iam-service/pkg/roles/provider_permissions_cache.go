@@ -30,7 +30,7 @@ import (
 
 type ProviderPermissionsCache struct {
 	mu sync.RWMutex
-	// roles maps GroupResource (e.g. "httpbin.orchestrate.platform-mesh.io") to role definitions
+	// roles maps GroupKind key (e.g. "httpbin.orchestrate.platform-mesh.io") to role definitions.
 	roles map[string][]RoleDefinition
 }
 
@@ -69,11 +69,12 @@ func (c *ProviderPermissionsCache) SetupWithProvider(p *provider.Provider) error
 	return err
 }
 
-func (c *ProviderPermissionsCache) GetRoles(groupResource string) []RoleDefinition {
+// GetRoles returns the role definitions for the given GroupKind key.
+func (c *ProviderPermissionsCache) GetRoles(groupKindKey string) []RoleDefinition {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	return c.roles[groupResource]
+	return c.roles[groupKindKey]
 }
 
 func (c *ProviderPermissionsCache) handleAdd(pp *pmprovidersv1alpha1.ProviderPermissions) {
@@ -114,8 +115,8 @@ func (c *ProviderPermissionsCache) handleDelete(pp *pmprovidersv1alpha1.Provider
 	}
 }
 
-func (c *ProviderPermissionsCache) removeRoles(groupResource string, toRemove []pmprovidersv1alpha1.RoleDefinition) {
-	existing := c.roles[groupResource]
+func (c *ProviderPermissionsCache) removeRoles(groupKindKey string, toRemove []pmprovidersv1alpha1.RoleDefinition) {
+	existing := c.roles[groupKindKey]
 	if len(existing) == 0 {
 		return
 	}
@@ -127,8 +128,8 @@ func (c *ProviderPermissionsCache) removeRoles(groupResource string, toRemove []
 	})
 
 	if len(remaining) == 0 {
-		delete(c.roles, groupResource)
+		delete(c.roles, groupKindKey)
 	} else {
-		c.roles[groupResource] = remaining
+		c.roles[groupKindKey] = remaining
 	}
 }
