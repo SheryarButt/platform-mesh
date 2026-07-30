@@ -19,6 +19,7 @@ package subroutine
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	pmsearchv1alpha1 "go.platform-mesh.io/apis/search/v1alpha1"
@@ -33,6 +34,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -196,9 +198,9 @@ func (s *apiBindingWatcherSubroutine) resolveFieldsForPermissionClaim(ctx contex
 		return &searchIndexFields{}, nil
 	}
 
-	defaultFields := make(map[string]struct{})
-	semanticFields := make(map[string]struct{})
-	exactFields := make(map[string]struct{})
+	defaultFields := sets.New[string]()
+	semanticFields := sets.New[string]()
+	exactFields := sets.New[string]()
 
 	var cf *searchConfigFilter
 	searchCfg := &pmsearchv1alpha1.SearchConfig{}
@@ -223,17 +225,17 @@ func (s *apiBindingWatcherSubroutine) resolveFieldsForPermissionClaim(ctx contex
 		}
 		for _, fieldPath := range collectLeafFieldPaths(props) {
 			if cf == nil {
-				defaultFields[fieldPath] = struct{}{}
+				defaultFields.Insert(fieldPath)
 			} else {
-				cf.sortIntoAnyOf(fieldPath, &defaultFields, &semanticFields, &exactFields)
+				cf.sortIntoAnyOf(fieldPath, defaultFields, semanticFields, exactFields)
 			}
 		}
 	}
 
 	return &searchIndexFields{
-		defaultFields:    sliceFromSet(defaultFields),
-		semanticFields:   sliceFromSet(semanticFields),
-		filterableFields: sliceFromSet(exactFields),
+		defaultFields:    sets.List(defaultFields),
+		semanticFields:   sets.List(semanticFields),
+		filterableFields: sets.List(exactFields),
 	}, nil
 }
 
@@ -273,49 +275,34 @@ func collectLeafFieldPaths(root *apiextensionsv1.JSONSchemaProps) []string {
 
 // searchConfigFilter holds pre-built sets from a SearchConfig for fast field classification.
 type searchConfigFilter struct {
-	excluded map[string]struct{}
-	exact    map[string]struct{}
-	semantic map[string]struct{}
+	excluded sets.Set[string]
+	exact    sets.Set[string]
+	semantic sets.Set[string]
 }
 
 func newSearchConfigFilter(cfg *pmsearchv1alpha1.SearchConfig) searchConfigFilter {
-	toStructSet := func(fields []string) map[string]struct{} {
-		m := make(map[string]struct{}, len(fields))
-		for _, f := range fields {
-			m[f] = struct{}{}
-		}
-		return m
-	}
 	return searchConfigFilter{
-		excluded: toStructSet(cfg.Spec.ExcludedFields),
-		exact:    toStructSet(cfg.Spec.ExactFields),
-		semantic: toStructSet(cfg.Spec.SemanticFields),
+		excluded: sets.New[string](cfg.Spec.ExcludedFields...),
+		exact:    sets.New[string](cfg.Spec.ExactFields...),
+		semantic: sets.New[string](cfg.Spec.SemanticFields...),
 	}
 }
 
 // sortIntoAnyOf classifies element by priority: excluded fields are dropped; otherwise it goes
 // into exactFields if listed as exact, semanticFields if listed as semantic, else defaultFields.
-func (f searchConfigFilter) sortIntoAnyOf(element string, defaultFields, semanticFields, exactFields *map[string]struct{}) {
-	if _, excluded := f.excluded[element]; excluded {
+func (f searchConfigFilter) sortIntoAnyOf(element string, defaultFields, semanticFields, exactFields sets.Set[string]) {
+	if f.excluded.Has(element) {
 		return
 	}
-	if _, isExact := f.exact[element]; isExact {
-		(*exactFields)[element] = struct{}{}
+	if f.exact.Has(element) {
+		exactFields.Insert(element)
 		return
 	}
-	if _, isSemantic := f.semantic[element]; isSemantic {
-		(*semanticFields)[element] = struct{}{}
+	if f.semantic.Has(element) {
+		semanticFields.Insert(element)
 		return
 	}
-	(*defaultFields)[element] = struct{}{}
-}
-
-func sliceFromSet(set map[string]struct{}) []string {
-	s := make([]string, 0, len(set))
-	for k := range set {
-		s = append(s, k)
-	}
-	return s
+	defaultFields.Insert(element)
 }
 
 // ensureSearchIndex creates or updates the SearchIndex in the org workspace.
@@ -368,9 +355,9 @@ func (s *apiBindingWatcherSubroutine) ensureSearchIndex(
 		return fmt.Errorf("get SearchIndex %q: %w", searchIndexName, err)
 
 	default:
-		if stringSlicesEqual(existing.Spec.DefaultFields, fields.defaultFields) &&
-			stringSlicesEqual(existing.Spec.SemanticFields, fields.semanticFields) &&
-			stringSlicesEqual(existing.Spec.FilterableFields, fields.filterableFields) {
+		if slices.Equal(existing.Spec.DefaultFields, fields.defaultFields) &&
+			slices.Equal(existing.Spec.SemanticFields, fields.semanticFields) &&
+			slices.Equal(existing.Spec.FilterableFields, fields.filterableFields) {
 			return nil
 		}
 		updated := existing.DeepCopy()
@@ -393,17 +380,4 @@ func (s *apiBindingWatcherSubroutine) ensureSearchIndex(
 	}
 
 	return nil
-}
-
-// stringSlicesEqual returns true when a and b contain the same elements in the same order.
-func stringSlicesEqual(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
