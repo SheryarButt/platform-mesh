@@ -25,13 +25,20 @@ import (
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 )
 
+// FieldMappings holds the dot-notation field paths that drive the dynamic part of the index mapping.
+type FieldMappings struct {
+	Default    []string
+	Semantic   []string
+	Filterable []string
+}
+
 // DefaultIndexMapping returns the default OpenSearch index mapping for workspace and resource documents.
 // - default_fields stores SearchIndex default fields for lexical search and UI source display.
 // - semantic_fields stores SearchIndex semantic fields for neural search.
 // - filterable_fields stores SearchIndex filterable fields as exact-match facets.
 // - payload_raw_json is stored but not indexed.
 // - payload_text stores the full serialized object for full-text search.
-func DefaultIndexMapping(_ []string, semanticFields, _ []string, semanticModelID string) (string, error) {
+func DefaultIndexMapping(fields FieldMappings, semanticModelID string) (string, error) {
 	properties := map[string]any{
 		"id": map[string]any{"type": "keyword"},
 		"name": map[string]any{
@@ -75,15 +82,14 @@ func DefaultIndexMapping(_ []string, semanticFields, _ []string, semanticModelID
 		"payload_text":     map[string]any{"type": "text"},
 	}
 
-	semanticProperties := properties["semantic_fields"].(map[string]any)["properties"].(map[string]any)
-	semanticFieldPaths := normalizedFieldPaths(semanticFields)
-	if len(semanticFieldPaths) > 0 {
+	if len(fields.Semantic) > 0 {
 		semanticModelID = strings.TrimSpace(semanticModelID)
 		if semanticModelID == "" {
 			return "", fmt.Errorf("semantic model id is required when semantic fields are configured")
 		}
-		for _, fieldPath := range semanticFieldPaths {
-			if err := addSemanticFieldMapping(semanticProperties, fieldPath, semanticModelID); err != nil {
+		for _, fieldPath := range fields.Semantic {
+			leaf := map[string]any{"type": "semantic", "model_id": semanticModelID}
+			if err := setLeafMapping(properties, fieldPath, leaf, true); err != nil {
 				return "", err
 			}
 		}
@@ -111,24 +117,10 @@ func DefaultIndexMapping(_ []string, semanticFields, _ []string, semanticModelID
 	return string(raw), nil
 }
 
-func normalizedFieldPaths(fields []string) []string {
-	seen := make(map[string]struct{}, len(fields))
-	out := make([]string, 0, len(fields))
-	for _, field := range fields {
-		field = strings.TrimSpace(field)
-		if field == "" {
-			continue
-		}
-		if _, exists := seen[field]; exists {
-			continue
-		}
-		seen[field] = struct{}{}
-		out = append(out, field)
-	}
-	return out
-}
-
-func addSemanticFieldMapping(properties map[string]any, fieldPath, semanticModelID string) error {
+// setLeafMapping places leafMapping at fieldPath, creating {type:object, properties:{}} intermediates
+// along the way. When overwrite is false and a leaf already exists at fieldPath, it is left untouched
+// (used to enforce priority: semantic > filterable > default).
+func setLeafMapping(properties map[string]any, fieldPath string, leafMapping map[string]any, overwrite bool) error {
 	segments := splitFieldPath(fieldPath)
 	if len(segments) == 0 {
 		return nil
@@ -140,19 +132,7 @@ func addSemanticFieldMapping(properties map[string]any, fieldPath, semanticModel
 		isLeaf := i == len(segments)-1
 
 		if isLeaf {
-			if exists {
-				existingMap, ok := existing.(map[string]any)
-				if !ok {
-					return fmt.Errorf("semantic field %q conflicts with existing non-object mapping", fieldPath)
-				}
-				if existingType, _ := existingMap["type"].(string); existingType != "" && existingType != "semantic" {
-					return fmt.Errorf("semantic field %q conflicts with existing %q mapping", fieldPath, existingType)
-				}
-			}
-			current[segment] = map[string]any{
-				"type":     "semantic",
-				"model_id": semanticModelID,
-			}
+			current[segment] = leafMapping
 			return nil
 		}
 
@@ -168,10 +148,10 @@ func addSemanticFieldMapping(properties map[string]any, fieldPath, semanticModel
 
 		existingMap, ok := existing.(map[string]any)
 		if !ok {
-			return fmt.Errorf("semantic field %q conflicts with existing non-object mapping at %q", fieldPath, segment)
+			return fmt.Errorf("field %q conflicts with existing non-object mapping at %q", fieldPath, segment)
 		}
 		if existingType, _ := existingMap["type"].(string); existingType != "" && existingType != "object" {
-			return fmt.Errorf("semantic field %q conflicts with existing %q mapping at %q", fieldPath, existingType, segment)
+			return fmt.Errorf("field %q conflicts with existing %q mapping at %q", fieldPath, existingType, segment)
 		}
 
 		nextProps, ok := existingMap["properties"].(map[string]any)
@@ -277,6 +257,10 @@ type ResourceDocument struct {
 	Spec   map[string]any `json:"spec,omitempty"`
 	Status map[string]any `json:"status,omitempty"`
 
+	// Timestamps
+	CreatedAt time.Time `json:"created_at,omitempty"`
+	UpdatedAt time.Time `json:"updated_at"`
+
 	// DefaultFields holds fields from the unstructured resource that are listed in
 	// the SearchIndex's DefaultFields. These are propagated directly from the resource.
 	DefaultFields map[string]any `json:"default_fields,omitempty"`
@@ -286,10 +270,6 @@ type ResourceDocument struct {
 
 	// FilterableFields holds scalar fields listed in the SearchIndex's FilterableFields.
 	FilterableFields map[string]any `json:"filterable_fields,omitempty"`
-
-	// Timestamps
-	CreatedAt time.Time `json:"created_at,omitempty"`
-	UpdatedAt time.Time `json:"updated_at"`
 
 	// Full raw object payload serialized as JSON, stored but not indexed.
 	PayloadRawJSON string `json:"payload_raw_json,omitempty"`

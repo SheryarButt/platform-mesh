@@ -17,10 +17,31 @@ limitations under the License.
 package config
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/vrischmann/envconfig"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
+
+type GroupVersionKindProvider struct {
+	schema.GroupVersionKind
+	Provider string
+}
+
+func (g *GroupVersionKindProvider) Unmarshal(s string) error {
+	s = strings.Trim(s, "{}")
+	parts := strings.Split(s, ",")
+	if len(parts) != 4 {
+		return fmt.Errorf("expected 'group,version,kind,provider', got %q", s)
+	}
+	g.Group = parts[0]
+	g.Version = parts[1]
+	g.Kind = parts[2]
+	g.Provider = parts[3]
+	return nil
+}
 
 // Config holds the configuration for the search-operator
 type Config struct {
@@ -30,7 +51,7 @@ type Config struct {
 	} `mapstructure:",squash"`
 
 	SearchableResource struct {
-		Resources []schema.GroupVersionKind `mapstructure:"resources" envconfig:"default={core.platform-mesh.io;v1alpha1;Account}"`
+		Resources []GroupVersionKindProvider `mapstructure:"resources" envconfig:"default={core.platform-mesh.io;v1alpha1;Account;platform-mesh-system}"`
 	} `mapstructure:",squash"`
 
 	OpenSearch struct {
@@ -43,7 +64,7 @@ type Config struct {
 		// IndexNamePrefix is a static prefix for all operator-managed index names and aliases.
 		IndexNamePrefix string `mapstructure:"opensearch-index-name-prefix" envconfig:"default=pm-orgs"`
 		// SemanticModelID is the OpenSearch ML model ID used for semantic field mappings.
-		SemanticModelID string `mapstructure:"opensearch-semantic-model-id" envconfig:"optional,OPENSEARCH_SEMANTIC_MODEL_ID"`
+		SemanticModelID string `mapstructure:"opensearch-semantic-model-id" envconfig:"optional,OPEN_SEARCH_SEMANTIC_MODEL_ID"`
 	} `mapstructure:",squash"`
 }
 
