@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 func objectSchema(props map[string]apiextensionsv1.JSONSchemaProps) apiextensionsv1.JSONSchemaProps {
@@ -93,17 +94,10 @@ func TestCollectLeafFieldPathsDepthGuard(t *testing.T) {
 }
 
 func newFilter(excluded, semantic, exact []string) searchConfigFilter {
-	toSet := func(fs []string) map[string]struct{} {
-		m := make(map[string]struct{}, len(fs))
-		for _, f := range fs {
-			m[f] = struct{}{}
-		}
-		return m
-	}
 	return searchConfigFilter{
-		excluded: toSet(excluded),
-		semantic: toSet(semantic),
-		exact:    toSet(exact),
+		excluded: sets.New[string](excluded...),
+		semantic: sets.New[string](semantic...),
+		exact:    sets.New[string](exact...),
 	}
 }
 
@@ -114,27 +108,27 @@ func TestSortIntoAnyOfClassification(t *testing.T) {
 		[]string{"status.phase"},          // exact -> filterable
 	)
 
-	defaults := map[string]struct{}{}
-	semantics := map[string]struct{}{}
-	exacts := map[string]struct{}{}
+	defaults := sets.New[string]()
+	semantics := sets.New[string]()
+	exacts := sets.New[string]()
 
 	for _, p := range []string{"metadata.name", "spec.description", "status.phase", "spec.count"} {
-		f.sortIntoAnyOf(p, &defaults, &semantics, &exacts)
+		f.sortIntoAnyOf(p, defaults, semantics, exacts)
 	}
 
-	if _, ok := defaults["metadata.name"]; ok {
+	if defaults.Has("metadata.name") {
 		t.Fatal("excluded field metadata.name should not appear in any set")
 	}
-	if _, ok := semantics["metadata.name"]; ok {
+	if semantics.Has("metadata.name") {
 		t.Fatal("excluded field metadata.name leaked into semantics")
 	}
-	if _, ok := semantics["spec.description"]; !ok {
+	if !semantics.Has("spec.description") {
 		t.Fatalf("spec.description should be semantic, semantics=%v", semantics)
 	}
-	if _, ok := exacts["status.phase"]; !ok {
+	if !exacts.Has("status.phase") {
 		t.Fatalf("status.phase should be exact/filterable, exacts=%v", exacts)
 	}
-	if _, ok := defaults["spec.count"]; !ok {
+	if !defaults.Has("spec.count") {
 		t.Fatalf("spec.count should be default, defaults=%v", defaults)
 	}
 }
@@ -144,23 +138,23 @@ func TestSortIntoAnyOfClassification(t *testing.T) {
 func TestSortIntoAnyOfArgOrderRegression(t *testing.T) {
 	f := newFilter(nil, []string{"a"}, []string{"b"})
 
-	defaults := map[string]struct{}{}
-	semantics := map[string]struct{}{}
-	exacts := map[string]struct{}{}
+	defaults := sets.New[string]()
+	semantics := sets.New[string]()
+	exacts := sets.New[string]()
 
-	f.sortIntoAnyOf("a", &defaults, &semantics, &exacts)
-	f.sortIntoAnyOf("b", &defaults, &semantics, &exacts)
+	f.sortIntoAnyOf("a", defaults, semantics, exacts)
+	f.sortIntoAnyOf("b", defaults, semantics, exacts)
 
-	if _, ok := semantics["a"]; !ok {
+	if !semantics.Has("a") {
 		t.Fatalf("semantic field a not in semantics: %v", semantics)
 	}
-	if _, ok := exacts["a"]; ok {
+	if exacts.Has("a") {
 		t.Fatal("semantic field a wrongly landed in exacts")
 	}
-	if _, ok := exacts["b"]; !ok {
+	if !exacts.Has("b") {
 		t.Fatalf("exact field b not in exacts: %v", exacts)
 	}
-	if _, ok := semantics["b"]; ok {
+	if semantics.Has("b") {
 		t.Fatal("exact field b wrongly landed in semantics")
 	}
 }

@@ -82,13 +82,36 @@ func DefaultIndexMapping(fields FieldMappings, semanticModelID string) (string, 
 		"payload_text":     map[string]any{"type": "text"},
 	}
 
+	for _, fieldPath := range fields.Default {
+		leaf := map[string]any{
+			"type": "text",
+			"fields": map[string]any{
+				"keyword": map[string]any{"type": "keyword", "ignore_above": 256},
+			},
+		}
+		if err := setLeafMapping(properties, fieldPath, leaf, false); err != nil {
+			return "", err
+		}
+	}
+
+	for _, fieldPath := range fields.Filterable {
+		leaf := map[string]any{"type": "keyword"}
+		if err := setLeafMapping(properties, fieldPath, leaf, false); err != nil {
+			return "", err
+		}
+	}
+
 	if len(fields.Semantic) > 0 {
 		semanticModelID = strings.TrimSpace(semanticModelID)
 		if semanticModelID == "" {
 			return "", fmt.Errorf("semantic model id is required when semantic fields are configured")
 		}
+		semanticProperties := properties["semantic_fields"].(map[string]any)["properties"].(map[string]any)
 		for _, fieldPath := range fields.Semantic {
 			leaf := map[string]any{"type": "semantic", "model_id": semanticModelID}
+			if err := setLeafMapping(semanticProperties, fieldPath, leaf, true); err != nil {
+				return "", err
+			}
 			if err := setLeafMapping(properties, fieldPath, leaf, true); err != nil {
 				return "", err
 			}
