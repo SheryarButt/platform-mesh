@@ -319,23 +319,6 @@ func getSearchIndex(ctx context.Context, orgsClient ctrlruntimeclient.Client, or
 	return searchIndex, nil
 }
 
-// mergeFieldPaths concatenates the field-path lists into a single deduplicated slice,
-// preserving first-seen order.
-func mergeFieldPaths(lists ...[]string) []string {
-	seen := make(map[string]struct{})
-	out := make([]string, 0)
-	for _, list := range lists {
-		for _, path := range list {
-			if _, ok := seen[path]; ok {
-				continue
-			}
-			seen[path] = struct{}{}
-			out = append(out, path)
-		}
-	}
-	return out
-}
-
 func extractConfiguredFields(resource *unstructured.Unstructured, fieldPaths []string) map[string]any {
 	return extractFieldPaths(resource, fieldPaths, nil)
 }
