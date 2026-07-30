@@ -103,9 +103,9 @@ func newFilter(excluded, semantic, exact []string) searchConfigFilter {
 
 func TestSortIntoAnyOfClassification(t *testing.T) {
 	f := newFilter(
-		[]string{"metadata.name"},        // excluded
-		[]string{"spec.description"},      // semantic
-		[]string{"status.phase"},          // exact -> filterable
+		[]string{"metadata.name"},    // excluded
+		[]string{"spec.description"}, // semantic
+		[]string{"status.phase"},     // exact -> filterable
 	)
 
 	defaults := sets.New[string]()

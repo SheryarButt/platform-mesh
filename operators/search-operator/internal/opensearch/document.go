@@ -155,6 +155,9 @@ func setLeafMapping(properties map[string]any, fieldPath string, leafMapping map
 		isLeaf := i == len(segments)-1
 
 		if isLeaf {
+			if !overwrite && exists {
+				return nil
+			}
 			current[segment] = leafMapping
 			return nil
 		}
