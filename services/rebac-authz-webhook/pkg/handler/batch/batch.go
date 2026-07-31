@@ -28,10 +28,7 @@ import (
 
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/clustercache"
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/handler/contextual"
-
-	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 )
-
 
 // BatchHandler handles batch authorization requests.
 type BatchHandler struct {
@@ -137,12 +134,19 @@ func (h *BatchHandler) buildChecks(items []BatchAuthzItem) ([]*openfgav1.BatchCh
 
 	for _, item := range items {
 		// Skip items with missing required fields
-		if item.ID == "" || item.ResourceAttributes == nil || item.User == "" || item.ClusterName == "" {
+		if item.ID == "" || item.ResourceAttributes == nil || item.User == "" || item.ClusterPath == "" {
 			continue
 		}
 
-		clusterInfo, ok := h.clusterCache.Get(multicluster.ClusterName(item.ClusterName))
+		clusterName, ok := h.clusterCache.ClusterName(item.ClusterPath)
 		if !ok {
+			h.log.Error(nil, "cluster not found in cache", "clusterPath", item.ClusterPath)
+			continue
+		}
+
+		clusterInfo, ok := h.clusterCache.Get(clusterName)
+		if !ok {
+			h.log.Error(nil, "cluster info not found in cache", "clusterName", clusterName)
 			continue
 		}
 
@@ -150,7 +154,7 @@ func (h *BatchHandler) buildChecks(items []BatchAuthzItem) ([]*openfgav1.BatchCh
 			storeID = clusterInfo.StoreID
 		}
 
-		checkInput, err := contextual.BuildCheckInput(item.ResourceAttributes, item.User, item.ClusterName, clusterInfo)
+		checkInput, err := contextual.BuildCheckInput(item.ResourceAttributes, item.User, clusterName.String(), clusterInfo)
 		if err != nil {
 			h.log.Error(err, "failed to build check input", "id", item.ID)
 			continue

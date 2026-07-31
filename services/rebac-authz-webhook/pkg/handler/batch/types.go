@@ -34,8 +34,8 @@ type BatchAuthzItem struct {
 	// User is the user making the request.
 	User string `json:"user"`
 
-	// ClusterName is the cluster where the resource is located.
-	ClusterName string `json:"clusterName"`
+	// ClusterPath is the path to the cluster where the resource is located.
+	ClusterPath string `json:"clusterPath"`
 
 	// ResourceAttributes describes the resource being accessed.
 	ResourceAttributes *authorizationv1.ResourceAttributes `json:"resourceAttributes"`
