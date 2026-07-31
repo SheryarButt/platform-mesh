@@ -167,6 +167,7 @@ func (s *IndexableResourceWatcherSubroutine) Process(ctx context.Context, instan
 	doc.DefaultFields = extractConfiguredFields(resource, searchIndex.Spec.DefaultFields)
 	doc.SemanticFields = extractStringConfiguredFields(resource, searchIndex.Spec.SemanticFields)
 	doc.FilterableFields = extractFilterableFields(resource, searchIndex.Spec.FilterableFields)
+	doc.SetDefaultFilterableFields()
 
 	accountInfo, err := s.getAccountInfo(ctx, workspacePath, gvk, resource)
 	if err != nil {

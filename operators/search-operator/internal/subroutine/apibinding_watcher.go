@@ -29,6 +29,7 @@ import (
 	"go.platform-mesh.io/golang-commons/logger"
 	"go.platform-mesh.io/search-operator/internal/config"
 	"go.platform-mesh.io/search-operator/internal/metrics"
+	"go.platform-mesh.io/search-operator/internal/opensearch"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -231,6 +232,9 @@ func (s *apiBindingWatcherSubroutine) resolveFieldsForPermissionClaim(ctx contex
 			}
 		}
 	}
+
+	// default filters that can always be extracted for each Resource
+	exactFields.Insert(opensearch.DefaultFilterableFields...)
 
 	return &searchIndexFields{
 		defaultFields:    sets.List(defaultFields),

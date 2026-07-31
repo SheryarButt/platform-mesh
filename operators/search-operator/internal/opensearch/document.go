@@ -25,6 +25,10 @@ import (
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 )
 
+// DefaultFilterableFields are always extractable for every resource and are
+// injected as filterable facets regardless of a SearchConfig's configuration.
+var DefaultFilterableFields = []string{"kind", "name", "namespace", "cluster_name", "workspace_path"}
+
 // FieldMappings holds the dot-notation field paths that drive the dynamic part of the index mapping.
 type FieldMappings struct {
 	Default    []string
@@ -345,4 +349,16 @@ func (d *ResourceDocument) AddPermission(user, relation, object string) {
 		Relation: relation,
 		Object:   object,
 	})
+}
+
+// SetDefaultFilterableFields injects the synthetic fields to filters.
+func (d *ResourceDocument) SetDefaultFilterableFields() {
+	if d.FilterableFields == nil {
+		d.FilterableFields = make(map[string]any, len(DefaultFilterableFields))
+	}
+	d.FilterableFields["kind"] = d.Kind
+	d.FilterableFields["name"] = d.Name
+	d.FilterableFields["namespace"] = d.Namespace
+	d.FilterableFields["cluster_name"] = d.ClusterName
+	d.FilterableFields["workspace_path"] = d.WorkspacePath
 }
