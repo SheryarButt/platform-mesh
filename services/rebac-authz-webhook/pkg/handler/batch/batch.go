@@ -80,8 +80,6 @@ func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.log.Info("processing batch authorization request", "itemCount", len(req.Items))
-
 	response := h.processBatch(ctx, req)
 
 	w.Header().Set("Content-Type", "application/json")
