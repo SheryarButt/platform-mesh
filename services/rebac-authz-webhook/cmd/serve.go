@@ -20,7 +20,6 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"net"
 	"net/http"
 	"time"
 
@@ -196,13 +195,9 @@ func (s *authzServer) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.Handle("/batch-authz", s.handler)
 
-	listener, err := net.Listen("tcp", s.addr)
-	if err != nil {
-		return err
-	}
-
 	server := &http.Server{
 		Handler:      mux,
+		Addr:         s.addr,
 		ReadTimeout:  s.readTimeout,
 		WriteTimeout: s.writeTimeout,
 		IdleTimeout:  s.idleTimeout,
@@ -221,7 +216,7 @@ func (s *authzServer) Start(ctx context.Context) error {
 	}()
 
 	go func() {
-		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			klog.Exit(err, "authz HTTP server error")
 		}
 	}()
