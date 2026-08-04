@@ -137,6 +137,7 @@ func NewServeCmd() *cobra.Command {
 				klog.NewKlogr(),
 				fga,
 				clusterCache,
+				serverCfg.Webhook.ClusterPathKey,
 			)
 			mgr.GetWebhookServer().Register("/batch-authz", batchHandler)
 

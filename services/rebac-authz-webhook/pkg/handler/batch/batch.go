@@ -25,24 +25,35 @@ import (
 
 	"github.com/go-logr/logr"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	authorizationv1 "k8s.io/api/authorization/v1"
 
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/clustercache"
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/handler/contextual"
 )
 
+// BatchAuthzResult represents the result of a single authorization check.
+type BatchAuthzResult struct {
+	// ID is the correlation ID from the request.
+	ID string `json:"id"`
+	// Allowed indicates whether the request is authorized.
+	Allowed bool `json:"allowed"`
+}
+
 // BatchHandler handles batch authorization requests.
 type BatchHandler struct {
-	fga          openfgav1.OpenFGAServiceClient
-	clusterCache clustercache.Provider
-	log          logr.Logger
+	fga            openfgav1.OpenFGAServiceClient
+	clusterCache   clustercache.Provider
+	clusterPathKey string
+	log            logr.Logger
 }
 
 // New creates a new BatchHandler.
-func New(log logr.Logger, fga openfgav1.OpenFGAServiceClient, clusterCache clustercache.Provider) *BatchHandler {
+func New(log logr.Logger, fga openfgav1.OpenFGAServiceClient, clusterCache clustercache.Provider, clusterPathKey string) *BatchHandler {
 	return &BatchHandler{
-		fga:          fga,
-		clusterCache: clusterCache,
-		log:          log.WithName("batch-authz"),
+		fga:            fga,
+		clusterCache:   clusterCache,
+		clusterPathKey: clusterPathKey,
+		log:            log.WithName("batch-authz"),
 	}
 }
 
@@ -56,11 +67,6 @@ func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close() //nolint:errcheck
 
-	if contentType := r.Header.Get("Content-Type"); contentType != "application/json" {
-		h.writeError(w, http.StatusBadRequest, fmt.Sprintf("content-type=%s, expected application/json", contentType))
-		return
-	}
-
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		h.log.Error(err, "failed to read request body")
@@ -68,19 +74,22 @@ func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req BatchAuthzRequest
-	if err := json.Unmarshal(body, &req); err != nil {
+	var sars []authorizationv1.SubjectAccessReview
+	if err := json.Unmarshal(body, &sars); err != nil {
 		h.log.Error(err, "failed to unmarshal request")
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
 
-	if len(req.Items) == 0 {
-		h.writeError(w, http.StatusBadRequest, "items array is empty")
-		return
+	// Validate that all reviews have required fields
+	for i, sar := range sars {
+		if sar.Name == "" || sar.Spec.ResourceAttributes == nil || sar.Spec.User == "" || len(sar.Spec.Extra[h.clusterPathKey]) == 0 {
+			h.writeError(w, http.StatusBadRequest, fmt.Sprintf("item %d has invalid input", i))
+			return
+		}
 	}
 
-	response := h.processBatch(ctx, req)
+	response := h.processBatch(ctx, sars)
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -89,13 +98,15 @@ func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // processBatch processes all items in the batch request.
-func (h *BatchHandler) processBatch(ctx context.Context, req BatchAuthzRequest) BatchAuthzResponse {
-	results := make(map[string]bool, len(req.Items))
-	for _, item := range req.Items {
-		results[item.ID] = false
+func (h *BatchHandler) processBatch(ctx context.Context, sars []authorizationv1.SubjectAccessReview) []BatchAuthzResult {
+	// Initialize results with all items denied by default
+	results := make(map[string]bool, len(sars))
+	for _, sar := range sars {
+		results[sar.Name] = false
 	}
 
-	checks, storeID := h.buildChecks(req.Items)
+	// build openfga check items with contextual tuples
+	checks, storeID := h.buildChecks(sars)
 
 	if len(checks) == 0 || storeID == "" {
 		return h.buildResponse(results)
@@ -114,31 +125,29 @@ func (h *BatchHandler) processBatch(ctx context.Context, req BatchAuthzRequest) 
 		return h.buildResponse(results)
 	}
 
-	for id, singleResult := range batchResp.Result {
+	for correlationID, singleResult := range batchResp.Result {
 		if singleResult.GetError() != nil {
-			h.log.Error(nil, "FGA check error", "id", id, "error", singleResult.GetError().GetMessage())
+			h.log.Error(nil, "FGA check error", "id", correlationID, "error", singleResult.GetError().GetMessage())
 			continue
 		}
-		results[id] = singleResult.GetAllowed()
+		results[correlationID] = singleResult.GetAllowed()
 	}
 
 	return h.buildResponse(results)
 }
 
-// buildChecks builds FGA BatchCheckItems from request items.
-func (h *BatchHandler) buildChecks(items []BatchAuthzItem) ([]*openfgav1.BatchCheckItem, string) {
-	checks := make([]*openfgav1.BatchCheckItem, 0, len(items))
+// buildChecks builds FGA BatchCheckItems from SubjectAccessReviews.
+func (h *BatchHandler) buildChecks(sars []authorizationv1.SubjectAccessReview) ([]*openfgav1.BatchCheckItem, string) {
+	checks := make([]*openfgav1.BatchCheckItem, 0, len(sars))
 	var storeID string
 
-	for _, item := range items {
-		// Skip items with missing required fields
-		if item.ID == "" || item.ResourceAttributes == nil || item.User == "" || item.ClusterPath == "" {
-			continue
-		}
+	for _, sar := range sars {
 
-		clusterName, ok := h.clusterCache.ClusterName(item.ClusterPath)
+		clusterPath := sar.Spec.Extra[h.clusterPathKey][0]
+
+		clusterName, ok := h.clusterCache.ClusterName(clusterPath)
 		if !ok {
-			h.log.Error(nil, "cluster not found in cache", "clusterPath", item.ClusterPath)
+			h.log.Error(nil, "cluster not found in cache", "clusterPath", clusterPath)
 			continue
 		}
 
@@ -152,14 +161,14 @@ func (h *BatchHandler) buildChecks(items []BatchAuthzItem) ([]*openfgav1.BatchCh
 			storeID = clusterInfo.StoreID
 		}
 
-		checkInput, err := contextual.BuildCheckInput(item.ResourceAttributes, item.User, clusterName.String(), clusterInfo)
+		checkInput, err := contextual.BuildCheckInput(sar.Spec.ResourceAttributes, sar.Spec.User, clusterName.String(), clusterInfo)
 		if err != nil {
-			h.log.Error(err, "failed to build check input", "id", item.ID)
+			h.log.Error(err, "failed to build check input", "name", sar.Name)
 			continue
 		}
 
 		fgaItem := &openfgav1.BatchCheckItem{
-			CorrelationId: item.ID,
+			CorrelationId: sar.Name,
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				Object:   checkInput.Object,
 				Relation: checkInput.Relation,
@@ -177,13 +186,11 @@ func (h *BatchHandler) buildChecks(items []BatchAuthzItem) ([]*openfgav1.BatchCh
 	return checks, storeID
 }
 
-// buildResponse converts the results map to BatchAuthzResponse.
-func (h *BatchHandler) buildResponse(results map[string]bool) BatchAuthzResponse {
-	response := BatchAuthzResponse{
-		Results: make([]BatchAuthzResult, 0, len(results)),
-	}
+// buildResponse converts the results map to BatchAuthzResult slice.
+func (h *BatchHandler) buildResponse(results map[string]bool) []BatchAuthzResult {
+	response := make([]BatchAuthzResult, 0, len(results))
 	for id, allowed := range results {
-		response.Results = append(response.Results, BatchAuthzResult{
+		response = append(response, BatchAuthzResult{
 			ID:      id,
 			Allowed: allowed,
 		})

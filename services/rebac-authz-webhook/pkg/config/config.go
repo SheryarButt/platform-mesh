@@ -25,6 +25,7 @@ import (
 type WebhookConfig struct {
 	CertDir                    string
 	ClusterKey                 string
+	ClusterPathKey             string
 	AllowedNonResourcePrefixes []string
 
 	// CacheMissMaxRetries is the maximum number of retries per key before stopping.
@@ -55,6 +56,7 @@ func New() *Config {
 		Webhook: WebhookConfig{
 			CertDir:                    "config",
 			ClusterKey:                 "authorization.kubernetes.io/cluster-name",
+			ClusterPathKey:             "authorization.kubernetes.io/cluster-path",
 			AllowedNonResourcePrefixes: []string{"/api", "/openapi", "/version"},
 			CacheMissMaxRetries:        1,
 			CacheMissTTL:               5 * time.Minute,
@@ -72,6 +74,7 @@ func (cfg *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&cfg.OpenFGAAddr, "openfga-addr", cfg.OpenFGAAddr, "Set the OpenFGA address")
 	fs.StringVar(&cfg.Webhook.CertDir, "webhook-cert-dir", cfg.Webhook.CertDir, "Set the webhook certificate directory")
 	fs.StringVar(&cfg.Webhook.ClusterKey, "webhook-cluster-key", cfg.Webhook.ClusterKey, "Set the webhook cluster key")
+	fs.StringVar(&cfg.Webhook.ClusterPathKey, "webhook-cluster-path-key", cfg.Webhook.ClusterPathKey, "Set the webhook cluster path key for batch authorization")
 	fs.StringSliceVar(&cfg.Webhook.AllowedNonResourcePrefixes, "webhook-allowed-nonresource-prefixes", cfg.Webhook.AllowedNonResourcePrefixes, "Set the allowed non-resource prefixes for the webhook")
 	fs.UintVar(&cfg.Webhook.CacheMissMaxRetries, "webhook-cache-miss-max-retries", cfg.Webhook.CacheMissMaxRetries, "Maximum number of retries per cluster on cache miss")
 	fs.DurationVar(&cfg.Webhook.CacheMissTTL, "webhook-cache-miss-ttl", cfg.Webhook.CacheMissTTL, "Duration after which cache miss count resets for a cluster")
