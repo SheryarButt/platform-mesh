@@ -17,11 +17,8 @@ limitations under the License.
 package cmd
 
 import (
-	"context"
 	"crypto/tls"
-	"errors"
 	"net/http"
-	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/spf13/cobra"
@@ -141,7 +138,7 @@ func NewServeCmd() *cobra.Command {
 				fga,
 				clusterCache,
 			)
-			authzServer := newBatchAuthzServer(serverCfg, batchHandler)
+			mgr.GetWebhookServer().Register("/batch-authz", batchHandler)
 
 			if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 				klog.Exit(err, "unable to set up health check")
@@ -156,9 +153,6 @@ func NewServeCmd() *cobra.Command {
 
 			klog.Info("starting manager")
 			signalCtx := ctrl.SetupSignalHandler()
-			if err := authzServer.Start(signalCtx); err != nil {
-				klog.Exit(err, "failed to start authz HTTP server")
-			}
 			if err := mgr.Start(signalCtx); err != nil {
 				klog.Exit(err, "problem running manager")
 			}
@@ -168,58 +162,4 @@ func NewServeCmd() *cobra.Command {
 	serverCfg = config.New()
 	serverCfg.AddFlags(cmd.Flags())
 	return cmd
-}
-
-// authzServer is an HTTP server for the batch authorization endpoint.
-type authzServer struct {
-	addr            string
-	handler         http.Handler
-	readTimeout     time.Duration
-	writeTimeout    time.Duration
-	idleTimeout     time.Duration
-	shutdownTimeout time.Duration
-}
-
-func newBatchAuthzServer(cfg *config.Config, handler http.Handler) *authzServer {
-	return &authzServer{
-		addr:            cfg.BatchAuthzBindAddress,
-		handler:         handler,
-		readTimeout:     cfg.BatchAuthzReadTimeout,
-		writeTimeout:    cfg.BatchAuthzWriteTimeout,
-		idleTimeout:     cfg.BatchAuthzIdleTimeout,
-		shutdownTimeout: cfg.BatchAuthzShutdownTimeout,
-	}
-}
-
-func (s *authzServer) Start(ctx context.Context) error {
-	mux := http.NewServeMux()
-	mux.Handle("/batch-authz", s.handler)
-
-	server := &http.Server{
-		Handler:      mux,
-		Addr:         s.addr,
-		ReadTimeout:  s.readTimeout,
-		WriteTimeout: s.writeTimeout,
-		IdleTimeout:  s.idleTimeout,
-	}
-
-	klog.InfoS("starting authz HTTP server")
-
-	go func() {
-		<-ctx.Done()
-		klog.Info("shutting down authz HTTP server")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), s.shutdownTimeout)
-		defer cancel()
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			klog.ErrorS(err, "authz HTTP server shutdown error")
-		}
-	}()
-
-	go func() {
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			klog.Exit(err, "authz HTTP server error")
-		}
-	}()
-
-	return nil
 }
