@@ -142,7 +142,6 @@ func (h *BatchHandler) buildChecks(sars []authorizationv1.SubjectAccessReview) (
 	var storeID string
 
 	for _, sar := range sars {
-
 		clusterPath := sar.Spec.Extra[h.clusterPathKey][0]
 
 		clusterName, ok := h.clusterCache.ClusterName(clusterPath)
