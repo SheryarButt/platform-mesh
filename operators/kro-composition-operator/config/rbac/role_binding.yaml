@@ -1,0 +1,13 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kro-composition-operator-leaderelection
+  namespace: platform-mesh-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kro-composition-operator-leaderelection
+subjects:
+  - kind: ServiceAccount
+    name: kro-composition-operator
+    namespace: platform-mesh-system

@@ -1,0 +1,17 @@
+# Runtime-cluster RBAC for the operator pod. The operator talks to kcp via a
+# mounted kubeconfig; its kcp-side permissions (watch RGDs via the kro.run APIExport
+# virtual workspace, write into consumer workspaces as its own identity, read the
+# APIExportEndpointSlice) are granted by kcp RBAC at provider bootstrap — not here.
+# This role only covers what the pod needs on the runtime cluster: leader election.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kro-composition-operator-leaderelection
+  namespace: platform-mesh-system
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
