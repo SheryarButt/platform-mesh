@@ -49,6 +49,7 @@ type ClusterInfo struct {
 type Provider interface {
 	mcmanager.Runnable
 	Get(clusterName multicluster.ClusterName) (ClusterInfo, bool)
+	ClusterName(clusterPath string) (multicluster.ClusterName, bool)
 }
 
 var defaultBackoff = wait.Backoff{
@@ -65,8 +66,9 @@ type resolver struct {
 }
 
 type clusterCache struct {
-	cacheLock sync.RWMutex
-	cache     map[multicluster.ClusterName]ClusterInfo
+	cacheLock      sync.RWMutex
+	cache          map[multicluster.ClusterName]ClusterInfo
+	clustersByPath map[string]multicluster.ClusterName
 
 	resolversLock sync.Mutex
 	resolvers     map[multicluster.ClusterName]*resolver
@@ -83,10 +85,11 @@ func WithBackoff(b wait.Backoff) Option {
 
 func New(mgr mcmanager.Manager, opts ...Option) (*clusterCache, error) {
 	c := &clusterCache{
-		cache:     make(map[multicluster.ClusterName]ClusterInfo),
-		resolvers: make(map[multicluster.ClusterName]*resolver),
-		mgr:       mgr,
-		backoff:   defaultBackoff,
+		cache:          make(map[multicluster.ClusterName]ClusterInfo),
+		clustersByPath: make(map[string]multicluster.ClusterName),
+		resolvers:      make(map[multicluster.ClusterName]*resolver),
+		mgr:            mgr,
+		backoff:        defaultBackoff,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -99,6 +102,13 @@ func (c *clusterCache) Get(clusterName multicluster.ClusterName) (ClusterInfo, b
 	defer c.cacheLock.RUnlock()
 	val, ok := c.cache[clusterName]
 	return val, ok
+}
+
+func (c *clusterCache) ClusterName(clusterPath string) (multicluster.ClusterName, bool) {
+	c.cacheLock.RLock()
+	defer c.cacheLock.RUnlock()
+	clusterName, ok := c.clustersByPath[clusterPath]
+	return clusterName, ok
 }
 
 func (c *clusterCache) Engage(ctx context.Context, name multicluster.ClusterName, cl cluster.Cluster) error {
@@ -248,6 +258,7 @@ func (c *clusterCache) tryResolve(ctx context.Context, name multicluster.Cluster
 		AccountName:     accountName,
 		ParentClusterID: parentClusterID,
 	}
+	c.clustersByPath[annotationPath] = name
 	c.cacheLock.Unlock()
 
 	klog.V(5).InfoS("Cached cluster info",

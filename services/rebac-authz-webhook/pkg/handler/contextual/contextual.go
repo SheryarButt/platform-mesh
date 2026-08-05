@@ -27,11 +27,9 @@ import (
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/authorization"
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/clustercache"
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/retry"
-	"go.platform-mesh.io/rebac-authz-webhook/pkg/util"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 )
 
@@ -110,95 +108,26 @@ func (c *contextualAuthorizer) Handle(ctx context.Context, req authorization.Req
 		"accountName", clusterInfo.AccountName,
 		"parentClusterID", clusterInfo.ParentClusterID)
 
-	version := attrs.Version
-	if version == "*" {
-		// For some cluster level resources, the version may be set to "*". In that case, we should treat it as empty string to avoid issues with RESTMapper.
-		version = ""
-	}
-
-	gvr := schema.GroupVersionResource{
-		Group:    attrs.Group,
-		Version:  version,
-		Resource: attrs.Resource,
-	}
-
-	gvk, err := clusterInfo.RESTMapper.KindFor(gvr)
+	checkInput, err := BuildCheckInput(attrs, req.Spec.User, clusterName, clusterInfo)
 	if err != nil {
-		klog.ErrorS(err, "failed to get GVK for GVR", "GVR", gvr)
+		klog.ErrorS(err, "failed to build check input")
 		return authorization.NoOpinion()
 	}
 
-	klog.V(5).InfoS("mapped GVR to GVK", "GVK", gvk)
-
-	isNamespaced, err := apiutil.IsGVKNamespaced(gvk, clusterInfo.RESTMapper)
-	if err != nil {
-		klog.ErrorS(err, "failed to determine if GVK is namespaced", "GVK", gvk)
-		return authorization.NoOpinion()
-	}
-
-	singular, err := clusterInfo.RESTMapper.ResourceSingularizer(attrs.Resource)
-	if err != nil {
-		klog.ErrorS(err, "failed to singularize resource", "resource", attrs.Resource)
-		return authorization.NoOpinion()
-	}
-
-	group, objectType := buildObjectType(gvr, singular)
-
-	object := fmt.Sprintf("%s:%s/%s", objectType, clusterName, attrs.Name)
-	relation := attrs.Verb
-
-	hasParent := util.ResolveOnParent(attrs.Verb)
-
-	accountObject := fmt.Sprintf("core_platform-mesh_io_account:%s/%s", clusterInfo.ParentClusterID, clusterInfo.AccountName)
-
-	if hasParent {
-		relation = fmt.Sprintf("%s_%s_%s", relation, group, gvr.Resource)
-		object = accountObject
-	}
-
-	var contextualTuples []*openfgav1.TupleKey
-	if isNamespaced {
-		namespaceObject := fmt.Sprintf("core_namespace:%s/%s", clusterName, attrs.Namespace)
-
-		// parent the namespace to the account
-		contextualTuples = append(contextualTuples, &openfgav1.TupleKey{
-			Object:   namespaceObject,
-			Relation: "parent",
-			User:     accountObject,
-		})
-
-		if hasParent {
-			object = namespaceObject
-		} else {
-			// parent the object to the namespace
-			contextualTuples = append(contextualTuples, &openfgav1.TupleKey{
-				Object:   object,
-				Relation: "parent",
-				User:     namespaceObject,
-			})
-		}
-	} else {
-		contextualTuples = append(contextualTuples, &openfgav1.TupleKey{
-			Object:   fmt.Sprintf("%s:%s/%s", objectType, clusterName, attrs.Name),
-			Relation: "parent",
-			User:     accountObject,
-		})
-	}
-
-	klog.InfoS("calling fga", "object", object, "relation", relation)
+	klog.InfoS("calling fga", "object", checkInput.Object, "relation", checkInput.Relation)
 
 	check := &openfgav1.CheckRequest{
-		StoreId: clusterInfo.StoreID,
+		StoreId: checkInput.StoreID,
 		TupleKey: &openfgav1.CheckRequestTupleKey{
-			Object:   object,
-			Relation: relation,
-			User:     fmt.Sprintf("user:%s", req.Spec.User),
+			Object:   checkInput.Object,
+			Relation: checkInput.Relation,
+			User:     checkInput.User,
 		},
 	}
 
-	if contextualTuples != nil {
+	if checkInput.ContextualTuples != nil {
 		check.ContextualTuples = &openfgav1.ContextualTupleKeys{
-			TupleKeys: contextualTuples,
+			TupleKeys: checkInput.ContextualTuples,
 		}
 	}
 
@@ -271,7 +200,7 @@ func (c *contextualAuthorizer) handleKCPBindCheck(ctx context.Context, req autho
 		Resource: attrs.Resource,
 	}
 
-	_, resourceObjectType := buildObjectType(gvr, singular)
+	_, resourceObjectType := BuildObjectType(gvr, singular)
 
 	resourceToBind := fmt.Sprintf("%s:%s/%s", resourceObjectType, providerClusterName, attrs.Name)
 	consumerAccountObject := fmt.Sprintf("core_platform-mesh_io_account:%s/%s",
@@ -301,17 +230,4 @@ func (c *contextualAuthorizer) handleKCPBindCheck(ctx context.Context, req autho
 	}
 
 	return authorization.NoOpinion()
-}
-
-func buildObjectType(gvr schema.GroupVersionResource, singular string) (string, string) {
-	group := util.CapGroupToRelationLength(gvr, maxRelationLength)
-	group = strings.ReplaceAll(group, ".", "_")
-
-	objectType := fmt.Sprintf("%s_%s", group, singular)
-	longestObjectType := fmt.Sprintf("create_%ss", objectType)
-	if len(longestObjectType) > maxRelationLength {
-		objectType = objectType[len(longestObjectType)-maxRelationLength:]
-	}
-
-	return group, objectType
 }
