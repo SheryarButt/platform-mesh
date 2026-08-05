@@ -20,7 +20,6 @@ package composition
 
 import (
 	"fmt"
-	"net/http"
 
 	krov1alpha1 "github.com/kubernetes-sigs/kro/api/v1alpha1"
 	"github.com/kubernetes-sigs/kro/pkg/graph"
@@ -28,10 +27,14 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// Limits mirror kro's controller defaults for collection expansion.
+// Limits mirror kro's controller defaults for collection expansion: at most 1000
+// resources per expanded collection, and at most 10 forEach dimensions on a single
+// resource. The dimension cap is validated when the RGD is processed, before any
+// expansion is evaluated — the cheap gate against deeply nested cartesian products
+// in a consumer-authored graph.
 const (
 	maxCollectionSize          = 1000
-	maxCollectionDimensionSize = 1000
+	maxCollectionDimensionSize = 10
 )
 
 // Compiler builds kro graphs against a target (a kcp workspace). The rest.Config
@@ -47,15 +50,6 @@ func NewCompiler(cfg *rest.Config) (*Compiler, error) {
 	if err != nil {
 		return nil, fmt.Errorf("http client: %w", err)
 	}
-	b, err := graph.NewBuilder(cfg, httpClient)
-	if err != nil {
-		return nil, fmt.Errorf("graph builder: %w", err)
-	}
-	return &Compiler{builder: b}, nil
-}
-
-// NewCompilerWithHTTPClient is like NewCompiler but reuses an existing HTTP client.
-func NewCompilerWithHTTPClient(cfg *rest.Config, httpClient *http.Client) (*Compiler, error) {
 	b, err := graph.NewBuilder(cfg, httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("graph builder: %w", err)

@@ -17,7 +17,6 @@ limitations under the License.
 package e2e
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -34,6 +33,9 @@ import (
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// dcConfig is deliberately tuned for tests rather than mirroring main.go: a short
+// MaxRetryDelay and shutdown timeout keep a converging test fast, and the higher rate
+// limit lets a single workspace churn without throttling.
 func dcConfig() dynamiccontroller.Config {
 	return dynamiccontroller.Config{
 		Workers: 2, ResyncPeriod: 10 * time.Hour, QueueMaxRetries: 20,
@@ -47,8 +49,7 @@ func dcConfig() dynamiccontroller.Config {
 // ContentConfiguration emitted → instance materializes its child + status →
 // delete RGD garbage-collects.
 func TestCompositionLifecycle(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	ctx := t.Context()
 
 	c := newConsumer(t, "kco")
 	provider := workspace.NewProvider(kcpConfig, testScheme)

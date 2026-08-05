@@ -27,6 +27,11 @@ import (
 // AccountEntity is the portal entity a generated type's nav node attaches to.
 const AccountEntity = "core_platform-mesh_io_account"
 
+// navOrder places every generated type's nav node after the static "kro" node, which
+// config/provider/contentconfiguration.yaml pins at 850. Every generated type carries
+// this same order, so their relative ordering is left to the portal.
+const navOrder = 860
+
 // BuildContentConfig renders the Luigi navigation JSON for one generated type:
 // a top-level nav node with list / detail / create views driven by the portal's
 // default generic web components. specFields are the type's spec property names
@@ -64,7 +69,7 @@ func BuildContentConfig(group, version, kind, plural string, namespaced bool, sp
 		"navigationContext":       navSeg,
 		"label":                   kind + " (kro)",
 		"icon":                    "example",
-		"order":                   860,
+		"order":                   navOrder,
 		"entityType":              "main." + AccountEntity,
 		"keepSelectedForChildren": true,
 		"url":                     "/assets/platform-mesh-portal-ui-wc.js#generic-list-view",

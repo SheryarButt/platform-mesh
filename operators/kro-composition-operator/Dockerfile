@@ -16,7 +16,8 @@
 #   docker build -f operators/kro-composition-operator/Dockerfile .
 # The module is linked through the repository-root go.work; this operator depends
 # only on external modules (kro, kcp SDK, controller-runtime), not the shared ./apis.
-FROM --platform=$BUILDPLATFORM golang:1.26 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.4-bookworm@sha256:5f68ec6805843bd3981a951ffada82a26a0bd2631045c8f7dba483fa868f5ec5 AS builder
+ARG TARGETARCH
 
 WORKDIR /workspace
 
@@ -41,8 +42,8 @@ RUN --mount=type=cache,target=/go/pkg/mod,id=gomod-kco \
     --mount=type=cache,target=/root/.cache/go-build,id=gobuild-kco \
     CGO_ENABLED=0 \
     GOCACHE=/root/.cache/go-build \
-    GOOS=$TARGETOS \
-    GOARCH=$TARGETARCH \
+    GOOS=linux \
+    GOARCH=${TARGETARCH} \
     go build -ldflags '-w -s' -o /workspace/manager ./cmd
 
 FROM scratch

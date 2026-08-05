@@ -24,10 +24,12 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	krov1alpha1 "github.com/kubernetes-sigs/kro/api/v1alpha1"
 	"github.com/kubernetes-sigs/kro/pkg/dynamiccontroller"
 	"github.com/kubernetes-sigs/kro/pkg/graph"
+	"github.com/kubernetes-sigs/kro/pkg/requeue"
 
 	"go.platform-mesh.io/kro-composition-operator/internal/composition"
 	"go.platform-mesh.io/kro-composition-operator/internal/workspace"
@@ -60,6 +62,11 @@ var (
 // type's OpenFGA authz) can run while the APIExport + schema still exist, before
 // owner-ref GC would otherwise remove them all at once.
 const rgdFinalizer = "kro-composition.platform-mesh.io/teardown"
+
+// instanceRequeueInterval is the fixed delay before retrying an instance whose
+// composition dependencies are not resolvable yet. Matches the default of kro's own
+// instance reconciler, which requeues the same condition on a fixed interval.
+const instanceRequeueInterval = 3 * time.Second
 
 // transientError marks an expected, self-resolving condition (CRD still
 // establishing, kcp openapi aggregation lag, dynamic controller still starting,
@@ -333,7 +340,13 @@ func (e *Engine) instanceHandler(clusterName string, gvr schema.GroupVersionReso
 			return err
 		}
 		if !ready {
-			return errDepsPending
+			// A pending dependency is not a failure, so it must not travel the queue's
+			// rate-limited path: that counts against QueueMaxRetries and drops the item
+			// once exhausted, after which nothing reconciles the instance until it is
+			// updated or the informer resyncs. requeue.NeededAfter re-adds the item after
+			// a fixed delay without incrementing the retry count, so an instance waiting
+			// on a slow child keeps converging however long that child takes.
+			return requeue.NeededAfter(errDepsPending, instanceRequeueInterval)
 		}
 		log.Info("instance materialized")
 		return nil

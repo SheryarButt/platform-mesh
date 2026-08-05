@@ -2,7 +2,8 @@
 # an Account has authored, via the default portal generic views. Applied into
 # root:providers:kro-provider; projected to bound Accounts via the content-for label.
 # (Per-generated-type nav — e.g. the instances a given RGD produces — is emitted at
-# runtime by the operator, one ContentConfiguration per generated type.)
+# runtime by the operator, one ContentConfiguration per generated type, ordered at 860
+# so those nodes sort directly after this one.)
 apiVersion: ui.platform-mesh.io/v1alpha1
 kind: ContentConfiguration
 metadata:

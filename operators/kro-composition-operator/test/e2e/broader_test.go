@@ -39,8 +39,7 @@ import (
 // (ConfigMap + Secret) from a single instance, and instance-delete garbage
 // collection: deleting the instance collects every child via its owner refs.
 func TestMultiResourceComposition(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	ctx := t.Context()
 
 	c := newConsumer(t, "multi")
 	eng := newEngine(ctx)
@@ -92,8 +91,7 @@ func TestMultiResourceComposition(t *testing.T) {
 // TestForEachCollection covers a forEach collection resource: one templated
 // resource expands into N children keyed by a list field on the instance.
 func TestForEachCollection(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	ctx := t.Context()
 
 	c := newConsumer(t, "foreach")
 	eng := newEngine(ctx)
@@ -151,8 +149,7 @@ func TestForEachCollection(t *testing.T) {
 // TestExternalRef covers an externalRef resource: the RGD reads an existing
 // resource it does not own and feeds its values into a composed child.
 func TestExternalRef(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	ctx := t.Context()
 
 	c := newConsumer(t, "extref")
 	eng := newEngine(ctx)
@@ -197,8 +194,7 @@ func TestExternalRef(t *testing.T) {
 // workspaces each publish their own composite type; neither the published
 // APIBinding nor the materialized instances cross the workspace boundary.
 func TestMultiTenantIsolation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	ctx := t.Context()
 
 	a := newConsumer(t, "iso-a")
 	b := newConsumer(t, "iso-b")

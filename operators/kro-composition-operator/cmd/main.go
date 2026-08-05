@@ -125,15 +125,18 @@ func main() {
 
 	wsProvider := workspace.NewProvider(writeBase, scheme)
 
+	// kro's defaults. Worth knowing before tuning them: kro runs one DynamicController per
+	// cluster, whereas KROaaS runs one per consumer workspace — so the worker count and the
+	// rate-limit budget are per tenant, and their aggregate cost grows with the number of
+	// workspaces rather than with load.
 	eng := engine.New(ctx, wsProvider, dynamiccontroller.Config{
-		Workers:              2,
-		ResyncPeriod:         10 * time.Hour,
-		QueueMaxRetries:      20,
-		MinRetryDelay:        200 * time.Millisecond,
-		MaxRetryDelay:        60 * time.Second,
-		RateLimit:            50,
-		BurstLimit:           100,
-		QueueShutdownTimeout: 30 * time.Second,
+		Workers:         1,
+		ResyncPeriod:    10 * time.Hour,
+		QueueMaxRetries: 20,
+		MinRetryDelay:   200 * time.Millisecond,
+		MaxRetryDelay:   1000 * time.Second,
+		RateLimit:       10,
+		BurstLimit:      100,
 	})
 
 	reconLog := logf.Log.WithName("reconcile")
