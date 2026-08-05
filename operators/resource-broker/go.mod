@@ -7,13 +7,13 @@ replace go.platform-mesh.io/apis => ../../apis
 require (
 	github.com/go-logr/logr v1.4.4
 	github.com/google/cel-go v0.30.0
-	github.com/google/go-cmp v0.7.0
 	github.com/kcp-dev/logicalcluster/v3 v3.0.5
 	github.com/kcp-dev/multicluster-provider v0.8.1-0.20260714141811-833f063357f8
 	github.com/kcp-dev/multicluster-provider/client v0.8.0
 	github.com/kcp-dev/sdk v0.32.3
 	github.com/stretchr/testify v1.11.1
 	go.platform-mesh.io/apis v0.0.3
+	go.platform-mesh.io/golang-commons v0.18.1
 	go.platform-mesh.io/subroutines v0.6.1
 	golang.org/x/sync v0.22.0
 	k8s.io/api v0.36.3
@@ -53,6 +53,7 @@ require (
 	github.com/go-openapi/swag/typeutils v0.26.0 // indirect
 	github.com/go-openapi/swag/yamlutils v0.26.0 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kcp-dev/apimachinery/v2 v2.32.3 // indirect

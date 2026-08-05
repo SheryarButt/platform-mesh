@@ -22,7 +22,8 @@ import (
 	"maps"
 	"slices"
 
-	"go.platform-mesh.io/resource-broker/pkg/sync"
+	"go.platform-mesh.io/golang-commons/controller/transfer"
+	"go.platform-mesh.io/resource-broker/pkg/relatedresources"
 	"go.platform-mesh.io/subroutines"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -77,7 +78,7 @@ func (s *relatedResourcesSubroutine) Process(ctx context.Context, obj ctrlruntim
 	}
 
 	nn := types.NamespacedName{Namespace: u.GetNamespace(), Name: u.GetName()}
-	related, err := sync.CollectRelatedResources(ctx, stagingClient, s.opts.GVK, nn)
+	related, err := relatedresources.Collect(ctx, stagingClient, s.opts.GVK, nn)
 	switch {
 	case apierrors.IsNotFound(err):
 		return subroutines.Pending(s.opts.RequeueInterval, "waiting for staging copy"), nil
@@ -88,7 +89,10 @@ func (s *relatedResourcesSubroutine) Process(ctx context.Context, obj ctrlruntim
 	for _, key := range slices.Sorted(maps.Keys(related)) {
 		rr := related[key]
 		rrName := types.NamespacedName{Namespace: rr.Namespace, Name: rr.Name}
-		if _, err := sync.Resource(ctx, rr.SchemaGVK(), rrName, rrName, stagingClient, consumerClient); err != nil {
+		if err := transfer.Resource(ctx, rr.SchemaGVK(),
+			transfer.Ref{Client: stagingClient, Name: rrName},
+			transfer.Ref{Client: consumerClient, Name: rrName},
+		); err != nil {
 			return subroutines.Result{}, fmt.Errorf("copying related resource %q: %w", key, err)
 		}
 	}
@@ -124,7 +128,7 @@ func (s *relatedResourcesSubroutine) Finalize(ctx context.Context, obj ctrlrunti
 	}
 
 	nn := types.NamespacedName{Namespace: u.GetNamespace(), Name: u.GetName()}
-	related, err := sync.CollectRelatedResources(ctx, stagingClient, s.opts.GVK, nn)
+	related, err := relatedresources.Collect(ctx, stagingClient, s.opts.GVK, nn)
 	switch {
 	case apierrors.IsNotFound(err):
 		// Staging copy gone, nothing left to clean up.

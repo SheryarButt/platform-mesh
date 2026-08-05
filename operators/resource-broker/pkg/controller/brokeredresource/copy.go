@@ -21,8 +21,8 @@ import (
 	"fmt"
 
 	pmcoordbrokerv1alpha1 "go.platform-mesh.io/apis/coordbroker/v1alpha1"
+	"go.platform-mesh.io/golang-commons/controller/transfer"
 	"go.platform-mesh.io/resource-broker/pkg/kubernetes"
-	"go.platform-mesh.io/resource-broker/pkg/sync"
 	"go.platform-mesh.io/subroutines"
 
 	corev1 "k8s.io/api/core/v1"
@@ -108,7 +108,10 @@ func (s *copySubroutine) Process(ctx context.Context, obj ctrlruntimeclient.Obje
 	}
 
 	nn := types.NamespacedName{Namespace: u.GetNamespace(), Name: u.GetName()}
-	if _, err := sync.Resource(ctx, s.opts.GVK, nn, nn, consumerClient, stagingClient); err != nil {
+	if err := transfer.Resource(ctx, s.opts.GVK,
+		transfer.Ref{Client: consumerClient, Name: nn},
+		transfer.Ref{Client: stagingClient, Name: nn},
+	); err != nil {
 		return subroutines.Result{}, fmt.Errorf("copying resource to staging workspace: %w", err)
 	}
 
@@ -254,7 +257,10 @@ func (s *copySubroutine) copyToMigrationTarget(ctx context.Context, migration *p
 	}
 
 	nn := types.NamespacedName{Namespace: u.GetNamespace(), Name: u.GetName()}
-	if _, err := sync.Spec(ctx, s.opts.GVK, nn, nn, consumerClient, targetClient); err != nil {
+	if err := transfer.Spec(ctx, s.opts.GVK,
+		transfer.Ref{Client: consumerClient, Name: nn},
+		transfer.Ref{Client: targetClient, Name: nn},
+	); err != nil {
 		return subroutines.Result{}, fmt.Errorf("copying resource to migration target: %w", err)
 	}
 

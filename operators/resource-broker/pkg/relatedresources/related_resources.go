@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package sync
+package relatedresources
 
 import (
 	"context"
@@ -29,9 +29,8 @@ import (
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// CollectRelatedResources retrieves the related resources from the
-// status of a provider resource.
-func CollectRelatedResources(ctx context.Context, providerClient ctrlruntimeclient.Client, gvk schema.GroupVersionKind, namespacedName types.NamespacedName) (map[string]pmbrokerv1alpha1.RelatedResource, error) {
+// Collect retrieves the related resources from the status of a provider resource.
+func Collect(ctx context.Context, providerClient ctrlruntimeclient.Client, gvk schema.GroupVersionKind, namespacedName types.NamespacedName) (map[string]pmbrokerv1alpha1.RelatedResource, error) {
 	providerObj := &unstructured.Unstructured{}
 	providerObj.SetGroupVersionKind(gvk)
 	if err := providerClient.Get(ctx, namespacedName, providerObj); err != nil {
