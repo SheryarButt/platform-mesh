@@ -111,20 +111,6 @@ var initializerCmd = &cobra.Command{
 			initializerCfg.IDP.AdditionalRedirectURLs = []string{}
 		}
 
-		kcpClientGetter := iclient.NewConfigSchemeKCPClientGetter(restCfg, scheme)
-		orgReconciler, err := controller.NewOrgLogicalClusterController(log, kcpClientGetter, initializerCfg, runtimeClient, mgr, controller.ControllerOptions{
-			Name:            "OrgLogicalClusterInitializer",
-			InitializerName: initializerCfg.InitializerName(),
-		})
-		if err != nil {
-			setupLog.Error(err, "unable to create LogicalCluster initializer")
-			os.Exit(1)
-		}
-		if err := orgReconciler.SetupWithManager(mgr, defaultCfg, predicates.LogicalClusterIsAccountTypeOrg()); err != nil {
-			setupLog.Error(err, "unable to create controller", "controller", "LogicalCluster")
-			os.Exit(1)
-		}
-
 		conn, err := grpc.NewClient(initializerCfg.FGA.Target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			log.Error().Err(err).Msg("unable to create grpc client")
@@ -138,6 +124,20 @@ var initializerCmd = &cobra.Command{
 			initializerCfg.FGA.StoreIDCacheTTL,
 			log,
 		)
+
+		kcpClientGetter := iclient.NewConfigSchemeKCPClientGetter(restCfg, scheme)
+		orgReconciler, err := controller.NewOrgLogicalClusterController(log, kcpClientGetter, initializerCfg, runtimeClient, mgr, fgaClient, storeIDGetter, controller.ControllerOptions{
+			Name:            "OrgLogicalClusterInitializer",
+			InitializerName: initializerCfg.InitializerName(),
+		})
+		if err != nil {
+			setupLog.Error(err, "unable to create LogicalCluster initializer")
+			os.Exit(1)
+		}
+		if err := orgReconciler.SetupWithManager(mgr, defaultCfg, predicates.LogicalClusterIsAccountTypeOrg()); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "LogicalCluster")
+			os.Exit(1)
+		}
 
 		alcReconciler, err := controller.NewAccountLogicalClusterController(log, initializerCfg, fgaClient, storeIDGetter, mgr, kcpClientGetter, controller.ControllerOptions{
 			Name:            "AccountLogicalClusterInitializer",

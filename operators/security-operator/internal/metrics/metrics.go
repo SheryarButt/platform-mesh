@@ -50,6 +50,16 @@ var (
 		},
 		[]string{"operation", "result"},
 	)
+
+	// RekeyedTuples counts FGA tuples handled by the orphaned-tuple re-key
+	// subroutine, by result (rekeyed/skipped_live/skipped_ambiguous/skipped_error).
+	RekeyedTuples = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "security_operator_rekeyed_tuples_total",
+			Help: "Total number of FGA tuples re-keyed (or skipped) after an org cluster-id change, by result.",
+		},
+		[]string{"result"},
+	)
 )
 
 func init() {
@@ -57,5 +67,6 @@ func init() {
 		ReconcileTotal,
 		ReconcileDuration,
 		FGAOperations,
+		RekeyedTuples,
 	)
 }

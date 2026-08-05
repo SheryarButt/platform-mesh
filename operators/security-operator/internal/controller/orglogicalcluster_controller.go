@@ -21,12 +21,15 @@ import (
 	"fmt"
 	"time"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	platformeshconfig "go.platform-mesh.io/golang-commons/config"
 	"go.platform-mesh.io/golang-commons/controller/filter"
 	"go.platform-mesh.io/golang-commons/controller/lifecycle/ratelimiter"
 	"go.platform-mesh.io/golang-commons/logger"
 	iclient "go.platform-mesh.io/security-operator/internal/client"
 	"go.platform-mesh.io/security-operator/internal/config"
+	"go.platform-mesh.io/security-operator/internal/fga"
 	"go.platform-mesh.io/security-operator/internal/metrics"
 	"go.platform-mesh.io/security-operator/internal/subroutine"
 	"go.platform-mesh.io/subroutines"
@@ -58,7 +61,7 @@ type OrgLogicalClusterController struct {
 	rateLimiter workqueue.TypedRateLimiter[mcreconcile.Request]
 }
 
-func NewOrgLogicalClusterController(log *logger.Logger, kcpClientGetter iclient.KCPClientGetter, cfg config.Config, inClusterClient ctrlruntimeclient.Client, mgr mcmanager.Manager, opts ControllerOptions) (*OrgLogicalClusterController, error) {
+func NewOrgLogicalClusterController(log *logger.Logger, kcpClientGetter iclient.KCPClientGetter, cfg config.Config, inClusterClient ctrlruntimeclient.Client, mgr mcmanager.Manager, fgaClient openfgav1.OpenFGAServiceClient, storeIDGetter fga.StoreIDGetter, opts ControllerOptions) (*OrgLogicalClusterController, error) {
 	rl, err := ratelimiter.NewStaticThenExponentialRateLimiter[mcreconcile.Request](ratelimiter.NewConfig())
 	if err != nil {
 		return nil, fmt.Errorf("creating RateLimiter: %w", err)
@@ -85,6 +88,9 @@ func NewOrgLogicalClusterController(log *logger.Logger, kcpClientGetter iclient.
 	}
 	if cfg.Initializer.WorkspaceAuthEnabled {
 		subs = append(subs, subroutine.NewWorkspaceAuthConfigurationSubroutine(inClusterClient, mgr, kcpClientGetter, cfg))
+	}
+	if cfg.RekeyOrphanedTuplesEnabled {
+		subs = append(subs, subroutine.NewRekeyTuplesSubroutine(cfg, mgr, fgaClient, storeIDGetter, kcpClientGetter))
 	}
 	lc := lifecycle.New(mgr, opts.Name, func() ctrlruntimeclient.Object {
 		return &kcpcorev1alpha1.LogicalCluster{}

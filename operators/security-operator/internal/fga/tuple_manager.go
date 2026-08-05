@@ -118,6 +118,36 @@ func (m *TupleManager) Delete(ctx context.Context, tuples []pmcorev1alpha1.Tuple
 	return nil
 }
 
+// maxTuplesPerWrite is the maximum number of tuple keys OpenFGA accepts in a
+// single Write request (the server's default max_tuples_per_write).
+const maxTuplesPerWrite = 100
+
+// ApplyChunked writes tuples through Apply in chunks of at most
+// maxTuplesPerWrite tuples per Write request. Like Apply it ignores duplicate
+// writes, so a partially applied set can safely be re-applied.
+func (m *TupleManager) ApplyChunked(ctx context.Context, tuples []pmcorev1alpha1.Tuple) error {
+	for start := 0; start < len(tuples); start += maxTuplesPerWrite {
+		end := min(start+maxTuplesPerWrite, len(tuples))
+		if err := m.Apply(ctx, tuples[start:end]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DeleteChunked deletes tuples through Delete in chunks of at most
+// maxTuplesPerWrite tuples per Write request. Like Delete it ignores missing
+// tuples, so a partially deleted set can safely be re-deleted.
+func (m *TupleManager) DeleteChunked(ctx context.Context, tuples []pmcorev1alpha1.Tuple) error {
+	for start := 0; start < len(tuples); start += maxTuplesPerWrite {
+		end := min(start+maxTuplesPerWrite, len(tuples))
+		if err := m.Delete(ctx, tuples[start:end]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ListWithFilter gets all tuples in the store and returns a list of all tuples
 // that match the given filter.
 func (m *TupleManager) ListWithFilter(ctx context.Context, filter TupleFilter) ([]pmcorev1alpha1.Tuple, error) {
