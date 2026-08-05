@@ -8,6 +8,7 @@ replace github.com/graphql-go/handler => github.com/vertex451/handler v0.0.0-202
 
 require (
 	github.com/fsnotify/fsnotify v1.10.1
+	github.com/go-logr/logr v1.4.3
 	github.com/go-openapi/testify/v2 v2.4.2
 	github.com/gobuffalo/flect v1.0.3
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -64,7 +65,6 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v0.23.1 // indirect
