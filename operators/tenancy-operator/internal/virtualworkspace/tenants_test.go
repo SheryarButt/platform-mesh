@@ -132,7 +132,7 @@ func TestTenantCreateResolvesNameCollisions(t *testing.T) {
 	ctx := authenticated(testIssuer, testSubject, testEmail)
 
 	seen := map[string]bool{}
-	for i := 0; i < 200; i++ {
+	for range 200 {
 		obj, err := s.Create(ctx,
 			&pmtenancyv1alpha1.Tenant{Spec: pmtenancyv1alpha1.TenantSpec{DisplayName: "Shared"}},
 			nil, &metav1.CreateOptions{})

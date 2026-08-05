@@ -81,9 +81,39 @@ tasks:
   verify:
     desc: Runs all check targets in sequence.
     cmds:
+      - task: dco
       - task: lint
       - task: boilerplate
       - task: tidy-check
+  dco:
+    desc: 'Every commit on this branch needs a Signed-off-by matching its author (BASE=<ref> to override the comparison point).'
+    vars:
+      BASE: '{{.BASE | default "origin/main"}}'
+    cmds:
+      - |
+        base='{{.BASE}}'
+        if ! git rev-parse --verify --quiet "$base^{commit}" >/dev/null; then
+          echo "dco: cannot resolve base ref '$base', skipping (set BASE=<ref> to pick another)" >&2
+          exit 0
+        fi
+        # Mirrors the DCO app that gates pull requests: merge commits and bot
+        # authors are exempt, and the sign-off email must match the author's.
+        # The whole message is scanned, not just the trailer block -- a commit
+        # may end with another paragraph (e.g. On-behalf-of:), which would hide
+        # the sign-off from git's trailer parser but still satisfies the app.
+        bad=$(git rev-list --no-merges "$base..HEAD" | while read -r sha; do
+          author=$(git show -s --format='%ae' "$sha" | tr 'A-Z' 'a-z')
+          case "$author" in *"[bot]"*) continue ;; esac
+          git show -s --format='%B' "$sha" | grep -i '^signed-off-by:' \
+            | tr 'A-Z' 'a-z' | grep -qF "<$author>" \
+            || git show -s --format='  %h %s' "$sha"
+        done)
+        if [ -n "$bad" ]; then
+          echo "Commits without a Signed-off-by matching the commit author:" >&2
+          echo "$bad" >&2
+          echo "Fix with: git rebase --signoff $base" >&2
+          exit 1
+        fi
   lint:
     desc: Lint every component.
     cmds:

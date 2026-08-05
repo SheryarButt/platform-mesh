@@ -67,7 +67,7 @@ func TestDefaultNamespaceIsCreated(t *testing.T) {
 func TestDefaultNamespaceIsIdempotent(t *testing.T) {
 	cl := childClient(t, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: DefaultNamespace}})
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		res, err := (&defaultNamespace{}).Reconcile(context.Background(), cl, workspace("ws", "c1"))
 		require.NoError(t, err)
 		assert.Zero(t, res.RequeueAfter)

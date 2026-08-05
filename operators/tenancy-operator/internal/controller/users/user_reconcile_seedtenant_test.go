@@ -112,7 +112,7 @@ func TestSeedTenantNeverAdoptsAnotherUsersTenant(t *testing.T) {
 	step := seedStep(t, naming.StrategyWords)
 
 	owners := map[string]string{}
-	for i := 0; i < 300; i++ {
+	for i := range 300 {
 		user := testUser(string(rune('a'+i%26)) + string(rune('a'+i/26)))
 		_, err := step.Reconcile(context.Background(), cl, user)
 		require.NoError(t, err)

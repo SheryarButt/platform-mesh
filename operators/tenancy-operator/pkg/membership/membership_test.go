@@ -30,7 +30,7 @@ import (
 // live.
 func TestNameIsDeterministic(t *testing.T) {
 	first := membership.Name("user", "tenant", "")
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		assert.Equal(t, first, membership.Name("user", "tenant", ""))
 	}
 }

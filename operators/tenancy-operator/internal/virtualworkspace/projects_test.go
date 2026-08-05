@@ -243,7 +243,7 @@ func TestProjectCreateResolvesNameCollisionsWithinATenant(t *testing.T) {
 	ctx := authenticated(testIssuer, testSubject, testEmail)
 
 	seen := map[string]bool{}
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		obj, err := s.Create(ctx, &pmtenancyv1alpha1.Project{
 			ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{pmtenancyv1alpha1.LabelTenant: "tenant"}},
 			Spec:       pmtenancyv1alpha1.ProjectSpec{DisplayName: "Team"},

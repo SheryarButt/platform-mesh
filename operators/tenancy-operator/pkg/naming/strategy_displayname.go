@@ -110,12 +110,12 @@ func Slugify(s string) string {
 	return strings.Trim(out, "-")
 }
 
-func truncate(s string, max int) string {
-	if max < 1 {
+func truncate(s string, limit int) string {
+	if limit < 1 {
 		return ""
 	}
-	if len(s) <= max {
+	if len(s) <= limit {
 		return s
 	}
-	return s[:max]
+	return s[:limit]
 }

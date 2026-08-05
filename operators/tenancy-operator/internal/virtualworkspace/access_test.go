@@ -70,7 +70,7 @@ func TestResolveAccessTakesTheStrongestRole(t *testing.T) {
 		"member then admin":  {[]string{"member", "admin"}, "admin"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			var entries []pmtenancyv1alpha1.MembershipIndexEntry
+			entries := make([]pmtenancyv1alpha1.MembershipIndexEntry, 0, len(tc.roles))
 			for i, role := range tc.roles {
 				entries = append(entries, pmtenancyv1alpha1.MembershipIndexEntry{
 					TenantUUID:      "tenant",

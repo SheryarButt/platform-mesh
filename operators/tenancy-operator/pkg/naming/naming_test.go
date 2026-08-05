@@ -47,7 +47,7 @@ func TestBuiltinStrategiesProduceValidNames(t *testing.T) {
 		require.NoError(t, err)
 
 		for _, display := range displayNames {
-			for attempt := 0; attempt < 3; attempt++ {
+			for attempt := range 3 {
 				req := naming.Request{Kind: naming.KindProject, DisplayName: display, Attempt: attempt}
 
 				name, err := s.Generate(req)
@@ -214,7 +214,7 @@ func TestSeededGenerationIsDeterministic(t *testing.T) {
 
 		first, err := s.Generate(req)
 		require.NoError(t, err)
-		for i := 0; i < 20; i++ {
+		for range 20 {
 			again, err := s.Generate(req)
 			require.NoError(t, err)
 			assert.Equal(t, first, again, "%s is not deterministic under a seed", strategyName)

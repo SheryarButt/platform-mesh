@@ -100,7 +100,7 @@ func TestApplyNeverReturnsADuplicate(t *testing.T) {
 			st := newStore()
 			seen := map[string]bool{}
 
-			for i := 0; i < want; i++ {
+			for i := range want {
 				caller := fmt.Sprintf("caller-%d", i)
 				name, err := naming.Apply(s, naming.Request{Kind: naming.KindProject, DisplayName: "Shared"},
 					func(candidate string) error { return st.create(candidate, caller) },
@@ -157,7 +157,7 @@ func TestSeededFleetConvergesWithoutCrossAdoption(t *testing.T) {
 	st := newStore()
 	assigned := map[string]string{} // user -> name
 
-	for i := 0; i < users; i++ {
+	for i := range users {
 		user := fmt.Sprintf("user-%d", i)
 		name, err := naming.Seeded(s, naming.Request{Kind: naming.KindTenant, Seed: user}, st.claim(user))
 		require.NoError(t, err, "seeding %s", user)
@@ -200,7 +200,7 @@ func TestSeededKindsDoNotCollide(t *testing.T) {
 			require.NoError(t, err)
 
 			clashes := 0
-			for i := 0; i < 500; i++ {
+			for i := range 500 {
 				seed := fmt.Sprintf("user-%d", i)
 				tenant, err := s.Generate(naming.Request{Kind: naming.KindTenant, Seed: seed})
 				require.NoError(t, err)
@@ -314,7 +314,7 @@ func TestNamesSurviveHostileDisplayNames(t *testing.T) {
 		require.NoError(t, err)
 
 		for _, display := range hostile {
-			for attempt := 0; attempt < 3; attempt++ {
+			for attempt := range 3 {
 				for _, seed := range []string{"", "fixed-seed"} {
 					req := naming.Request{
 						Kind: naming.KindTenant, DisplayName: display, Attempt: attempt, Seed: seed,
