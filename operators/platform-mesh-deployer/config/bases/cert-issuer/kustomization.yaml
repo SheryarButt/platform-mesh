@@ -1,0 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# A self-signed ClusterIssuer kcp-operator roots its shard/front-proxy CA from.
+resources:
+  - clusterissuer.yaml
