@@ -2,7 +2,14 @@ module go.platform-mesh.io/apis
 
 go 1.26.3
 
+// Phase 0 template mirror types live in the mode-split fork until merged upstream and the sdk is tagged.
+replace (
+	github.com/kcp-dev/kcp-operator => github.com/ntnn/kcp-operator v0.8.1-0.20260726154422-be62fa798885
+	github.com/kcp-dev/kcp-operator/sdk => github.com/ntnn/kcp-operator/sdk v0.8.1-0.20260726154422-be62fa798885
+)
+
 require (
+	github.com/kcp-dev/kcp-operator/sdk v0.0.0-00010101000000-000000000000
 	github.com/kcp-dev/sdk v0.32.3
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
@@ -18,6 +25,7 @@ require (
 )
 
 require (
+	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -46,6 +54,7 @@ require (
 	github.com/google/pprof v0.0.0-20260115054156-294ebfa9ad83 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/kcp-dev/logicalcluster/v3 v3.0.5 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.21 // indirect
