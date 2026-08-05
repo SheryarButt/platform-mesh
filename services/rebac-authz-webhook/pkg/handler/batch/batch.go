@@ -19,6 +19,7 @@ package batch
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,6 +31,9 @@ import (
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/clustercache"
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/handler/contextual"
 )
+
+// ErrStoreIDMismatch is returned when items in a batch request have different store IDs.
+var ErrStoreIDMismatch = fmt.Errorf("store ID mismatch")
 
 // BatchAuthzResult represents the result of a single authorization check.
 type BatchAuthzResult struct {
@@ -91,6 +95,10 @@ func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	response, err := h.processBatch(ctx, sars)
 	if err != nil {
+		if errors.Is(err, ErrStoreIDMismatch) {
+			h.writeError(w, http.StatusBadRequest, "store ID mismatch")
+			return
+		}
 		h.writeError(w, http.StatusInternalServerError, "batch check failed")
 		return
 	}
@@ -110,7 +118,11 @@ func (h *BatchHandler) processBatch(ctx context.Context, sars []authorizationv1.
 	}
 
 	// build openfga check items with contextual tuples
-	checks, storeID := h.buildChecks(sars)
+	checks, storeID, err := h.buildChecks(sars)
+	if err != nil {
+		h.log.Error(err, "failed to build checks")
+		return nil, err
+	}
 
 	if len(checks) == 0 || storeID == "" {
 		h.log.Error(nil, "no valid checks could be built", "storeID", storeID, "checksCount", len(checks))
@@ -142,7 +154,7 @@ func (h *BatchHandler) processBatch(ctx context.Context, sars []authorizationv1.
 }
 
 // buildChecks builds FGA BatchCheckItems from SubjectAccessReviews.
-func (h *BatchHandler) buildChecks(sars []authorizationv1.SubjectAccessReview) ([]*openfgav1.BatchCheckItem, string) {
+func (h *BatchHandler) buildChecks(sars []authorizationv1.SubjectAccessReview) ([]*openfgav1.BatchCheckItem, string, error) {
 	checks := make([]*openfgav1.BatchCheckItem, 0, len(sars))
 	var storeID string
 
@@ -163,8 +175,13 @@ func (h *BatchHandler) buildChecks(sars []authorizationv1.SubjectAccessReview) (
 			continue
 		}
 
+		// all items in the batch should have the same store ID
+		// because all checks happens within single organization scope
+		// if this changes, we should splitting the batch into multiple requests per store ID
 		if storeID == "" {
 			storeID = clusterInfo.StoreID
+		} else if storeID != clusterInfo.StoreID {
+			return nil, "", fmt.Errorf("%w: expected %s, got %s", ErrStoreIDMismatch, storeID, clusterInfo.StoreID)
 		}
 
 		// collect contextual tuples and check input for each SAR
@@ -190,7 +207,7 @@ func (h *BatchHandler) buildChecks(sars []authorizationv1.SubjectAccessReview) (
 		checks = append(checks, fgaItem)
 	}
 
-	return checks, storeID
+	return checks, storeID, nil
 }
 
 // buildResponse converts the results map to BatchAuthzResult slice.
