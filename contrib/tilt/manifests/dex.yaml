@@ -88,11 +88,29 @@ data:
           - http://localhost:8000
           - http://127.0.0.1:8000
     enablePasswordDB: true
+    # Test identities. All share the password `dex` — the same bcrypt hash, which
+    # is safe to reuse here because this file only ever runs against a local Tilt
+    # cluster and the credential is printed in the README.
+    #
+    # userID is what ends up in the `sub` claim, and `sub` is half of what a User's
+    # metadata.name hashes (sha256(issuer + "\n" + sub)). So these must be STABLE
+    # and DISTINCT: changing one orphans that identity's User and everything keyed
+    # to it, and reusing one would make two logins resolve to a single User.
     staticPasswords:
-      # Test user — email: dex@pm.localhost, password: dex
+      # email: dex@pm.localhost, password: dex
       - email: dex@pm.localhost
         username: dex
         userID: "00000000-0000-0000-0000-000000000001"
+        hash: "$2a$10$AuO2zT4bk2xn1RXP23XqhO5BMo5PoJFs6tv4MUrKk/mtv97DSNoAC"
+      # email: bob@pm.localhost, password: dex
+      #
+      # A second identity, for the flows that need someone to grant access TO:
+      # `memberships add`, self-leave, the last-admin guard, and 404-not-403 —
+      # none of which can be exercised with one user, because a single identity is
+      # always a member of everything it can see.
+      - email: bob@pm.localhost
+        username: bob
+        userID: "00000000-0000-0000-0000-000000000002"
         hash: "$2a$10$AuO2zT4bk2xn1RXP23XqhO5BMo5PoJFs6tv4MUrKk/mtv97DSNoAC"
 ---
 # --- dex deployment ---------------------------------------------------------

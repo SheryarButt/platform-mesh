@@ -43,6 +43,7 @@ vars:
   MOCKERY_VERSION: v3.7.0
   OAPI_VERSION: v2.7.1
   KCP_APIGEN_VERSION: v0.32.3
+  OPENAPI_GEN_VERSION: latest
 
   # kcp release used by the operators' envtest suites (see component test-e2e).
   KCP_VERSION: 0.32.3
@@ -142,6 +143,29 @@ tasks:
       - GOBIN={{.BIN}} GOWORK=off go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@{{.OAPI_VERSION}}
       - rm -f {{.BIN}}/.oapi-codegen.*.stamp
       - touch {{.BIN}}/.oapi-codegen.{{.OAPI_VERSION}}.stamp
+
+  openapi-gen:
+    desc: Install openapi-gen into the root bin.
+    cmds:
+      - GOBIN={{.BIN}} GOWORK=off go install k8s.io/kube-openapi/cmd/openapi-gen@{{.OPENAPI_GEN_VERSION}}
+    status:
+      - test -s {{.BIN}}/openapi-gen
+
+  # OpenAPI models for types served by a virtual workspace. The generic apiserver
+  # resolves a model for every type it serves and refuses to start without one, so
+  # this is required for any API the tenancy VW exposes — not optional polish.
+  generate-openapi:
+    internal: true
+    deps: [openapi-gen]
+    vars:
+      BASEDIR: '{{ .BASEDIR | default (print .TOPLEVEL "/apis") }}'
+    cmds:
+      # The apimachinery packages are inputs too, not just ours: a served type
+      # references metav1.Condition, ObjectMeta and friends, and the apiserver
+      # resolves a model for EVERY referenced type. Generating only our package
+      # yields definitions with dangling references and the server refuses to
+      # start. This is the same input set the upstream projects use.
+      - '{{.BIN}}/openapi-gen --output-dir {{.BASEDIR}}/{{.PATH}} --output-pkg {{.PKG}} --output-file zz_generated.openapi.go --go-header-file {{.HACK}}/boilerplate/boilerplate.go.txt {{.PKG}} k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/runtime k8s.io/apimachinery/pkg/version'
 
   generate-crds:
     internal: true

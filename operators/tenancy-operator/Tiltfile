@@ -1,0 +1,173 @@
+# Copyright The Platform Mesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Tilt wiring for the tenancy component, living beside the code it
+# deploys rather than in contrib/tilt. The root Tiltfile loads deploy_tenancy()
+# and calls it when the `tenancy` profile is on.
+#
+# Everything this component needs is here: the chart (which carries the installer
+# as an init container), and the two things that MUST agree with the outside world
+# — the install root and the hostAliases — which the caller passes in rather than
+# this file guessing.
+
+LABEL = 'tenancy'
+
+
+def deploy_tenancy(
+        repo_root,
+        namespace,
+        install_root,
+        hostalias_ip,
+        hostnames,
+        component_build,
+        internal_server='',
+        oidc={},
+        gateway={},
+        resource_deps=[]):
+    """Deploy the tenancy tree into kcp and the operator that reconciles it.
+
+    One resource: the operator, hot-reloaded from source, with an init container
+    that installs the tenancy tree into kcp before the manager starts.
+
+    The install genuinely needs kcp admin — creating workspaces, APIExports,
+    WorkspaceTypes and the install-time APIBindings does. Running it as an init
+    container means the credential leaves when that container exits; the manager
+    reaches the fleet only through APIExport virtual workspaces, bounded by the
+    permission claims on them.
+
+    Args:
+      repo_root:    absolute path to the monorepo root.
+      install_root: the kcp workspace the tree is rooted at. Reaches both the init
+                    container and the manager as one --paths-root, because the two
+                    disagreeing means the operator comes up healthy and watches a
+                    tree that does not exist.
+      hostalias_ip/hostnames: how in-cluster pods resolve kcp's hostnames. The
+                    operator needs these and a kubeconfig rewrite cannot
+                    substitute — see the chart's values.yaml.
+      oidc:         the SAME settings handed to deploy_kcp. The virtual workspace
+                    verifies tokens itself, so it and kcp must agree on issuer,
+                    audience and username convention or a caller kcp accepts is
+                    rejected here.
+      component_build: passed in rather than loaded here so the build's relative
+                    paths keep resolving against contrib/tilt.
+    """
+
+    # `tenancy-operator init` installs the tree. The chart can run it either as an
+    # init container (production: ordering is a property of the pod) or as a Job.
+    #
+    # Here it is a JOB, so it becomes its own Tilt resource — with its own logs,
+    # its own completion status, and its own trigger button. An init container's
+    # output is buried in a pod that then becomes the manager, which makes "did the
+    # install work?" and "is the manager healthy?" the same red dot; as a Job they
+    # are two, and the install can be re-run without bouncing the operator.
+    #
+    # The Job name is pinned (jobNameSuffix) rather than hashed: a dev loop
+    # rebuilds the image constantly, and a hashed name would mean a new Tilt
+    # resource every build. Tilt recreates the Job when its spec changes.
+    #
+    # Two names, and they are not interchangeable: INIT_JOB is the Kubernetes
+    # object the chart renders, INIT_RESOURCE is what the Tilt resource is renamed
+    # to. A resource_deps entry naming the object rather than the resource is
+    # silently dropped, which is how the manager ended up not waiting for the
+    # install at all.
+    INIT_JOB = 'tenancy-operator-init-dev'
+    INIT_RESOURCE = 'tenancy-init'
+
+    # Only the values that MUST agree with something outside the chart are set
+    # here, and each comes from the same variable the other side uses.
+    helm_set = [
+        'paths.root=' + install_root,
+        'hostAliases[0].ip=' + hostalias_ip,
+        # Dial kcp in-cluster rather than through its public hostname, which
+        # resolves to an address that is advertised but not routed.
+        'kcp.server=' + internal_server,
+        'kcp.serverName=' + hostnames[0],
+        'init.mode=job',
+        'init.jobNameSuffix=dev',
+
+        # The tenancy VW, serving `users` self-provision.
+        'virtualWorkspace.enabled=true',
+        # Exposed by SNI on the shared passthrough listener, exactly like kcp and
+        # the IdP — so `tenancyctl --server https://<hostname>:8443` works from the
+        # host with no port-forward and no special case.
+        'virtualWorkspace.gatewayApi.enabled=' + ('true' if gateway.get('name') else 'false'),
+        'virtualWorkspace.gatewayApi.name=' + gateway.get('name', ''),
+        'virtualWorkspace.gatewayApi.namespace=' + gateway.get('namespace', ''),
+        'virtualWorkspace.gatewayApi.hostname=' + gateway.get('hostname', ''),
+        'virtualWorkspace.oidc.issuerURL=' + oidc.get('issuerURL', ''),
+        'virtualWorkspace.oidc.clientID=' + oidc.get('clientID', ''),
+        'virtualWorkspace.oidc.caSecretName=' + oidc.get('caFileRef', {}).get('name', ''),
+        'virtualWorkspace.oidc.caSecretKey=' + oidc.get('caFileRef', {}).get('key', 'ca.crt'),
+        'oidc.usernameClaim=' + oidc.get('usernameClaim', 'email'),
+        # Read from the same dict kcp is configured from, so the operator's mirror
+        # of kcp's username convention cannot drift from kcp's actual one.
+        'oidc.usernamePrefix=' + oidc.get('usernamePrefix', ''),
+        # Word-pair names in dev, UUIDs in production. A workspace you have to
+        # read out of a log, paste into a kubeconfig or say out loud is the whole
+        # inner loop here, and `amber-harbor` survives that where a UUID does not.
+        # Override with TENANCY_NAMING_STRATEGY to exercise another one.
+        'tenancy.namingStrategy=' + os.getenv('TENANCY_NAMING_STRATEGY', 'words'),
+
+        # Dev kcp is single-replica and there is no kube client for a lock.
+        'leaderElect=false',
+        'log.level=debug',
+    ] + [
+        'hostAliases[0].hostnames[{}]={}'.format(i, h) for i, h in enumerate(hostnames)
+    ]
+
+    component_build(
+        name='tenancy-operator',
+        path='operators/tenancy-operator',
+        deps=['apis', 'subroutines', 'golang-commons'],
+        # Must match what the chart renders, so Tilt substitutes the locally-built
+        # image (it swaps by repository, keeping the chart's args).
+        image='ghcr.io/platform-mesh/platform-mesh/tenancy-operator',
+        # The production chart, not a local-only manifest: what Tilt renders here
+        # is what a real install renders.
+        chart=os.path.join(repo_root, 'operators/tenancy-operator/deploy/helm/tenancy-operator'),
+        namespace=namespace,
+        helm_set=helm_set,
+        # The manager waits for the install, exactly as the init container ordering
+        # would have guaranteed — just observable. Depends on the RESOURCE name,
+        # not the Job's object name.
+        resource_deps=[INIT_RESOURCE],
+        labels=[LABEL],
+    )
+
+    # The virtual workspace: its own resource, because "is the API serving?" and
+    # "is the controller reconciling?" are different questions with different
+    # answers, and one red dot for both hides which.
+    k8s_resource(
+        'tenancy-operator-vw',
+        new_name='tenancy-vw',
+        objects=['tenancy-operator-vw:certificate', 'tenancy-operator-vw:tlsroute'],
+        resource_deps=[INIT_RESOURCE],
+        labels=[LABEL],
+    )
+
+    # The installer's own resource. Named after the Job the chart renders; Tilt
+    # discovers it from the same k8s_yaml the chart produced.
+    k8s_resource(
+        INIT_JOB,
+        new_name=INIT_RESOURCE,
+        # The ServiceAccount rides with THIS resource, not the operator's.
+        # Both pods use it, and this one runs first — leaving it on the operator
+        # (which now waits for this Job) means the Job cannot schedule until the
+        # operator deploys, and the operator will not deploy until the Job
+        # finishes. Tilt reports that deadlock as an unhelpful
+        # `serviceaccount "tenancy-operator" not found` on the Job.
+        objects=['tenancy-operator:serviceaccount'],
+        resource_deps=resource_deps,
+        labels=[LABEL],
+    )

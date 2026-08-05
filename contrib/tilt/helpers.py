@@ -15,6 +15,13 @@
 # helpers.py — chart resolution, kcp module loading, and component hot-reload
 # for the Platform Mesh Tilt dev environment.
 
+# Syncing a new binary into a container does not restart the process already
+# running from the old one, and Tilt's built-in restart_container() step only
+# works on the docker runtime — kind runs containerd. This extension wraps the
+# entrypoint in `entr` and rewrites a trigger file as the last live_update step,
+# so the operator actually re-execs on every sync.
+load('ext://restart_process', 'docker_build_with_restart')
+
 def load_kcp():
     """Load deploy_kcp() from the kcp repo.
 
@@ -74,7 +81,53 @@ def chart_path(name, version, oci_repo, cache_dir='.cache/charts'):
     return dest
 
 
-def component_build(name, path, deps, image, chart, namespace, values=[], helm_set=[], resource_deps=[], objects=[], workload=''):
+def _component_binary(name, path, deps, image, labels):
+    """Compile a component to a linux binary and bake it into the thin runtime image.
+
+    Split out from component_build() so the build half stays separable from the
+    deploy half.
+    """
+    # Paths here resolve relative to THIS Tiltfile's directory (contrib/tilt), so
+    # the binary output and runtime image are addressed as ./bin and
+    # ./runtime.Dockerfile, while repo-root sources need a ../.. prefix.
+    #
+    # Each component gets its OWN context directory holding a single file named
+    # `entrypoint`, rather than one shared ./bin filtered with only=[name]. The
+    # restart_process extension builds two images and forwards the same kwargs to
+    # both, so a context-relative `only`/`build_args` meant for the first would
+    # leak into the second (whose context is the extension's own directory) and
+    # match nothing. A per-component context needs neither.
+    bin_dir = './bin/{}'.format(name)
+    bin_path = '{}/entrypoint'.format(bin_dir)
+    local_resource(
+        'build:{}'.format(name),
+        # Build from the repo root so the go.work workspace (apis/, subroutines/,
+        # golang-commons/) is in scope, dropping the linux binary into ./bin.
+        # The `rm -f` clears the pre-per-component-context layout, where ./bin/<name>
+        # was the binary itself and would block mkdir of the directory. Guarded by
+        # the -d test because `rm -f` on an existing directory exits non-zero, which
+        # would fail every rebuild after the first.
+        # (Subshell, not a `{ ...; }` group: braces would be eaten by .format().)
+        cmd='cd ../.. && ( [ -d contrib/tilt/bin/{name} ] || rm -f contrib/tilt/bin/{name} ) && mkdir -p contrib/tilt/bin/{name} && CGO_ENABLED=0 GOOS=linux GOARCH={arch} go build -o contrib/tilt/bin/{name}/entrypoint ./{path}'.format(
+            arch=os.getenv('GOARCH', 'arm64'), name=name, path=path,
+        ),
+        deps=['../../{}'.format(d) for d in [path] + deps],
+        labels=labels,
+        allow_parallel=True,
+    )
+    # entrypoint as a LIST, not a string: the extension runs a string entrypoint
+    # under `sh -c`, which swallows the container `args` the charts set (they pass
+    # args only and inherit the image entrypoint). A list is appended to verbatim.
+    docker_build_with_restart(
+        ref=image,
+        context=bin_dir,
+        dockerfile='./runtime.Dockerfile',
+        entrypoint=['/app/entrypoint'],
+        live_update=[sync(bin_path, '/app/entrypoint')],
+    )
+
+
+def component_build(name, path, deps, image, chart, namespace, values=[], helm_set=[], resource_deps=[], objects=[], workload='', labels=['components']):
     """Hot-reload a monorepo operator/service.
 
     1. compile the component to a linux binary on the host (fast, cached by go)
@@ -85,34 +138,14 @@ def component_build(name, path, deps, image, chart, namespace, values=[], helm_s
 
     deps: extra source dirs that should trigger a rebuild (shared modules like
     apis/, subroutines/, golang-commons/).
+    labels: Tilt UI grouping for both the build and the deployed workload. Pass the
+    feature name (e.g. ['tenancy']) so a profile's resources stay together.
     helm_set: list of "key=value" chart overrides passed as helm --set. Use to
     drop parts of a production chart that don't belong on the local kube cluster
     (e.g. crds.enabled=false to skip the kcp APIExport/APIResourceSchema objects,
     whose CRDs only exist inside kcp workspaces, not the runtime cluster).
     """
-    # Paths here resolve relative to THIS Tiltfile's directory (contrib/tilt), so
-    # the binary output and runtime image are addressed as ./bin and
-    # ./runtime.Dockerfile, while repo-root sources need a ../.. prefix.
-    bin_path = './bin/{}'.format(name)
-    local_resource(
-        'build:{}'.format(name),
-        # Build from the repo root so the go.work workspace (apis/, subroutines/,
-        # golang-commons/) is in scope, dropping the linux binary into ./bin.
-        cmd='cd ../.. && CGO_ENABLED=0 GOOS=linux GOARCH={arch} go build -o contrib/tilt/bin/{name} ./{path}'.format(
-            arch=os.getenv('GOARCH', 'arm64'), name=name, path=path,
-        ),
-        deps=['../../{}'.format(d) for d in [path] + deps],
-        labels=['components'],
-        allow_parallel=True,
-    )
-    docker_build(
-        ref=image,
-        context='./bin',
-        dockerfile='./runtime.Dockerfile',
-        build_args={'BIN': name},
-        only=[name],
-        live_update=[sync(bin_path, '/entrypoint')],
-    )
+    _component_binary(name, path, deps, image, labels)
     k8s_yaml(helm(
         chart,
         name=name,
@@ -127,9 +160,10 @@ def component_build(name, path, deps, image, chart, namespace, values=[], helm_s
     # ("uncategorized"), which applies before the namespace and fails on a fresh
     # cluster. `workload` is the actual Deployment/Tilt resource name when the chart
     # doesn't name it after the component (renamed back to `name` for the UI).
+    # Called unconditionally: without it the workload lands in Tilt's UI with no
+    # label at all, which is how tenancy-operator ended up ungrouped.
     wl = workload if workload else name
-    if resource_deps or objects or wl != name:
-        if wl != name:
-            k8s_resource(wl, new_name=name, objects=objects, resource_deps=resource_deps)
-        else:
-            k8s_resource(name, objects=objects, resource_deps=resource_deps)
+    if wl != name:
+        k8s_resource(wl, new_name=name, objects=objects, resource_deps=resource_deps, labels=labels)
+    else:
+        k8s_resource(name, objects=objects, resource_deps=resource_deps, labels=labels)

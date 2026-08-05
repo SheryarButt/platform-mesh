@@ -30,23 +30,117 @@
 # config
 # ---------------------------------------------------------------------------
 
-# Profiles map onto RFC 008 shapes (see ADR). Skeleton implements `infra`.
-config.define_string('profile', args=False, usage='infra|core|auth|full (default: infra)')
+# Profiles map onto RFC 008 shapes (see ADR). Skeleton implements `infra`;
+# `tenancy` adds the RFC 010 tenancy tree and its operator on top of it.
+#
+# Profiles COMPOSE: they are independent feature layers, not an ordered ladder, so
+# several can be requested at once and each one only ever adds resources.
+#
+#   --profile=core,tenancy      (or --profile=core --profile=tenancy)
+#   --profile=full              shorthand for every profile below
+#
+# `infra` is always on — the base environment (namespace, issuer, gateway, etcd,
+# dex, kcp) is unconditional — so naming it is allowed but redundant.
+PROFILES_ALL = ['infra', 'core', 'auth', 'tenancy']
+config.define_string_list('profile', args=False, usage='comma-separated: {}|full (default: infra)'.format('|'.join(PROFILES_ALL)))
 config.define_string_list('components', args=True, usage='monorepo components to hot-reload')
 cfg = config.parse()
-PROFILE = cfg.get('profile', 'infra')
+
+# Tilt's string_list accumulates repeated flags but does NOT split on commas, so
+# do it here — both spellings above then work, and `--profile=core,tenancy` is the
+# one people reach for first.
+PROFILES = []
+for _arg in cfg.get('profile', ['infra']):
+    for _p in _arg.split(','):
+        _p = _p.strip()
+        if _p and _p not in PROFILES:
+            PROFILES.append(_p)
+
+if 'full' in PROFILES:
+    PROFILES = PROFILES_ALL
+for _p in PROFILES:
+    if _p not in PROFILES_ALL:
+        fail('unknown profile {!r}: expected one or more of {} (or "full")'.format(_p, ', '.join(PROFILES_ALL)))
+
+def profile(name):
+    """True when `name` was requested (directly or via `full`)."""
+    return name in PROFILES
+
 COMPONENTS = cfg.get('components', [])
 
 # Base domain + namespace shared by the whole environment.
 BASE_DOMAIN = 'pm.localhost'
 NAMESPACE = 'platform-mesh-system'
 
+# *.pm.localhost resolves to 127.0.0.1, which inside a pod means the pod itself.
+# Every in-cluster client of kcp therefore needs hostAliases pointing those names
+# at the gateway's ingress IP — kcp's own pods included, which is why deploy_kcp
+# takes a `hostnames` list.
+#
+# Defined ONCE here because more than one workload needs it: any component that
+# follows an APIExportEndpointSlice dials the URL kcp published in it
+# (https://root.pm.localhost:8443/services/apiexport/...), which no kubeconfig
+# rewriting can redirect. If this list and the one handed to deploy_kcp ever
+# diverge, those components fail with `connection refused` against themselves.
+# The IP must be one that is actually ROUTED inside the cluster. The Gateway's
+# advertised address (status.addresses, 10.96.2.2 here) is not: a pod resolves the
+# name through hostAliases and then cannot connect, which reads as a broken
+# credential rather than a broken route. envoy's Service ClusterIP is the routed
+# address for the same listener, so hostAliases point there.
+#
+# Resolved from the cluster, falling back to the Gateway address when the Service
+# does not exist yet (a cold `tilt up` evaluates this before envoy creates it) —
+# in that case re-trigger the Tiltfile once envoy is up.
+KCP_HOSTALIAS_IP = os.getenv('KCP_HOSTALIAS_IP', '') or (str(local(
+    "kubectl get svc -n envoy-gateway-system " +
+    "-l gateway.envoyproxy.io/owning-gateway-name=platform-mesh " +
+    "-o jsonpath='{.items[0].spec.clusterIP}' 2>/dev/null || true",
+    quiet=True, echo_off=True)).strip() or '10.96.2.2')
+KCP_HOSTNAMES = [BASE_DOMAIN, 'root.' + BASE_DOMAIN, 'idp.' + BASE_DOMAIN]
+
+# The OIDC settings, defined ONCE and read twice — by kcp's authenticator and by
+# the tenancy virtual workspace's own verifier (RFC 010 §1.1).
+#
+# The VW resolves a caller to a User before kcp is ever involved, so it verifies
+# tokens itself. If these two readers drift, a token kcp accepts is rejected by the
+# VW — or worse, resolved to a different identity than the one kcp will enforce
+# RBAC against. One dict is the enforcement.
+KCP_OIDC = {
+    'issuerURL': 'https://idp.{}:8443'.format(BASE_DOMAIN),
+    'clientID': 'platform-mesh',
+    'groupsClaim': 'groups',
+    'usernameClaim': 'email',
+    # Set deliberately, for `email` too.
+    #
+    # kube only auto-prefixes when the claim is not `email`, so an email claim
+    # with no prefix puts OIDC usernames in the SAME namespace as every other
+    # authenticator — ServiceAccounts, kcp's own kcp-admin, anything under
+    # system:. A prefix keeps them apart and makes an RBAC subject say where the
+    # identity came from.
+    #
+    # The tenancy operator MIRRORS this to build User.spec.rbacIdentity, which
+    # every ClusterRoleBinding names. If the two disagree, every binding names a
+    # subject that never authenticates and the user is 403'd in a workspace they
+    # own — with a Membership and a binding that both look correct. Keeping the
+    # prefix here rather than in the chart is what stops that drift.
+    'usernamePrefix': 'pm:',
+    'caFileRef': {'name': 'dex-ca', 'key': 'ca.crt'},
+}
+
+# kcp's in-cluster address, used INSTEAD of the public hostname for the plain
+# API-server connection (see the chart's kcp.server). The endpoint-slice URLs kcp
+# publishes still carry public hostnames and are dialed verbatim, which is what
+# hostAliases above are for — the two mechanisms cover different traffic.
+KCP_INTERNAL_SERVER = os.getenv(
+    'KCP_INTERNAL_SERVER',
+    'https://frontproxy-front-proxy.{}.svc:8443'.format(NAMESPACE))
+
 # Skip remote-fetch infra (cert-manager, envoy gateway, kcp-operator) so the
 # Tiltfile evaluates offline — used for manifest validation. Local manifests and
 # the kcp CRs still render.
 NO_INFRA = os.getenv('TILT_NO_INFRA', '') not in ('', '0', 'false', 'no')
 
-print('Platform Mesh dev env — profile={} components={} no_infra={}'.format(PROFILE, COMPONENTS, NO_INFRA))
+print('Platform Mesh dev env — profiles={} components={} no_infra={}'.format(','.join(PROFILES), COMPONENTS, NO_INFRA))
 
 # ---------------------------------------------------------------------------
 # context guard
@@ -105,6 +199,11 @@ k8s_resource(
 )
 
 # Gateway depends on the namespace; needs the envoy gateway CRDs (infra_remote).
+# The tenancy virtual workspace's external name. Under *.pm.localhost so it is
+# covered by the gateway's hostname wildcard and resolves to loopback without
+# touching /etc/hosts.
+TENANCY_VW_HOSTNAME = 'tenancy.pm.localhost'
+
 k8s_yaml('manifests/gateway.yaml')
 k8s_resource(
     new_name='gateway',
@@ -169,34 +268,67 @@ deploy_kcp(
     etcd_endpoint='http://etcd.kcp-etcd.svc.cluster.local:2379',
 
     # kcp pods resolve *.pm.localhost only via hostAliases → the gateway IP.
-    # The module derives hostAliases from this list, so add dex alongside the
-    # base + shard names — otherwise the shard/front-proxy OIDC authenticator
+    # The module derives hostAliases from this list, which includes dex alongside
+    # the base + shard names — otherwise the shard/front-proxy OIDC authenticator
     # can't reach the issuer discovery endpoint (https://idp.pm.localhost:8443)
     # and logs "lookup idp.pm.localhost ... no such host". Single-shard `infra`;
     # revisit if extra_shards are added (their hostnames must stay in this list).
-    hostnames=[BASE_DOMAIN, 'root.' + BASE_DOMAIN, 'idp.' + BASE_DOMAIN],
+    #
+    # Shared with every other in-cluster kcp client (see KCP_HOSTNAMES above).
+    hostnames=KCP_HOSTNAMES,
 
-    # Pinned released kcp image (never built from source here).
-    image_tag=os.getenv('KCP_IMAGE_TAG', 'main'),
+    # Pinned released kcp image (never built from source here), matching the
+    # version the rest of the repo already pins: tools/Taskfile.yaml KCP_VERSION
+    # (the envtest binary) and KCP_APIGEN_VERSION, and the kcp-dev/sdk each
+    # component depends on. Running `main` here meant the dev cluster was a
+    # different kcp from the one everything is built and tested against.
+    #
+    # `main` is also where a cache defect lives that makes kcp serve APIExports
+    # from one logical cluster into another's list, rewriting kcp.io/cluster as it
+    # goes. Downstream that shows up as kcp's own controllers failing with
+    # "apiexportendpointslices ... not found" and
+    # `User "" cannot patch /clusters//apis/...`, as "multiple apiexports found
+    # for <path>" breaking every by-path APIExport lookup (so no APIBinding can be
+    # created), and as the maximal-permission-policy authorizer resolving an empty
+    # workspace and denying claimed-resource access.
+    #
+    # Set KCP_IMAGE_TAG=main deliberately to test against tip.
+    image_tag=os.getenv('KCP_IMAGE_TAG', 'v0.32.3'),
 
     # L3 authorization: rebac-authz-webhook secret (auth/full profiles). Wired
     # here to exercise the hook; the secret itself is created by the auth layer.
-    authorization_webhook_secret='kcp-webhook-secret' if PROFILE in ('auth', 'full') else None,
+    authorization_webhook_secret='kcp-webhook-secret' if profile('auth') else None,
     
     # OIDC issuer: dex in the infra/core profiles (see ADR), served at the
     # implementation-neutral host oidc.<base_domain> (manifests/dex.yaml).
-    oidc={
-        'issuerURL': 'https://idp.{}:8443'.format(BASE_DOMAIN),
-        'clientID': 'platform-mesh',
-        'groupsClaim': 'groups',
-        'usernameClaim': 'email',
-        'caFileRef': {'name': 'dex-ca', 'key': 'ca.crt'},
-    },
+    oidc=KCP_OIDC,
     kubeconfig_dir='.secret/kcp',
     # The kcp CRs live in platform-mesh-system; make them wait for the namespace
     # resource so a fresh cluster doesn't race "namespace not found".
     resource_deps=['namespace'],
 )
+
+# NOT DONE HERE: pinning the root shard to one replica.
+#
+# kcp-operator defaults a RootShard to 2, and with an embedded cache server that
+# means two replication controllers writing the same cache. The APIExport by-path
+# index ends up with duplicate entries, and ByPathAndNameWithFallback treats
+# "multiple found" as unrecoverable — so every by-path APIExport lookup fails,
+# including kcp's own:
+#
+#   multiple apiexports.apis.kcp.io found for root:shards.core.kcp.io
+#   Cache consistency check failed  group=apis.kcp.io resource=apiexports
+#
+# Patching the RootShard from here to fix that was WORSE than the problem: the
+# operator re-merges frontproxy-merged-client-ca in response, which invalidates
+# the front-proxy admin certificate already issued into kcp-frontproxy-kubeconfig.
+# Every client using it then gets `User ""` / "workspace access not permitted" —
+# a broken credential that looks nothing like the config change that caused it.
+#
+# The replica count has to be set when the RootShard is CREATED, which needs a
+# `replicas` hook in the upstream kcp Tilt module (deploy_kcp has none today).
+# Until then: set it manually before the Kubeconfig secrets are issued, or accept
+# the duplicate-index behaviour.
 
 # ---------------------------------------------------------------------------
 # component hot-reload (stub — off by default in the skeleton)
@@ -241,3 +373,49 @@ if COMPONENTS:
                 'account-operator-ca-issuer:issuer',
             ],
         )
+
+# ---------------------------------------------------------------------------
+# tenancy (RFC 010) — the Organization/Workspace tenancy model
+# ---------------------------------------------------------------------------
+#
+# The wiring lives with the component, at operators/tenancy-operator/Tiltfile,
+# next to the chart and the bootstrap manifests it deploys. This file only decides
+# WHETHER to deploy it and supplies the values that are environment-wide.
+#
+# load_dynamic rather than load(): load() must be top-level, and this is
+# conditional on the profile.
+if profile('tenancy'):
+    # The install root, defined ONCE here and pushed into both the bootstrap and
+    # the operator's flags. RFC 010 makes every path configuration precisely so a
+    # sub-tree install is not a code change — but the two sides must then agree, or
+    # the operator watches a tree nobody built. One variable is the enforcement.
+    #
+    # Deliberately not `root`: the platform should not claim kcp's root workspace,
+    # which may already belong to someone else's tree.
+    TENANCY_ROOT = os.getenv('TENANCY_ROOT', 'root:tenancy')
+
+    REPO_ROOT = os.path.abspath('../..')
+
+    deploy_tenancy = load_dynamic('../../operators/tenancy-operator/Tiltfile')['deploy_tenancy']
+    deploy_tenancy(
+        repo_root=REPO_ROOT,
+        namespace=NAMESPACE,
+        install_root=TENANCY_ROOT,
+        hostalias_ip=KCP_HOSTALIAS_IP,
+        hostnames=KCP_HOSTNAMES,
+        internal_server=KCP_INTERNAL_SERVER,
+        oidc=KCP_OIDC,
+        # Same gateway kcp and dex attach to; one more SNI name on it.
+        gateway={
+            'name': 'platform-mesh',
+            'namespace': NAMESPACE,
+            'hostname': TENANCY_VW_HOSTNAME,
+        },
+        # Passed in so the build's relative paths keep resolving against this
+        # directory rather than the component's.
+        component_build=component_build,
+        # The init container mounts the kcp admin Secret the kcp-operator
+        # publishes, so kcp must be up first. kcp-single-shard must land before
+        # the exports are created, or the APIExport index is already corrupt.
+        resource_deps=['namespace', 'kcp-admin extract'],
+    )
