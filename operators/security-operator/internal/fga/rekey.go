@@ -18,84 +18,9 @@ package fga
 
 import (
 	"slices"
-	"strings"
 
 	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
 )
-
-// AccountKey is the parsed form of the two FGA key shapes that embed an
-// account's origin cluster id:
-//
-//	role:<objectType>/<clusterID>/<name>/<role>[#<relation>]
-//	<objectType>:<clusterID>/<name>[#<relation>]
-//
-// When the org workspace backing an account is deleted and re-created, the
-// cluster id changes and every tuple built from these keys goes stale.
-type AccountKey struct {
-	ObjectType string
-	ClusterID  string
-	Name       string
-	Role       string // non-empty for the role shape
-	Relation   string // optional "#<relation>" suffix (e.g. "assignee")
-}
-
-// ParseAccountKey parses s into an AccountKey. It returns false for strings
-// that do not match either of the two shapes (e.g. "user:someone",
-// "role:authenticated#assignee").
-//
-// The match is purely structural: other key families share the raw
-// `<type>:<clusterID>/<name>` shape (e.g. the
-// `apis_kcp_io_apiexport:<providerClusterID>/<exportName>` user keys written
-// into the same org store for APIExportPolicies), so callers MUST additionally
-// check ObjectType against the configured account object type before treating
-// the result as an account key.
-func ParseAccountKey(s string) (AccountKey, bool) {
-	var k AccountKey
-
-	if i := strings.IndexByte(s, '#'); i >= 0 {
-		k.Relation = s[i+1:]
-		s = s[:i]
-		if k.Relation == "" {
-			return AccountKey{}, false
-		}
-	}
-
-	typ, rest, found := strings.Cut(s, ":")
-	if !found || typ == "" || typ == "user" {
-		return AccountKey{}, false
-	}
-
-	parts := strings.Split(rest, "/")
-	switch {
-	case typ == "role" && len(parts) == 4:
-		k.ObjectType, k.ClusterID, k.Name, k.Role = parts[0], parts[1], parts[2], parts[3]
-	case typ != "role" && len(parts) == 2:
-		k.ObjectType, k.ClusterID, k.Name = typ, parts[0], parts[1]
-	default:
-		return AccountKey{}, false
-	}
-
-	if k.ObjectType == "" || k.ClusterID == "" || k.Name == "" || (typ == "role" && k.Role == "") {
-		return AccountKey{}, false
-	}
-
-	return k, true
-}
-
-// String renders the key back into its tuple representation. It round-trips
-// with ParseAccountKey.
-func (k AccountKey) String() string {
-	var s string
-	if k.Role != "" {
-		s = RenderRolePrefix(k.ObjectType, k.ClusterID, k.Name) + k.Role
-	} else {
-		s = renderAccountEntity(k.ObjectType, k.ClusterID, k.Name)
-	}
-	if k.Relation != "" {
-		s += "#" + k.Relation
-	}
-	return s
-}
 
 // StaleAccountTupleFilter returns a filter matching tuples that reference
 // accountName under the account object type objectType with a cluster id other

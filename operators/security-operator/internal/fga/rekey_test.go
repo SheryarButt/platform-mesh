@@ -32,59 +32,6 @@ import (
 	"go.platform-mesh.io/security-operator/internal/subroutine/mocks"
 )
 
-func TestParseAccountKey(t *testing.T) {
-	tests := []struct {
-		in   string
-		want AccountKey
-		ok   bool
-	}{
-		{
-			in:   "core_platform-mesh_io_account:abc123/myorg",
-			want: AccountKey{ObjectType: "core_platform-mesh_io_account", ClusterID: "abc123", Name: "myorg"},
-			ok:   true,
-		},
-		{
-			in:   "role:core_platform-mesh_io_account/abc123/myorg/owner",
-			want: AccountKey{ObjectType: "core_platform-mesh_io_account", ClusterID: "abc123", Name: "myorg", Role: "owner"},
-			ok:   true,
-		},
-		{
-			in:   "role:core_platform-mesh_io_account/abc123/myorg/owner#assignee",
-			want: AccountKey{ObjectType: "core_platform-mesh_io_account", ClusterID: "abc123", Name: "myorg", Role: "owner", Relation: "assignee"},
-			ok:   true,
-		},
-		{
-			in:   "core_platform-mesh_io_account:abc123/myorg#member",
-			want: AccountKey{ObjectType: "core_platform-mesh_io_account", ClusterID: "abc123", Name: "myorg", Relation: "member"},
-			ok:   true,
-		},
-		// Non-account keys must not parse.
-		{in: "user:someone.example.com", ok: false},
-		{in: "user:*", ok: false},
-		{in: "role:authenticated", ok: false},
-		{in: "role:authenticated#assignee", ok: false},
-		{in: "no-colon-here", ok: false},
-		{in: "core_platform-mesh_io_account:abc123", ok: false},
-		{in: "core_platform-mesh_io_account:abc123/a/b", ok: false},
-		{in: "role:type/cluster/name", ok: false},
-		{in: "role:type/cluster/name/role/extra", ok: false},
-		{in: "role:type//name/owner", ok: false},
-		{in: ":cluster/name", ok: false},
-		{in: "core_platform-mesh_io_account:abc123/myorg#", ok: false},
-	}
-	for _, test := range tests {
-		t.Run(test.in, func(t *testing.T) {
-			got, ok := ParseAccountKey(test.in)
-			assert.Equal(t, test.ok, ok)
-			if test.ok {
-				assert.Equal(t, test.want, got)
-				// Round-trip.
-				assert.Equal(t, test.in, got.String())
-			}
-		})
-	}
-}
-
 func TestStaleAccountTupleFilter(t *testing.T) {
 	filter := StaleAccountTupleFilter("acct", "myorg", "new-id")
 
@@ -213,7 +160,7 @@ func TestRekeyTuple(t *testing.T) {
 
 func chunkTestTuples(n int) []pmcorev1alpha1.Tuple {
 	tuples := make([]pmcorev1alpha1.Tuple, 0, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		tuples = append(tuples, pmcorev1alpha1.Tuple{
 			User:     fmt.Sprintf("user:user-%d", i),
 			Relation: "assignee",

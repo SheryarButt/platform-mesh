@@ -307,7 +307,7 @@ func TestRekeyTuplesSubroutine_ChunksGroupsOver100Tuples(t *testing.T) {
 	m.expectOrgContext()
 
 	stale := make([]pmcorev1alpha1.Tuple, 0, 250)
-	for i := 0; i < 250; i++ {
+	for i := range 250 {
 		stale = append(stale, pmcorev1alpha1.Tuple{
 			User:     fmt.Sprintf("user:member-%d", i),
 			Relation: "assignee",
