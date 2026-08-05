@@ -43,6 +43,8 @@ on:
     paths:
       - 'operators/terminal-controller-manager/**'
       - 'apis/**'
+      - 'golang-commons/**'
+      - 'subroutines/**'
       - 'go.work'
       - 'go.work.sum'
       - '.github/workflows/terminal-controller-manager.yml'
