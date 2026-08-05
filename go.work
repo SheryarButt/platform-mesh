@@ -1,6 +1,6 @@
-go 1.26.3
+go 1.26.4
 
-toolchain go1.26.3
+toolchain go1.26.4
 
 use (
 	./apis
@@ -13,6 +13,7 @@ use (
 	./operators/extension-manager-operator
 	./operators/kcp-migration-operator
 	./operators/kro-composition-operator
+	./operators/platform-mesh-deployer
 	./operators/resource-broker
 	./operators/search-operator
 	./operators/security-operator
@@ -32,3 +33,6 @@ replace github.com/kcp-dev/multicluster-provider/client => github.com/kcp-dev/mu
 // See https://github.com/googleapis/go-genproto/issues/1015 for more information. This replace
 // can be removed if none of our dependencies require both the old and new modules.
 replace google.golang.org/genproto => google.golang.org/genproto v0.0.0-20230525234044-86246a831fb4
+
+// Requires change to be merged upstream
+replace github.com/kcp-dev/kcp-operator/sdk => github.com/ntnn/kcp-operator/sdk v0.8.1-0.20260726154422-be62fa798885

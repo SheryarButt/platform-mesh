@@ -2,12 +2,6 @@ module go.platform-mesh.io/apis
 
 go 1.26.3
 
-// Phase 0 template mirror types live in the mode-split fork until merged upstream and the sdk is tagged.
-replace (
-	github.com/kcp-dev/kcp-operator => github.com/ntnn/kcp-operator v0.8.1-0.20260726154422-be62fa798885
-	github.com/kcp-dev/kcp-operator/sdk => github.com/ntnn/kcp-operator/sdk v0.8.1-0.20260726154422-be62fa798885
-)
-
 require (
 	github.com/kcp-dev/kcp-operator/sdk v0.0.0-00010101000000-000000000000
 	github.com/kcp-dev/sdk v0.32.3
@@ -92,3 +86,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace github.com/kcp-dev/kcp-operator/sdk => github.com/ntnn/kcp-operator/sdk v0.8.1-0.20260726154422-be62fa798885

@@ -138,3 +138,5 @@ replace go.platform-mesh.io/golang-commons => ../../golang-commons
 replace go.platform-mesh.io/account-operator => ../../operators/account-operator
 
 replace go.platform-mesh.io/subroutines => ../../subroutines
+
+replace github.com/kcp-dev/kcp-operator/sdk => github.com/ntnn/kcp-operator/sdk v0.8.1-0.20260726154422-be62fa798885
