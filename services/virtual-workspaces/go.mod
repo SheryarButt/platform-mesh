@@ -6,7 +6,7 @@ require (
 	github.com/kcp-dev/client-go v0.32.3
 	github.com/kcp-dev/kcp v0.32.3
 	github.com/kcp-dev/logicalcluster/v3 v3.0.5
-	github.com/kcp-dev/multicluster-provider v0.8.0
+	github.com/kcp-dev/multicluster-provider v0.8.1-0.20260714141811-833f063357f8
 	github.com/kcp-dev/sdk v0.32.3
 	github.com/kcp-dev/virtual-workspace-framework v0.32.3
 	github.com/spf13/cobra v1.10.2
@@ -22,7 +22,7 @@ require (
 	sigs.k8s.io/multicluster-runtime v0.24.1
 )
 
-replace github.com/kcp-dev/multicluster-provider/client => github.com/kcp-dev/multicluster-provider/client v0.8.0
+replace github.com/kcp-dev/multicluster-provider/client => github.com/kcp-dev/multicluster-provider/client v0.8.1-0.20260714141811-833f063357f8
 
 // We use the VW SDK and that module requires a whole set of replace directives, sadly.
 replace (
@@ -129,6 +129,7 @@ require (
 	github.com/prometheus/common v0.67.5 // indirect
 	github.com/prometheus/procfs v0.20.1 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
+	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.etcd.io/etcd/api/v3 v3.6.8 // indirect
@@ -199,3 +200,9 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace go.platform-mesh.io/apis => ../../apis
+
+replace go.platform-mesh.io/golang-commons => ../../golang-commons
+
+replace go.platform-mesh.io/subroutines => ../../subroutines

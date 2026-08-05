@@ -6,7 +6,7 @@ require (
 	github.com/go-logr/logr v1.4.3
 	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/kcp-dev/logicalcluster/v3 v3.0.5
-	github.com/kcp-dev/multicluster-provider v0.8.0
+	github.com/kcp-dev/multicluster-provider v0.8.1-0.20260714141811-833f063357f8
 	github.com/kcp-dev/sdk v0.32.3
 	github.com/openfga/api/proto v0.0.0-20260319214821-f153694bfc20
 	github.com/spf13/cobra v1.10.2
@@ -24,7 +24,7 @@ require (
 	sigs.k8s.io/multicluster-runtime v0.24.1
 )
 
-replace github.com/kcp-dev/multicluster-provider/client => github.com/kcp-dev/multicluster-provider/client v0.8.0
+replace github.com/kcp-dev/multicluster-provider/client => github.com/kcp-dev/multicluster-provider/client v0.8.1-0.20260714141811-833f063357f8
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

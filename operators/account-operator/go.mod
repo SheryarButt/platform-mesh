@@ -5,7 +5,7 @@ go 1.26.3
 require (
 	github.com/go-logr/logr v1.4.3
 	github.com/kcp-dev/logicalcluster/v3 v3.0.5
-	github.com/kcp-dev/multicluster-provider v0.8.0
+	github.com/kcp-dev/multicluster-provider v0.8.1-0.20260714141811-833f063357f8
 	github.com/kcp-dev/multicluster-provider/client v0.8.0
 	github.com/kcp-dev/sdk v0.32.3
 	github.com/prometheus/client_golang v1.23.2
@@ -25,7 +25,7 @@ require (
 	sigs.k8s.io/yaml v1.6.0
 )
 
-replace github.com/kcp-dev/multicluster-provider/client => github.com/kcp-dev/multicluster-provider/client v0.8.0
+replace github.com/kcp-dev/multicluster-provider/client => github.com/kcp-dev/multicluster-provider/client v0.8.1-0.20260714141811-833f063357f8
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -89,7 +89,6 @@ require (
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a // indirect
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
@@ -112,3 +111,9 @@ require (
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.0 // indirect
 )
+
+replace go.platform-mesh.io/apis => ../../apis
+
+replace go.platform-mesh.io/golang-commons => ../../golang-commons
+
+replace go.platform-mesh.io/subroutines => ../../subroutines
