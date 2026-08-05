@@ -89,7 +89,11 @@ func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	response := h.processBatch(ctx, sars)
+	response, err := h.processBatch(ctx, sars)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "batch check failed")
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -98,7 +102,7 @@ func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // processBatch processes all items in the batch request.
-func (h *BatchHandler) processBatch(ctx context.Context, sars []authorizationv1.SubjectAccessReview) []BatchAuthzResult {
+func (h *BatchHandler) processBatch(ctx context.Context, sars []authorizationv1.SubjectAccessReview) ([]BatchAuthzResult, error) {
 	// Initialize results with all items denied by default
 	results := make(map[string]bool, len(sars))
 	for _, sar := range sars {
@@ -109,7 +113,8 @@ func (h *BatchHandler) processBatch(ctx context.Context, sars []authorizationv1.
 	checks, storeID := h.buildChecks(sars)
 
 	if len(checks) == 0 || storeID == "" {
-		return h.buildResponse(results)
+		h.log.Error(nil, "no valid checks could be built", "storeID", storeID, "checksCount", len(checks))
+		return nil, fmt.Errorf("no valid checks could be built")
 	}
 
 	batchReq := &openfgav1.BatchCheckRequest{
@@ -122,7 +127,7 @@ func (h *BatchHandler) processBatch(ctx context.Context, sars []authorizationv1.
 	batchResp, err := h.fga.BatchCheck(ctx, batchReq)
 	if err != nil {
 		h.log.Error(err, "BatchCheck failed", "storeID", storeID)
-		return h.buildResponse(results)
+		return nil, fmt.Errorf("batch check failed: %w", err)
 	}
 
 	for correlationID, singleResult := range batchResp.Result {
@@ -133,7 +138,7 @@ func (h *BatchHandler) processBatch(ctx context.Context, sars []authorizationv1.
 		results[correlationID] = singleResult.GetAllowed()
 	}
 
-	return h.buildResponse(results)
+	return h.buildResponse(results), nil
 }
 
 // buildChecks builds FGA BatchCheckItems from SubjectAccessReviews.
@@ -141,6 +146,8 @@ func (h *BatchHandler) buildChecks(sars []authorizationv1.SubjectAccessReview) (
 	checks := make([]*openfgav1.BatchCheckItem, 0, len(sars))
 	var storeID string
 
+	// errors are logged but not returned, as we want to process as many checks as possible
+	// even if a few are invalid, the user will be able to interact with the portal
 	for _, sar := range sars {
 		clusterPath := sar.Spec.Extra[h.clusterPathKey][0]
 
@@ -160,6 +167,7 @@ func (h *BatchHandler) buildChecks(sars []authorizationv1.SubjectAccessReview) (
 			storeID = clusterInfo.StoreID
 		}
 
+		// collect contextual tuples and check input for each SAR
 		checkInput, err := contextual.BuildCheckInput(sar.Spec.ResourceAttributes, sar.Spec.User, clusterName.String(), clusterInfo)
 		if err != nil {
 			h.log.Error(err, "failed to build check input", "name", sar.Name)

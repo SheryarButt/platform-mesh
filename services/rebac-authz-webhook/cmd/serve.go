@@ -153,8 +153,7 @@ func NewServeCmd() *cobra.Command {
 			}
 
 			klog.Info("starting manager")
-			signalCtx := ctrl.SetupSignalHandler()
-			if err := mgr.Start(signalCtx); err != nil {
+			if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 				klog.Exit(err, "problem running manager")
 			}
 		},
