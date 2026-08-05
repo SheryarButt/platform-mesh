@@ -54,6 +54,12 @@ func (NoopValidator) Validate(_ context.Context, _ string) (bool, error) {
 
 const maxCacheSize = 10000
 
+// negativeCacheTTL bounds how long a denied (authenticated:false) verdict may
+// be served from cache. Deny verdicts are often transient (token not yet
+// propagated, clock skew, revoked-then-reissued sessions) and must not stick
+// for the full positive cacheTTL. Kept as a var so tests can shrink it.
+var negativeCacheTTL = 2 * time.Second
+
 // TokenReviewValidator validates tokens via the Kubernetes TokenReview API.
 type TokenReviewValidator struct {
 	clientset kubernetes.Interface
@@ -128,6 +134,9 @@ func (v *TokenReviewValidator) Validate(ctx context.Context, token string) (bool
 				}
 				v.metrics.RecordCacheHit(labelResult)
 			}
+			if !item.Value() {
+				log.FromContext(ctx).V(1).Info("token denied (cached TokenReview verdict)")
+			}
 			return item.Value(), nil
 		}
 	}
@@ -145,9 +154,20 @@ func (v *TokenReviewValidator) Validate(ctx context.Context, token string) (bool
 			return false, err
 		}
 
+		if !tr.Status.Authenticated {
+			log.FromContext(ctx).Info("TokenReview denied token",
+				"error", tr.Status.Error, "cache", "fresh")
+		}
+
 		if v.cache != nil {
 			itemTTL := ttlcache.DefaultTTL
-			if exp := tokenExpiry(token); !exp.IsZero() {
+			if !tr.Status.Authenticated {
+				// Deny verdicts get a short TTL: enough to absorb request
+				// bursts (singleflight already dedupes concurrent ones), but
+				// short enough that a token that becomes valid (propagation
+				// delay, clock skew) is not rejected for the full cacheTTL.
+				itemTTL = min(v.cacheTTL, negativeCacheTTL)
+			} else if exp := tokenExpiry(token); !exp.IsZero() {
 				if remaining := time.Until(exp); remaining > 0 {
 					itemTTL = min(v.cacheTTL, remaining)
 				}
