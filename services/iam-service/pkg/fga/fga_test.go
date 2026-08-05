@@ -72,19 +72,22 @@ func createTestService(t *testing.T) (*Service, *fgamocks.OpenFGAServiceClient) 
 
 	// Create config with proper OpenFGA settings
 	cfg := createTestConfig()
-	service := NewWithRolesRetriever(client, cfg, rolesRetriever)
+	service := New(client, cfg, nil, nil, rolesRetriever)
 	return service, client
 }
 
 func TestNew(t *testing.T) {
 	client := fgamocks.NewOpenFGAServiceClient(t)
 
+	// Use real roles retriever with test data
+	testRolesFile := filepath.Join("testdata", "roles.yaml")
+	rolesRetriever, err := roles.NewFileBasedRolesRetriever(testRolesFile)
+	assert.NoError(t, err)
+
 	// Create config with testdata roles file
 	cfg := createTestConfig()
-	service, err := New(client, cfg, nil, nil)
+	service := New(client, cfg, nil, nil, rolesRetriever)
 
-	// Should succeed with test config
-	assert.NoError(t, err)
 	assert.NotNil(t, service)
 }
 

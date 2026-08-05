@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/cobra"
 
 	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
 	platformmeshcontext "go.platform-mesh.io/golang-commons/config"
 	"go.platform-mesh.io/golang-commons/logger"
 	"go.platform-mesh.io/iam-service/pkg/config"
@@ -47,6 +48,7 @@ func init() {
 	utilruntime.Must(pmcorev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(kcptenancyv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(kcpapisv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(pmprovidersv1alpha1.AddToScheme(scheme))
 	rootCmd.AddCommand(serverCmd)
 
 	defaultCfg = platformmeshcontext.NewDefaultConfig()

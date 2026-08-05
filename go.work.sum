@@ -1137,6 +1137,8 @@ github.com/kcp-dev/kubernetes/staging/src/k8s.io/sample-apiserver v0.0.0-2026031
 github.com/kcp-dev/kubernetes/staging/src/k8s.io/sample-apiserver v0.0.0-20260602065202-e006560fc76a h1:2IQv3XqczuNo3RkhEsrpgFcpmRAyjC8rugvrFd1J1Oo=
 github.com/kcp-dev/kubernetes/staging/src/k8s.io/sample-apiserver v0.0.0-20260602065202-e006560fc76a/go.mod h1:8blR+03YTwY2VBKLxBKICaH/vAeGxkRHbSwSa05QRfc=
 github.com/kcp-dev/logicalcluster/v3 v3.0.4/go.mod h1:EWBUBxdr49fUB1cLMO4nOdBWmYifLbP1LfoL20KkXYY=
+github.com/kcp-dev/multicluster-provider/client v0.8.1-0.20260714141811-833f063357f8 h1:zwlGpx3IfUy1yeBZGPHmaEg8SPVnXJ+OobkBfD0eal8=
+github.com/kcp-dev/multicluster-provider/client v0.8.1-0.20260714141811-833f063357f8/go.mod h1:kK9CSLmECoRiOU+xKOhIE4tHpQBcBbBvWOgKORC/eqI=
 github.com/kcp-dev/sdk v0.31.0/go.mod h1:GpNW9wPULY9+UuLVAaB5z/sJ8r0Jo/l0Jgy4BKnIJTE=
 github.com/kcp-dev/sdk v0.32.0/go.mod h1:H6SCvNS25sReJ61YDy6OPEmngTUFP7/CY0fRM576FM4=
 github.com/kisielk/errcheck v1.1.0/go.mod h1:EZBBE59ingxPouuu3KfxchcWSUPOHkagtvWXihfKN4Q=
