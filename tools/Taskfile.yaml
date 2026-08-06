@@ -45,6 +45,21 @@ vars:
   KCP_APIGEN_VERSION: v0.32.3
   OPENAPI_GEN_VERSION: latest
 
+  KUSTOMIZE_VERSION: v5.4.3
+  KUSTOMIZE: '{{.BIN}}/kustomize-{{.KUSTOMIZE_VERSION}}'
+
+  OCM_VERSION: 0.24.0
+  OCM: '{{.BIN}}/ocm-{{.OCM_VERSION}}'
+
+  MKCERT_VERSION: v1.4.4
+  MKCERT: '{{.BIN}}/mkcert-{{.MKCERT_VERSION}}'
+
+  KIND_VERSION: v0.29.0
+  KIND: '{{.BIN}}/kind-{{.KIND_VERSION}}'
+
+  YAML_PATCH_VERSION: v0.0.11
+  YAML_PATCH: '{{.BIN}}/yaml-patch-{{.YAML_PATCH_VERSION}}'
+
   # kcp release used by the operators' envtest suites (see component test-e2e).
   KCP_VERSION: 0.32.3
 
@@ -143,6 +158,32 @@ tasks:
       - GOBIN={{.BIN}} GOWORK=off go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@{{.OAPI_VERSION}}
       - rm -f {{.BIN}}/.oapi-codegen.*.stamp
       - touch {{.BIN}}/.oapi-codegen.{{.OAPI_VERSION}}.stamp
+  kustomize:
+    internal: true
+    cmds:
+      - "{{.HACK}}/uget.sh https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F{VERSION}/kustomize_{VERSION}_{GOOS}_{GOARCH}.tar.gz kustomize {{.KUSTOMIZE_VERSION}} kustomize"
+  ocm:
+    internal: true
+    cmds:
+      - "{{.HACK}}/uget.sh https://github.com/open-component-model/ocm/releases/download/v{VERSION}/ocm-{VERSION}-{GOOS}-{GOARCH}.tar.gz ocm {{.OCM_VERSION}} ocm"
+  mkcert:
+    internal: true
+    env:
+      UNCOMPRESSED: 'true'
+    cmds:
+      - "{{.HACK}}/uget.sh https://github.com/FiloSottile/mkcert/releases/download/{VERSION}/mkcert-{VERSION}-{GOOS}-{GOARCH} mkcert {{.MKCERT_VERSION}} 'mkcert-*'"
+  kind:
+    internal: true
+    env:
+      UNCOMPRESSED: 'true'
+    cmds:
+      - "{{.HACK}}/uget.sh https://github.com/kubernetes-sigs/kind/releases/download/{VERSION}/kind-{GOOS}-{GOARCH} kind {{.KIND_VERSION}} 'kind-*'"
+  yaml-patch:
+    internal: true
+    env:
+      GO_MODULE: 'true'
+    cmds:
+      - '{{.HACK}}/uget.sh github.com/pivotal-cf/yaml-patch/cmd/yaml-patch yaml-patch {{.YAML_PATCH_VERSION}}'
 
   openapi-gen:
     desc: Install openapi-gen into the root bin.

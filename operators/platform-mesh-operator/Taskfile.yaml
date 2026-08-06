@@ -1,0 +1,263 @@
+# Copyright The Platform Mesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+version: "3"
+
+includes:
+  # Shared go-installable tooling (controller-gen, golangci-lint, mockery,
+  # apigen), installed once into the root bin/ and reused by every component.
+  tools:
+    taskfile: ../../tools/Taskfile.yaml
+    dir: .
+
+dotenv: ['.taskenv', '.secret/.env', '{{.HOME}}/.env' ]
+
+vars:
+  CRD_DIRECTORY: config/crd
+  RBAC_DIRECTORY: config/rbac
+  TEST_SETUP_DIRECTORY: setup/01-platform-mesh-system
+
+tasks:
+  ## Development
+  mockery:
+    deps: [tools:mockery]
+    cmds:
+      - "{{.BIN}}/mockery"
+
+  kindtest:
+    deps: [tools:mkcert, tools:kind]
+    env:
+      KIND_BINARY: '{{.KIND}}'
+      MKCERT_BINARY: '{{.MKCERT}}'
+    cmds:
+      - go test -timeout 30m -coverprofile=cover.out go.platform-mesh.io/platform-mesh-operator/test/e2e/kind {{.ADDITIONAL_COMMAND_ARGS}}
+
+  test:
+    deps: [mockery, tools:kind, tools:mkcert]
+    env:
+      KIND_BINARY: '{{.KIND}}'
+      MKCERT_BINARY: '{{.MKCERT}}'
+    cmds:
+      - cmd: |
+          if [ "$GITHUB_WORKFLOW" = "ci" ]; then
+            echo "Running tests in Github Actions"
+            go test -v -timeout 30m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}} || {
+              echo "---Listing HelmReleases"
+              kubectl get helmreleases -A
+              echo "---Describing non-ready HelmReleases"
+              kubectl get helmreleases -A -o json | jq -r '.items[] | select(.status.conditions // [] | map(select(.type=="Ready" and .status=="True")) | length == 0) | "\(.metadata.namespace)/\(.metadata.name)"' | while read hr; do
+                echo "=== $hr ==="
+                kubectl describe helmrelease -n "${hr%%/*}" "${hr##*/}"
+              done
+              kubectl get resources -A
+              kubectl get ocirepositories -A
+              kubectl -n platform-mesh-system describe PlatformMesh platform-mesh
+              echo "---Non-Running Pods"
+              kubectl get pods -A
+              kubectl get pods -A -o json | jq -r '.items[] | select(.status.phase != "Running") | "\(.metadata.namespace)/\(.metadata.name)"' | while read pod; do
+                echo "=== describe $pod ==="
+                kubectl describe pod -n "${pod%%/*}" "${pod##*/}"
+                echo "=== logs $pod ==="
+                kubectl logs -n "${pod%%/*}" "${pod##*/}" --all-containers --tail=50 2>&1 || true
+              done
+              echo "---OpenFGA Pods (all)"
+              kubectl get pods -n platform-mesh-system -l app.kubernetes.io/name=openfga -o wide 2>&1 || true
+              kubectl get pods -n platform-mesh-system -l app.kubernetes.io/name=postgres -o wide 2>&1 || true
+              kubectl get pods -n platform-mesh-system | grep -iE "openfga|postgres" || true
+              for pod in $(kubectl get pods -n platform-mesh-system -o name 2>/dev/null | grep -iE "openfga|postgres"); do
+                echo "=== describe $pod ==="
+                kubectl -n platform-mesh-system describe "$pod" 2>&1 || true
+                echo "=== logs $pod ==="
+                kubectl -n platform-mesh-system logs "$pod" --all-containers --tail=100 2>&1 || true
+              done
+              exit 1
+            }
+          else
+            go test -timeout 30m -coverprofile=cover.out ./... {{.ADDITIONAL_COMMAND_ARGS}}
+          fi
+        ignore_error: false
+
+  fuzz:
+    desc: "Run fuzz tests with a configurable duration (default 30s per target)"
+    vars:
+      FUZZTIME: '{{.FUZZTIME | default "30s"}}'
+    cmds:
+      - go test ./pkg/ocm/ -run=^$ -fuzz=FuzzParseRef -fuzztime={{.FUZZTIME}} -count=1
+
+  manifests:
+    cmds:
+      - task: tools:generate-crds
+        vars:
+          PATH: /core/...
+          OUTPUT: '{{.CRD_DIRECTORY}}'
+      - task: tools:generate-crds
+        vars:
+          PATH: /providers/...
+          OUTPUT: '{{.CRD_DIRECTORY}}'
+      - task: tools:generate-rbac
+        vars:
+          PATHS: ./...
+          OUTPUT: '{{.RBAC_DIRECTORY}}'
+
+  apigen:
+    deps: [tools:apigen, tools:yaml-patch]
+    cmds:
+      - task: manifests
+      - cmd: |
+            apigen_crds=(
+                # Add your apigen input CRDs below.
+                {{.CRD_DIRECTORY}}/providers.platform-mesh.io_providers.yaml
+            )
+            apigen_dest=(
+                # Add your apigen output paths below.
+                ./manifests/kcp/01-platform-mesh-system/apiexport-providers.platform-mesh.io.yaml
+                ./manifests/kcp/01-platform-mesh-system/apiresourceschema-providers.providers.platform-mesh.io.yaml
+            )
+
+            # NOTE: this script also applies yaml-patch files from {{.CRD_DIRECTORY}}/apigen/patches onto {{.CRD_DIRECTORY}}/apigen/out.
+            # Please put your patch files there if needed.
+            # Each patch file    {{.CRD_DIRECTORY}}/apigen/patches/<NAME>.yaml-patch
+            # is applied against {{.CRD_DIRECTORY}}/apigen/out/    <NAME>.yaml
+
+            # Prepare dir structure for apigen.
+            mkdir -p {{.CRD_DIRECTORY}}/apigen/{crds,out}
+            for manifest in "${apigen_crds[@]}"; do
+                cp "${manifest}" {{.CRD_DIRECTORY}}/apigen/crds
+            done
+
+            {{.BIN}}/apigen \
+                --input-dir {{.CRD_DIRECTORY}}/apigen/crds \
+                --output-dir {{.CRD_DIRECTORY}}/apigen/out
+
+            # Apply patches.
+            for patch in ./config/crd/apigen/patches/*.yaml-patch; do
+                [[ -f "${patch}" ]] || continue
+                out="$(basename ${patch} | sed 's/-patch$//')"
+                {{.YAML_PATCH}} -o "${patch}" < "{{.CRD_DIRECTORY}}/apigen/out/${out}" > "{{.CRD_DIRECTORY}}/apigen/out/${out}.patched"
+                mv "{{.CRD_DIRECTORY}}/apigen/out/${out}.patched" "{{.CRD_DIRECTORY}}/apigen/out/${out}"
+            done
+
+            # Move files from apigen/out into whereever apigen_dest points to.
+            for dest in "${apigen_dest[@]}"; do
+                manifest="$(basename ${dest})"
+                mv "{{.CRD_DIRECTORY}}/apigen/out/${manifest}" "${dest}"
+            done
+        ignore_error: false
+  generate:
+    cmds:
+      - task: manifests
+      - task: apigen
+        ignore_error: false
+  build:
+    cmds:
+      - go build -o bin/manager main.go
+  fuzz:
+    desc: "Run fuzz tests with a configurable duration (default 30s per target)"
+    vars:
+      FUZZTIME: '{{.FUZZTIME | default "30s"}}'
+    cmds:
+      - go test ./api/v1alpha1/ -run=^$ -fuzz=FuzzPlatformMeshRoundTrip -fuzztime={{.FUZZTIME}} -count=1
+
+  docker-build:
+    cmds:
+      - docker build .
+  docker:kind:
+    deps: [tools:kind]
+    desc: "Build container image with current tag from kind cluster and load it"
+    vars:
+      CONTAINER_RUNTIME: '{{.CONTAINER_RUNTIME | default "docker"}}'
+      KIND_CLUSTER: '{{.KIND_CLUSTER | default "platform-mesh"}}'
+      DEPLOYMENT_NAME: '{{.DEPLOYMENT_NAME | default "platform-mesh-operator"}}'
+      DEPLOYMENT_NAMESPACE: '{{.DEPLOYMENT_NAMESPACE | default "platform-mesh-system"}}'
+      IMAGE_TAG:
+        sh: kubectl get deployment {{.DEPLOYMENT_NAME}} -n {{.DEPLOYMENT_NAMESPACE}} -o jsonpath='{.spec.template.spec.containers[0].image}' | cut -d':' -f2
+      IMAGE_NAME: ghcr.io/platform-mesh/platform-mesh-operator:{{.IMAGE_TAG}}
+    cmds:
+      - echo "Building image with tag {{.IMAGE_TAG}} using {{.CONTAINER_RUNTIME}}"
+      - "{{.CONTAINER_RUNTIME}} build -t {{.IMAGE_NAME}} ."
+      - |
+        if [ "{{.CONTAINER_RUNTIME}}" = "podman" ]; then
+          {{.CONTAINER_RUNTIME}} save {{.IMAGE_NAME}} -o /tmp/kind-image.tar
+          {{.KIND}} load image-archive /tmp/kind-image.tar --name {{.KIND_CLUSTER}}
+          rm -f /tmp/kind-image.tar
+        else
+          {{.KIND}} load docker-image {{.IMAGE_NAME}} --name {{.KIND_CLUSTER}}
+        fi
+      - kubectl rollout restart deployment/{{.DEPLOYMENT_NAME}} -n {{.DEPLOYMENT_NAMESPACE}}
+      - echo "Image loaded and deployment restarted"
+  ## Testing
+  fmt:
+    cmds:
+      - go fmt ./...
+  lint:
+    cmds:
+      - task: fmt
+      - task: tools:lint
+  cover:
+    deps:
+      - task: tools:go-test-coverage
+      - task: test
+        vars:
+          ADDITIONAL_COMMAND_ARGS: -coverprofile=./cover.out -covermode=atomic -coverpkg=./...
+    cmds:
+        - "{{.BIN}}/go-test-coverage --threshold-file 30 --threshold-package 60 --threshold-total 45 --profile cover.out --config ./.testcoverage.yml"
+  helm-unittest:
+    cmds:
+      - helm unittest chart
+  validate:
+    cmds:
+      - task: lint
+      - task: test
+  install:
+    deps: [tools:kustomize]
+    cmds:
+      - "{{.KUSTOMIZE}} build config/crd | {{.KUBECTL}} apply -f -"
+  run:
+    cmds:
+      - source .env && go run ./main.go operator
+  bump-versions:
+    deps: [tools:ocm]
+    cmds:
+      - task: bump-versions-internal
+  bump-versions-internal:
+    internal: true
+    vars:
+      SERVICES:
+        - account-operator
+        - account-ui
+        - apeiro-example-content
+        - apeiro-portal
+        - portal
+        - extension-manager-operator
+        - fga-operator
+        - rebac-authz-webhook
+        - iam-service
+        - infra
+        - kcp
+        - keycloak
+        - kubernetes-graphql-gateway
+        - openfga
+        - observability
+        - crossplane
+        - istiod
+        - istio-gateway
+        - istio-base
+        - example-resources
+      PLATFORM_MESH_COMP:
+        sh: "{{.OCM}} get componentversions --latest github.com/platform-mesh/platform-mesh --repo ghcr.io/platform-mesh -o json"
+    cmds:
+      - PLATFORM_MESH_COMP_VERSION=$(echo "{{ .PLATFORM_MESH_COMP }}" | yq -r '.items[0].component.version') yq -i ".spec.version.semver = strenv(PLATFORM_MESH_COMP_VERSION)" deployment/component-version.yaml
+      - for:
+          var: SERVICES
+        cmd: COMP_VERSION=$(echo "{{ .PLATFORM_MESH_COMP }}" | yq -r '.items[0].component.componentReferences[] | select(.name == "{{ .ITEM }}").version') yq -i ".spec.sourceRef.resourceRef.version = strenv(COMP_VERSION)" deployment/{{ range splitList "-" .ITEM }}{{ . }}{{ end }}/resource.yaml

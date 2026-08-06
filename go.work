@@ -14,6 +14,7 @@ use (
 	./operators/kcp-migration-operator
 	./operators/kro-composition-operator
 	./operators/platform-mesh-deployer
+	./operators/platform-mesh-operator
 	./operators/resource-broker
 	./operators/search-operator
 	./operators/security-operator

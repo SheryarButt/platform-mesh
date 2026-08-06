@@ -17,35 +17,30 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.21.0
-  name: providers.providers.platform-mesh.io
+  name: accounts.core.platform-mesh.io
 spec:
-  group: providers.platform-mesh.io
+  group: core.platform-mesh.io
   names:
-    kind: Provider
-    listKind: ProviderList
-    plural: providers
-    singular: provider
+    kind: Account
+    listKind: AccountList
+    plural: accounts
+    singular: account
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - description: Bootstrap phase
-      jsonPath: .status.phase
-      name: Phase
+    - jsonPath: .spec.displayName
+      name: Display Name
       type: string
-    - description: Name of the generated kubeconfig Secret
-      jsonPath: .status.kubeconfigSecretRef.name
-      name: KubeconfigSecret
+    - jsonPath: .spec.type
+      name: Type
       type: string
-    - description: Shows if resource is ready
-      jsonPath: .status.conditions[?(@.type=='Ready')].status
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
       type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: |-
-          Provider is the Schema for the providers API.
-          It is a kcp-level resource that bootstraps provider RBAC and credentials.
+        description: Account is the Schema for the accounts API
         properties:
           apiVersion:
             description: |-
@@ -65,44 +60,65 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of Provider
+            description: AccountSpec defines the desired state of Account
             properties:
-              hostOverride:
-                description: |-
-                  hostOverride overrides the kcp front-proxy host written into the
-                  generated kubeconfig Secret. Optional; defaults to the operator-configured
-                  front-proxy URL.
+              creator:
+                description: The initial creator of this account
                 type: string
-              providerKubeconfigSecret:
-                description: |-
-                  providerKubeconfigSecret is a Secret specification used to store
-                  the provider's kubeconfig. This is the admin kubeconfig that provider controllers
-                  can use to access the workspace in :root:providers:<WS name>.
-                  If not provided, a default of Namespace:default, Name:<Provider.Name>-provider-kubeconfig,
-                  Key:kubeconfig is used.
-                properties:
-                  key:
-                    description: key is the key in data map where the kubeconfig YAML
-                      content is stored.
-                    type: string
-                  name:
-                    description: name is the name of the Secret.
-                    type: string
-                  namespace:
-                    description: namespace is the namespace of the Secret.
-                    type: string
-                required:
-                - key
-                - name
-                - namespace
-                type: object
+              data:
+                description: Additional information that should be stored with the
+                  account
+                x-kubernetes-preserve-unknown-fields: true
+              description:
+                description: An optional description for this account
+                type: string
+              displayName:
+                description: The display name for this account
+                maxLength: 255
+                type: string
+              extensions:
+                items:
+                  properties:
+                    apiVersion:
+                      description: |-
+                        APIVersion defines the versioned schema of this representation of an object.
+                        Servers should convert recognized schemas to the latest internal value, and
+                        may reject unrecognized values.
+                        More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+                      type: string
+                    kind:
+                      description: |-
+                        Kind is a string value representing the REST resource this object represents.
+                        Servers may infer this from the endpoint the client submits requests to.
+                        Cannot be updated.
+                        In CamelCase.
+                        More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+                      type: string
+                    metadataGoTemplate:
+                      x-kubernetes-preserve-unknown-fields: true
+                    readyConditionType:
+                      description: |-
+                        The type of a condition that must be set to True on the Extension object
+                        for the extension to be considered reconciled and ready. If this is empty,
+                        the extension is considered ready.
+                      type: string
+                    specGoTemplate:
+                      x-kubernetes-preserve-unknown-fields: true
+                  required:
+                  - specGoTemplate
+                  type: object
+                type: array
+              type:
+                description: Type specifies the intended type for this Account object.
+                type: string
+            required:
+            - displayName
+            - type
             type: object
           status:
-            description: status defines the observed state of Provider
+            description: AccountStatus defines the observed state of Account
             properties:
               conditions:
-                description: conditions represent the current state of the Provider
-                  resource.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -158,36 +174,13 @@ spec:
                   - type
                   type: object
                 type: array
-                x-kubernetes-list-map-keys:
-                - type
-                x-kubernetes-list-type: map
+              nextReconcileTime:
+                format: date-time
+                type: string
               observedGeneration:
-                description: observedGeneration is the last generation reconciled
-                  by the controller.
                 format: int64
                 type: integer
-              phase:
-                description: phase summarises the bootstrap state of the Provider
-                  (e.g. "Pending", "Ready").
-                type: string
-              providerKubeconfigSecretRef:
-                description: |-
-                  providerKubeconfigSecretRef points to the Secret that contains
-                  the scoped kubeconfig for the provider workspace.
-                properties:
-                  name:
-                    description: name is unique within a namespace to reference a
-                      secret resource.
-                    type: string
-                  namespace:
-                    description: namespace defines the space within which the secret
-                      name must be unique.
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
             type: object
-        required:
-        - spec
         type: object
     served: true
     storage: true

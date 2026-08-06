@@ -12,9 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+all: false
+force-file-write: true
+formatter: goimports
+include-auto-generated: true
+log-level: info
+recursive: false
+require-template-schema-exists: true
 template: testify
 template-data:
-  unroll-variadic: true
+  boilerplate-file: ../../hack/boilerplate/boilerplate.go.txt
 packages:
   go.platform-mesh.io/platform-mesh-operator/pkg/subroutines:
     config:

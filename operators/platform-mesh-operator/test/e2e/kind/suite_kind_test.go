@@ -91,6 +91,22 @@ var defaultKcpOperatorConfig = config.KCPConfig{
 	ClusterAdminSecretName: "kcp-cluster-admin-client-cert",
 }
 
+func kindBinary() string {
+	if bin := os.Getenv("KIND_BINARY"); bin != "" {
+		return bin
+	}
+
+	return "kind"
+}
+
+func mkcertBinary() string {
+	if bin := os.Getenv("MKCERT_BINARY"); bin != "" {
+		return bin
+	}
+
+	return "mkcert"
+}
+
 // runCommand executes a shell command and returns its output.
 func runCommand(name string, args ...string) ([]byte, error) {
 	cmd := exec.Command(name, args...)
@@ -112,7 +128,7 @@ func runCommand(name string, args ...string) ([]byte, error) {
 
 // checkClusterExists checks if a Kind cluster with the given name exists.
 func checkClusterExists(clusterName string) (bool, error) {
-	output, err := runCommand("kind", "get", "clusters")
+	output, err := runCommand(kindBinary(), "get", "clusters")
 	if err != nil {
 		return false, fmt.Errorf("failed to get Kind clusters: %w", err)
 	}
@@ -196,12 +212,12 @@ func (s *KindTestSuite) createKindCluster() error {
 			return errors.Join(err, errors.New(string(out)))
 		}
 
-		if out, err := runCommand("kind", "--version"); err != nil {
+		if out, err := runCommand(kindBinary(), "--version"); err != nil {
 			return errors.Join(err, errors.New(string(out)))
 		}
 
 		s.logger.Info().Msg("Creating Kind cluster...")
-		if _, err = runCommand("kind", "create", "cluster", "--config", "../../../kind-config.yaml", "--name", clusterName, "--image=kindest/node:v1.30.2"); err != nil {
+		if _, err = runCommand(kindBinary(), "create", "cluster", "--config", "../../../kind-config.yaml", "--name", clusterName, "--image=kindest/node:v1.30.2"); err != nil {
 			return err
 		}
 	}
@@ -209,7 +225,7 @@ func (s *KindTestSuite) createKindCluster() error {
 	// Get kubeconfig for the Kind cluster
 	s.logger.Info().Msg("Retrieving kubeconfig for Kind cluster...")
 	var kubeconfig []byte
-	if kubeconfig, err = runCommand("kind", "get", "kubeconfig", "--name", clusterName); err != nil {
+	if kubeconfig, err = runCommand(kindBinary(), "get", "kubeconfig", "--name", clusterName); err != nil {
 		return err
 	}
 
@@ -262,10 +278,10 @@ func (s *KindTestSuite) createCerts() ([]byte, error) {
 	// mkcert
 	_, err := runCommand("mkdir", "-p", "certs")
 	s.Require().NoError(err, "Error creating certs directory")
-	if _, err = runCommand("../../../bin/mkcert", "-cert-file=certs/cert.crt", "-key-file=certs/cert.key", "portal.localhost", "*.portal.localhost", "localhost"); err != nil {
+	if _, err = runCommand(mkcertBinary(), "-cert-file=certs/cert.crt", "-key-file=certs/cert.key", "portal.localhost", "*.portal.localhost", "localhost"); err != nil {
 		return nil, err
 	}
-	dirRootPath, err := runCommand("../../../bin/mkcert", "-CAROOT")
+	dirRootPath, err := runCommand(mkcertBinary(), "-CAROOT")
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to get mkcert CAROOT")
 		return nil, err
