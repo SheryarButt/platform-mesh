@@ -21,16 +21,18 @@ step is required.
 
 ```bash
 kind create cluster --name platform-mesh
-tilt up -f contrib/tilt/Tiltfile -- --profile=deployer
+tilt up -f contrib/tilt/Tiltfile
 ```
 
 [`Tiltfile`](Tiltfile) here stands the operator up hot-reloaded from source
-against a dev `PlatformMesh`, in the same single-cluster shape as
-`test/e2e`'s `TestSingleCluster`. It **replaces** the repo's static kcp install
-rather than adding to it — the deployer builds kcp itself, and it needs the
-ntnn/kcp-operator fork pinned by the `replace` in `go.mod`, which owns the same
-CRDs as the upstream operator that install uses. See
-[contrib/tilt/README.md](../../contrib/tilt/README.md#deployer-profile).
+against a dev `PlatformMesh`, in the same single-cluster shape as `test/e2e`'s
+`TestSingleCluster`. No profile flag: this component **is** the dev
+environment's kcp — it replaced the static install, and everything else in the
+repo's Tilt env sits on the kcp it builds.
+
+It needs the ntnn/kcp-operator fork pinned by the `replace` in `go.mod`, which
+owns the same CRDs as the upstream operator; bump the two together. See
+[contrib/tilt/README.md](../../contrib/tilt/README.md#how-kcp-gets-built).
 
 ## Samples
 

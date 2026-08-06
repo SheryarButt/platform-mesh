@@ -26,10 +26,11 @@ import (
 
 	"github.com/go-logr/logr"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	authorizationv1 "k8s.io/api/authorization/v1"
 
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/clustercache"
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/handler/contextual"
+
+	authorizationv1 "k8s.io/api/authorization/v1"
 )
 
 // ErrStoreIDMismatch is returned when items in a batch request have different store IDs.

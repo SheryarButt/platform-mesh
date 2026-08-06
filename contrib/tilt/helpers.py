@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# helpers.py — chart resolution, kcp module loading, and component hot-reload
-# for the Platform Mesh Tilt dev environment.
+# helpers.py — chart resolution and component hot-reload for the Platform Mesh
+# Tilt dev environment.
+
 
 # Syncing a new binary into a container does not restart the process already
 # running from the old one, and Tilt's built-in restart_container() step only
@@ -21,38 +22,6 @@
 # entrypoint in `entr` and rewrites a trigger file as the last live_update step,
 # so the operator actually re-execs on every sync.
 load('ext://restart_process', 'docker_build_with_restart')
-
-def load_kcp():
-    """Load deploy_kcp() from the kcp repo.
-
-    The static-install module lives upstream in the kcp repo (merged to main).
-    Overrides via env:
-      KCP_TILT_DIR  — path to a local kcp/contrib/tilt checkout; skips the
-                      git fetch entirely (use for offline work / hacking on the
-                      module itself).
-      KCP_TILT_REPO — git URL   (default: kcp-dev/kcp).
-      KCP_TILT_REF  — git ref   (default: main; pin to a tag/release for repro).
-
-    Returns the deploy_kcp function. Uses load_dynamic (not load()) because the
-    path is computed and the fetch must run before the load.
-    """
-    local_dir = os.getenv('KCP_TILT_DIR', '')
-    if local_dir:
-        path = os.path.join(local_dir, 'kcp_static.Tiltfile')
-    else:
-        repo = os.getenv('KCP_TILT_REPO', 'https://github.com/kcp-dev/kcp')
-        ref = os.getenv('KCP_TILT_REF', 'main')
-        dest = '.cache/kcp'
-        # Idempotent shallow checkout of the ref (clone first time, fetch after).
-        local(
-            'if [ -d {d}/.git ]; then git -C {d} fetch -q --depth 1 origin {r} && git -C {d} checkout -q FETCH_HEAD; else git clone -q --depth 1 --branch {r} {u} {d}; fi'.format(
-                d=dest, r=ref, u=repo,
-            ),
-            quiet=True,
-            echo_off=True,
-        )
-        path = os.path.join(dest, 'contrib/tilt/kcp_static.Tiltfile')
-    return load_dynamic(path)['deploy_kcp']
 
 def chart_path(name, version, oci_repo, cache_dir='.cache/charts'):
     """Resolve a Platform Mesh Helm chart to a local directory path.

@@ -1,7 +1,11 @@
-# Self-signed cert-manager Issuer the kcp shards reference (deploy_kcp default
-# issuer_ref). Separate from the namespace so a not-yet-installed cert-manager
-# CRD only delays the Issuer (Tilt retries it), never the namespace. Replaces
-# mkcert + the local-setup cert scripts.
+# Self-signed cert-manager Issuer that Dex's CA chain roots from. Separate from
+# the namespace so a not-yet-installed cert-manager CRD only delays the Issuer
+# (Tilt retries it), never the namespace. Replaces mkcert + the local-setup cert
+# scripts.
+#
+# NOT what the kcp shards use: their CAs root from the cluster-scoped `kcp`
+# ClusterIssuer the deployer brings (config/bases/cert-issuer), which is what the
+# RootShardTemplate's certificates.issuerRef names.
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:

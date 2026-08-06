@@ -12,12 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Platform Mesh — Tilt local development environment (SKELETON).
+# Platform Mesh — Tilt local development environment.
 #
 # See contrib/adr/adr-02-tilt-local-dev-environment.md for the full design.
 #
-# Status: proving the kcp static-install hooks. Infra beyond kcp (Keycloak,
-# OpenFGA, portal) and component hot-reload are stubbed and land in later PRs.
+# kcp is BUILT, not installed. The base environment runs platform-mesh-deployer
+# and gives it a PlatformMesh; the deployer compiles that into the kcp-operator
+# admin CRs, and kcp appears. There is no static install and no `deployer`
+# profile — the deployer IS the infrastructure, so every profile sits on the kcp
+# it produced.
 #
 # Quick start:
 #   kind create cluster --name platform-mesh
@@ -30,7 +33,7 @@
 # config
 # ---------------------------------------------------------------------------
 
-# Profiles map onto RFC 008 shapes (see ADR). Skeleton implements `infra`;
+# Profiles map onto RFC 008 shapes (see ADR). `infra` builds kcp;
 # `tenancy` adds the RFC 010 tenancy tree and its operator on top of it.
 #
 # Profiles COMPOSE: they are independent feature layers, not an ordered ladder, so
@@ -40,11 +43,9 @@
 #   --profile=full              shorthand for every profile below
 #
 # `infra` is always on — the base environment (namespace, issuer, gateway, etcd,
-# dex, kcp) is unconditional — so naming it is allowed but redundant.
-#
-# `deployer` is the ONE exception to all of the above: it does not add a layer,
-# it swaps the bottom one out. See DEPLOYER below.
-PROFILES_ALL = ['infra', 'core', 'auth', 'tenancy', 'deployer']
+# dex, the deployer and the kcp it builds) is unconditional — so naming it is
+# allowed but redundant.
+PROFILES_ALL = ['infra', 'core', 'auth', 'tenancy']
 config.define_string_list('profile', args=False, usage='comma-separated: {}|full (default: infra)'.format('|'.join(PROFILES_ALL)))
 config.define_string_list('components', args=True, usage='monorepo components to hot-reload')
 cfg = config.parse()
@@ -59,13 +60,8 @@ for _arg in cfg.get('profile', ['infra']):
         if _p and _p not in PROFILES:
             PROFILES.append(_p)
 
-# `full` stays "every layer on top of the static kcp install" and therefore
-# excludes `deployer`, which replaces that install rather than adding to it.
-# Rolling it in would make `--profile=full` mean something that cannot be built.
-PROFILES_COMPOSABLE = [_p for _p in PROFILES_ALL if _p != 'deployer']
-
 if 'full' in PROFILES:
-    PROFILES = PROFILES_COMPOSABLE
+    PROFILES = PROFILES_ALL
 for _p in PROFILES:
     if _p not in PROFILES_ALL:
         fail('unknown profile {!r}: expected one or more of {} (or "full")'.format(_p, ', '.join(PROFILES_ALL)))
@@ -74,68 +70,35 @@ def profile(name):
     """True when `name` was requested (directly or via `full`)."""
     return name in PROFILES
 
-# DEPLOYER — the profile that replaces the static kcp install instead of layering
-# on it.
-#
-# platform-mesh-deployer builds kcp itself: it compiles a PlatformMesh into the
-# RootShard/Shard/FrontProxy admin CRs that deploy_kcp() would otherwise write by
-# hand. Two things therefore cannot both be true:
-#
-#   - deploy_kcp() and the deployer would both own the same shards, and
-#   - the deployer needs the ntnn/kcp-operator fork (split config/workload
-#     controllers plus the Compiled* CRDs its admin CRs compile into), which owns
-#     the same operator.kcp.io CRDs and the same
-#     kcp-operator-system/kcp-operator-controller-manager Deployment as the
-#     upstream operator the base environment installs.
-#
-# So the flag gates three things off below: the static etcd, the upstream
-# kcp-operator, and deploy_kcp() itself.
-DEPLOYER = profile('deployer')
-
-# `tenancy` installs its tree into the kcp that deploy_kcp() built, and reads the
-# admin kubeconfig Secret that install publishes. Under `deployer` neither
-# exists yet — kcp is built asynchronously from a PlatformMesh, and its
-# kubeconfigs are named after the generated shards. Failing here beats coming up
-# with a tenancy-init Job that waits forever on a Secret nobody will create.
-if DEPLOYER and profile('tenancy'):
-    fail(
-        'profiles `deployer` and `tenancy` are mutually exclusive.\n' +
-        '`deployer` replaces the static kcp install with one built from a ' +
-        'PlatformMesh; `tenancy` installs into the static one.\n' +
-        'Run them as two separate environments.'
-    )
-
 COMPONENTS = cfg.get('components', [])
 
-# Base domain + namespace shared by the whole environment.
-BASE_DOMAIN = 'pm.localhost'
 NAMESPACE = 'platform-mesh-system'
 
-# *.pm.localhost resolves to 127.0.0.1, which inside a pod means the pod itself.
-# Every in-cluster client of kcp therefore needs hostAliases pointing those names
-# at the gateway's ingress IP — kcp's own pods included, which is why deploy_kcp
-# takes a `hostnames` list.
+# ADDRESSING — every hostname in this environment is `<name>.<CLUSTER_ID>.sslip.io`
+# reached on GATEWAY_NODEPORT.
 #
-# Defined ONCE here because more than one workload needs it: any component that
-# follows an APIExportEndpointSlice dials the URL kcp published in it
-# (https://root.pm.localhost:8443/services/apiexport/...), which no kubeconfig
-# rewriting can redirect. If this list and the one handed to deploy_kcp ever
-# diverge, those components fail with `connection refused` against themselves.
-# The IP must be one that is actually ROUTED inside the cluster. The Gateway's
-# advertised address (status.addresses, 10.96.2.2 here) is not: a pod resolves the
-# name through hostAliases and then cannot connect, which reads as a broken
-# credential rather than a broken route. envoy's Service ClusterIP is the routed
-# address for the same listener, so hostAliases point there.
+# One scheme, because a kcp hostname has to resolve to the SAME address from four
+# places: the host, the kcp shards, anything following an APIExportEndpointSlice
+# URL (which is dialed verbatim and cannot be rewritten by a kubeconfig), and the
+# tenancy virtual workspace. sslip.io resolves `root.192-168-0-2.sslip.io` to
+# 192.168.0.2 for all of them, so there are NO hostAliases anywhere in this
+# environment and no "advertised but not routed" gateway address to reconcile.
 #
-# Resolved from the cluster, falling back to the Gateway address when the Service
-# does not exist yet (a cold `tilt up` evaluates this before envoy creates it) —
-# in that case re-trigger the Tiltfile once envoy is up.
-KCP_HOSTALIAS_IP = os.getenv('KCP_HOSTALIAS_IP', '') or (str(local(
-    "kubectl get svc -n envoy-gateway-system " +
-    "-l gateway.envoyproxy.io/owning-gateway-name=platform-mesh " +
-    "-o jsonpath='{.items[0].spec.clusterIP}' 2>/dev/null || true",
-    quiet=True, echo_off=True)).strip() or '10.96.2.2')
-KCP_HOSTNAMES = [BASE_DOMAIN, 'root.' + BASE_DOMAIN, 'idp.' + BASE_DOMAIN]
+# It must be the NodePort and not the gateway's own listener port: sslip.io
+# resolves to the node, and nothing listens on node:8443.
+#
+# Defined here rather than in the deployer's Tiltfile because dex needs the same
+# two values, and dex is configured before kcp exists.
+CLUSTER_ID = os.getenv('DEPLOYER_CLUSTER_ID', '') or (str(local(
+    'kubectl get nodes -o jsonpath=' +
+    "'{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}'" +
+    ' 2>/dev/null || true',
+    quiet=True, echo_off=True)).strip().replace('.', '-') or '127-0-0-1')
+GATEWAY_NODEPORT = 31443
+
+def sslip(name):
+    """`<name>.<cluster>.sslip.io` — the one way anything is addressed here."""
+    return '{}.{}.sslip.io'.format(name, CLUSTER_ID)
 
 # The OIDC settings, defined ONCE and read twice — by kcp's authenticator and by
 # the tenancy virtual workspace's own verifier (RFC 010 §1.1).
@@ -145,7 +108,7 @@ KCP_HOSTNAMES = [BASE_DOMAIN, 'root.' + BASE_DOMAIN, 'idp.' + BASE_DOMAIN]
 # VW — or worse, resolved to a different identity than the one kcp will enforce
 # RBAC against. One dict is the enforcement.
 KCP_OIDC = {
-    'issuerURL': 'https://idp.{}:8443'.format(BASE_DOMAIN),
+    'issuerURL': 'https://{}:{}'.format(sslip('idp'), GATEWAY_NODEPORT),
     'clientID': 'platform-mesh',
     'groupsClaim': 'groups',
     'usernameClaim': 'email',
@@ -166,13 +129,14 @@ KCP_OIDC = {
     'caFileRef': {'name': 'dex-ca', 'key': 'ca.crt'},
 }
 
-# kcp's in-cluster address, used INSTEAD of the public hostname for the plain
-# API-server connection (see the chart's kcp.server). The endpoint-slice URLs kcp
-# publishes still carry public hostnames and are dialed verbatim, which is what
-# hostAliases above are for — the two mechanisms cover different traffic.
-KCP_INTERNAL_SERVER = os.getenv(
-    'KCP_INTERNAL_SERVER',
-    'https://frontproxy-front-proxy.{}.svc:8443'.format(NAMESPACE))
+# NOT DEFINED HERE ANY MORE: an in-cluster override for kcp's address.
+#
+# It existed because *.pm.localhost resolved to loopback inside a pod, so every
+# client needed to be redirected at the front-proxy Service instead. Under
+# sslip.io the address kcp publishes in its own kubeconfigs already resolves and
+# routes from inside the cluster, so clients use it verbatim and the override,
+# the hostAliases and the "which of the two mechanisms covers this traffic?"
+# question all go away.
 
 # Skip remote-fetch infra (cert-manager, envoy gateway, kcp-operator) so the
 # Tiltfile evaluates offline — used for manifest validation. Local manifests and
@@ -237,35 +201,32 @@ k8s_resource(
     resource_deps=['namespace'],
 )
 
-# Gateway depends on the namespace; needs the envoy gateway CRDs (infra_remote).
-# The tenancy virtual workspace's external name. Under *.pm.localhost so it is
-# covered by the gateway's hostname wildcard and resolves to loopback without
-# touching /etc/hosts.
-TENANCY_VW_HOSTNAME = 'tenancy.pm.localhost'
+# The tenancy virtual workspace's external name — one more SNI name on the same
+# `eg` gateway kcp and dex use.
+TENANCY_VW_HOSTNAME = sslip('tenancy')
 
-k8s_yaml('manifests/gateway.yaml')
-k8s_resource(
-    new_name='gateway',
-    objects=['platform-mesh:gatewayclass', 'platform-mesh:gateway'],
-    labels=['infra'],
-    resource_deps=['namespace'],
-)
+# The gateway is NOT defined here. The single `eg` gateway comes from the
+# deployer's config/bases/envoy-gateway, together with the NodePort that makes
+# the sslip.io names reachable. One gateway on purpose: kcp, dex and the tenancy
+# virtual workspace all hang TLSRoutes off the same listener, and a second one
+# only meant a second place for a route to silently fail to attach.
 
-# The plaintext dev etcd exists for the static kcp install and nothing else. The
-# `deployer` profile brings its own mutual-TLS etcd (shards there may live on
-# another cluster and reach it through the gateway), and both render a Deployment
-# called `etcd` — two Tilt resources of the same name is a load error, so this one
-# goes away rather than being renamed around.
-if not DEPLOYER:
-    k8s_yaml('manifests/etcd.yaml')
-    k8s_resource('etcd', labels=['infra'])
+# NO PLAINTEXT etcd HERE ANY MORE either. The deployer brings a mutual-TLS etcd
+# reachable through the gateway, because a shard it places on another cluster
+# resolves the endpoint verbatim and a .svc name means nothing there.
 
 # Dex — the OIDC issuer kcp authenticates against (RootShard spec.auth.oidc).
 # kcp always needs an issuer wired, and the kcp-operator won't create the shard
 # Deployment until the referenced CA secret (dex-ca) exists, so Dex ships in the
-# base `infra` profile. Terminates its own TLS and is routed by SNI through the
-# passthrough gateway (manifests/dex.yaml); the cert chain publishes `dex-ca`.
-k8s_yaml('manifests/dex.yaml')
+# base environment. Terminates its own TLS and is routed by SNI through the
+# passthrough gateway; the cert chain publishes `dex-ca`.
+#
+# Substituted rather than read straight off disk: the issuer URL, the serving
+# certificate's SAN and the TLSRoute hostname all carry the cluster ID, and the
+# shards verify tokens against that exact URL. See the header in the manifest.
+k8s_yaml(blob(str(read_file('manifests/dex.yaml'))
+              .replace('__CLUSTER__', CLUSTER_ID)
+              .replace('__PORT__', str(GATEWAY_NODEPORT))))
 k8s_resource(
     'dex',
     objects=[
@@ -280,110 +241,56 @@ k8s_resource(
 )
 
 # Remote-fetch infra (cert-manager, envoy gateway controller, Flux, OCM).
+#
+# The kcp-operator is NOT here: the deployer installs the ntnn fork it needs
+# (split config/workload controllers plus the Compiled* CRDs its admin CRs
+# compile into), which owns the same operator.kcp.io CRDs as upstream.
 if not NO_INFRA:
     include('./infra_remote.Tiltfile')
-    # The upstream kcp-operator is a separate include so `deployer` can install
-    # the fork instead — see DEPLOYER above. include(), unlike load(), does not
-    # have to be top-level.
-    if not DEPLOYER:
-        include('./infra_kcp_operator.Tiltfile')
 
 # ---------------------------------------------------------------------------
-# kcp (static, via the upstream kcp Tilt module)
+# kcp — BUILT by platform-mesh-deployer, not installed
 # ---------------------------------------------------------------------------
 
-# The static-install logic lives upstream in the kcp repo
-# (contrib/tilt/kcp_static.Tiltfile), parameterized for our gateway, hostnames
-# and auth. load_kcp() fetches it from the in-flight branch by default; set
-# KCP_TILT_DIR to a local kcp/contrib/tilt checkout to work offline / hack on
-# the module. Once the upstream PR merges, bump KCP_TILT_REPO/KCP_TILT_REF
-# defaults in helpers.py to the tagged kcp release.
-load('./helpers.py', 'component_build', 'component_binary', 'chart_path', 'load_kcp')
-
-# Gated on DEPLOYER: under that profile kcp is not installed statically at all,
-# it is built from a PlatformMesh. load_kcp() is inside the guard too, so the
-# module fetch is skipped rather than fetched and ignored.
-if not DEPLOYER:
-    deploy_kcp = load_kcp()
-
-    deploy_kcp(
-        base_domain=BASE_DOMAIN,
-        namespace=NAMESPACE,
-        # Attach to OUR gateway instead of kcp's default envoy `eg`. Production wires
-        # the same shape against traefik via .Values.gatewayApi.name.
-        gateway={
-            'name': 'platform-mesh',
-            'namespace': None,
-            'group': 'gateway.networking.k8s.io',
-            'kind': 'Gateway',
-            'section': 'passthrough',
-        },
-        route_version='v1alpha2',
-        # etcd this project provides (manifests/etcd.yaml).
-        etcd_endpoint='http://etcd.kcp-etcd.svc.cluster.local:2379',
-
-        # kcp pods resolve *.pm.localhost only via hostAliases → the gateway IP.
-        # The module derives hostAliases from this list, which includes dex alongside
-        # the base + shard names — otherwise the shard/front-proxy OIDC authenticator
-        # can't reach the issuer discovery endpoint (https://idp.pm.localhost:8443)
-        # and logs "lookup idp.pm.localhost ... no such host". Single-shard `infra`;
-        # revisit if extra_shards are added (their hostnames must stay in this list).
-        #
-        # Shared with every other in-cluster kcp client (see KCP_HOSTNAMES above).
-        hostnames=KCP_HOSTNAMES,
-
-        # Pinned released kcp image (never built from source here), matching the
-        # version the rest of the repo already pins: tools/Taskfile.yaml KCP_VERSION
-        # (the envtest binary) and KCP_APIGEN_VERSION, and the kcp-dev/sdk each
-        # component depends on. Running `main` here meant the dev cluster was a
-        # different kcp from the one everything is built and tested against.
-        #
-        # `main` is also where a cache defect lives that makes kcp serve APIExports
-        # from one logical cluster into another's list, rewriting kcp.io/cluster as it
-        # goes. Downstream that shows up as kcp's own controllers failing with
-        # "apiexportendpointslices ... not found" and
-        # `User "" cannot patch /clusters//apis/...`, as "multiple apiexports found
-        # for <path>" breaking every by-path APIExport lookup (so no APIBinding can be
-        # created), and as the maximal-permission-policy authorizer resolving an empty
-        # workspace and denying claimed-resource access.
-        #
-        # Set KCP_IMAGE_TAG=main deliberately to test against tip.
-        image_tag=os.getenv('KCP_IMAGE_TAG', 'v0.32.3'),
-
-        # L3 authorization: rebac-authz-webhook secret (auth/full profiles). Wired
-        # here to exercise the hook; the secret itself is created by the auth layer.
-        authorization_webhook_secret='kcp-webhook-secret' if profile('auth') else None,
-
-        # OIDC issuer: dex in the infra/core profiles (see ADR), served at the
-        # implementation-neutral host oidc.<base_domain> (manifests/dex.yaml).
-        oidc=KCP_OIDC,
-        kubeconfig_dir='.secret/kcp',
-        # The kcp CRs live in platform-mesh-system; make them wait for the namespace
-        # resource so a fresh cluster doesn't race "namespace not found".
-        resource_deps=['namespace'],
-    )
-
-# NOT DONE HERE: pinning the root shard to one replica.
+# The wiring lives with the component, at operators/platform-mesh-deployer/
+# Tiltfile, next to the kustomizations it deploys. This file only supplies what
+# is environment-wide.
 #
-# kcp-operator defaults a RootShard to 2, and with an embedded cache server that
-# means two replication controllers writing the same cache. The APIExport by-path
-# index ends up with duplicate entries, and ByPathAndNameWithFallback treats
-# "multiple found" as unrecoverable — so every by-path APIExport lookup fails,
-# including kcp's own:
+# This is the base environment, not an option: the deployer, the ntnn
+# kcp-operator fork it needs, a mutual-TLS etcd, the `eg` gateway, the CoreDNS
+# sslip.io answers, and a PlatformMesh for it to compile into kcp. Everything
+# else in this file sits on the kcp that comes out.
 #
-#   multiple apiexports.apis.kcp.io found for root:shards.core.kcp.io
-#   Cache consistency check failed  group=apis.kcp.io resource=apiexports
-#
-# Patching the RootShard from here to fix that was WORSE than the problem: the
-# operator re-merges frontproxy-merged-client-ca in response, which invalidates
-# the front-proxy admin certificate already issued into kcp-frontproxy-kubeconfig.
-# Every client using it then gets `User ""` / "workspace access not permitted" —
-# a broken credential that looks nothing like the config change that caused it.
-#
-# The replica count has to be set when the RootShard is CREATED, which needs a
-# `replicas` hook in the upstream kcp Tilt module (deploy_kcp has none today).
-# Until then: set it manually before the Kubeconfig secrets are issued, or accept
-# the duplicate-index behaviour.
+# There is exactly one way to get a kcp here, on purpose. A second one would
+# have to own the same shards and the same operator.kcp.io CRDs, and every
+# component would then have to work against both.
+load('./helpers.py', 'component_build', 'component_binary', 'chart_path')
+
+deploy_deployer = load_dynamic('../../operators/platform-mesh-deployer/Tiltfile')['deploy_deployer']
+deploy_deployer(
+    repo_root=os.path.abspath('../..'),
+    # The namespace the deployer watches for kubeconfig secrets and writes its
+    # admin CRs into. Must equal the operator's --provider-namespace (its
+    # default) and the namespace config/dev pins onto the etcd base.
+    namespace=NAMESPACE,
+    # Shared with dex and the tenancy VW so every hostname in the environment
+    # resolves the same way (see ADDRESSING above).
+    cluster_id=CLUSTER_ID,
+    gateway_nodeport=GATEWAY_NODEPORT,
+    # The SAME dict dex is configured from and the tenancy VW verifies against.
+    # The shards check tokens against this issuer URL, so a literal here instead
+    # of the shared value is a token kcp rejects for reasons nothing logs.
+    oidc=KCP_OIDC,
+    # The installation's name. It prefixes the engage Secret
+    # (`<name>--<clusterID>`) and every generated shard, so changing it renames
+    # the whole tree rather than adding a second one.
+    platform_mesh_name=os.getenv('PLATFORM_MESH_NAME', 'dev'),
+    # Passed in so the build's relative paths keep resolving against this
+    # directory rather than the component's.
+    component_binary=component_binary,
+    resource_deps=['namespace'],
+)
+
 
 # ---------------------------------------------------------------------------
 # component hot-reload (stub — off by default in the skeleton)
@@ -432,6 +339,7 @@ if COMPONENTS:
 # ---------------------------------------------------------------------------
 # tenancy (RFC 010) — the Organization/Workspace tenancy model
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 #
 # The wiring lives with the component, at operators/tenancy-operator/Tiltfile,
 # next to the chart and the bootstrap manifests it deploys. This file only decides
@@ -449,59 +357,31 @@ if profile('tenancy'):
     # which may already belong to someone else's tree.
     TENANCY_ROOT = os.getenv('TENANCY_ROOT', 'root:tenancy')
 
-    REPO_ROOT = os.path.abspath('../..')
-
     deploy_tenancy = load_dynamic('../../operators/tenancy-operator/Tiltfile')['deploy_tenancy']
     deploy_tenancy(
-        repo_root=REPO_ROOT,
+        repo_root=os.path.abspath('../..'),
         namespace=NAMESPACE,
         install_root=TENANCY_ROOT,
-        hostalias_ip=KCP_HOSTALIAS_IP,
-        hostnames=KCP_HOSTNAMES,
-        internal_server=KCP_INTERNAL_SERVER,
         oidc=KCP_OIDC,
-        # Same gateway kcp and dex attach to; one more SNI name on it.
+        # Same `eg` gateway kcp and dex attach to; one more SNI name on it.
         gateway={
-            'name': 'platform-mesh',
-            'namespace': NAMESPACE,
+            'name': 'eg',
+            'namespace': 'envoy-gateway-system',
             'hostname': TENANCY_VW_HOSTNAME,
         },
-        # Passed in so the build's relative paths keep resolving against this
-        # directory rather than the component's.
-        component_build=component_build,
-        # The init container mounts the kcp admin Secret the kcp-operator
-        # publishes, so kcp must be up first. kcp-single-shard must land before
-        # the exports are created, or the APIExport index is already corrupt.
-        resource_deps=['namespace', 'kcp-admin extract'],
-    )
-
-# ---------------------------------------------------------------------------
-# deployer — kcp built from a PlatformMesh instead of installed statically
-# ---------------------------------------------------------------------------
-#
-# The wiring lives with the component, at operators/platform-mesh-deployer/
-# Tiltfile, next to the kustomizations it deploys. This file only decides WHETHER
-# to deploy it and supplies what is environment-wide.
-#
-# Everything this profile turns OFF is decided at DEPLOYER near the top; by the
-# time control reaches here the static etcd, the upstream kcp-operator and
-# deploy_kcp() have already been skipped.
-if DEPLOYER:
-    REPO_ROOT = os.path.abspath('../..')
-
-    deploy_deployer = load_dynamic('../../operators/platform-mesh-deployer/Tiltfile')['deploy_deployer']
-    deploy_deployer(
-        repo_root=REPO_ROOT,
-        # The namespace the deployer watches for kubeconfig secrets and writes
-        # its admin CRs into. Must equal the operator's --provider-namespace
-        # (its default) and the namespace config/dev pins onto the etcd base.
-        namespace=NAMESPACE,
-        # The installation's name. It prefixes the engage Secret
-        # (`<name>--<clusterID>`) and every generated shard, so changing it
-        # renames the whole tree rather than adding a second one.
+        # NO hostalias_ip/hostnames/internal_server any more. Under sslip.io the
+        # address kcp publishes in its own kubeconfigs and endpoint slices already
+        # resolves and routes in-cluster, so there is nothing to redirect and
+        # nothing to alias — see ADDRESSING at the top.
+        #
+        # Which kcp to install into is discovered at RUNTIME instead, from the
+        # labels the deployer stamps on what it generates: the front proxy's name
+        # carries a hash and cannot be written down here.
         platform_mesh_name=os.getenv('PLATFORM_MESH_NAME', 'dev'),
         # Passed in so the build's relative paths keep resolving against this
         # directory rather than the component's.
-        component_binary=component_binary,
-        resource_deps=['namespace'],
+        component_build=component_build,
+        # kcp has to exist before its tree can be installed: `platformmesh` is
+        # the resource that creates the installation the front proxy comes from.
+        resource_deps=['namespace', 'platformmesh'],
     )

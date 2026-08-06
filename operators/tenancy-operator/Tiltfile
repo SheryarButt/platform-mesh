@@ -28,39 +28,41 @@ def deploy_tenancy(
         repo_root,
         namespace,
         install_root,
-        hostalias_ip,
-        hostnames,
         component_build,
-        internal_server='',
         oidc={},
         gateway={},
+        platform_mesh_name='dev',
         resource_deps=[]):
     """Deploy the tenancy tree into kcp and the operator that reconciles it.
 
-    One resource: the operator, hot-reloaded from source, with an init container
-    that installs the tenancy tree into kcp before the manager starts.
+    Installs into the kcp that platform-mesh-deployer BUILT, not a static one.
 
     The install genuinely needs kcp admin — creating workspaces, APIExports,
-    WorkspaceTypes and the install-time APIBindings does. Running it as an init
-    container means the credential leaves when that container exits; the manager
-    reaches the fleet only through APIExport virtual workspaces, bounded by the
-    permission claims on them.
+    WorkspaceTypes and the install-time APIBindings does. Running it as a Job
+    means the credential leaves when that pod exits; the manager reaches the
+    fleet only through APIExport virtual workspaces, bounded by the permission
+    claims on them.
 
     Args:
       repo_root:    absolute path to the monorepo root.
       install_root: the kcp workspace the tree is rooted at. Reaches both the init
-                    container and the manager as one --paths-root, because the two
+                    Job and the manager as one --paths-root, because the two
                     disagreeing means the operator comes up healthy and watches a
                     tree that does not exist.
-      hostalias_ip/hostnames: how in-cluster pods resolve kcp's hostnames. The
-                    operator needs these and a kubeconfig rewrite cannot
-                    substitute — see the chart's values.yaml.
-      oidc:         the SAME settings handed to deploy_kcp. The virtual workspace
-                    verifies tokens itself, so it and kcp must agree on issuer,
-                    audience and username convention or a caller kcp accepts is
-                    rejected here.
+      oidc:         the SAME settings handed to deploy_deployer. The virtual
+                    workspace verifies tokens itself, so it and kcp must agree on
+                    issuer, audience and username convention or a caller kcp
+                    accepts is rejected here.
+      platform_mesh_name: which installation to install into. Used to SELECT the
+                    front proxy at runtime, not to name anything.
       component_build: passed in rather than loaded here so the build's relative
                     paths keep resolving against contrib/tilt.
+
+    NO hostalias_ip/hostnames/internal_server. They existed because
+    *.pm.localhost resolved to loopback inside a pod, so kcp's advertised
+    addresses had to be aliased and its API address overridden. Under sslip.io
+    the addresses kcp publishes in its kubeconfigs and endpoint slices resolve
+    and route in-cluster unchanged, so the operator dials them verbatim.
     """
 
     # `tenancy-operator init` installs the tree. The chart can run it either as an
@@ -84,23 +86,53 @@ def deploy_tenancy(
     INIT_JOB = 'tenancy-operator-init-dev'
     INIT_RESOURCE = 'tenancy-init'
 
+    # The Secret the chart mounts as kcp admin. WE choose the name — a Kubeconfig
+    # CR names its own output Secret — which is the whole trick that keeps this
+    # resolvable at Tiltfile-evaluation time.
+    #
+    # The front proxy it is minted against is called something like
+    # `dev-fp-0fdfeb`: names.FrontProxy() hashes the PlatformMesh, the front proxy
+    # and the cluster ID into it, so it cannot be written down here and cannot be
+    # waited for either — a local() that blocked until the front proxy existed
+    # would deadlock, because evaluating this Tiltfile is what deploys the
+    # deployer that creates it. Pinning the Secret name and discovering the front
+    # proxy inside a resource that runs LATER is what breaks that cycle.
+    KCP_KUBECONFIG_SECRET = 'tenancy-kcp-kubeconfig'
+    KCP_RESOURCE = 'tenancy-kcp-credential'
+
     # Only the values that MUST agree with something outside the chart are set
     # here, and each comes from the same variable the other side uses.
     helm_set = [
         'paths.root=' + install_root,
-        'hostAliases[0].ip=' + hostalias_ip,
-        # Dial kcp in-cluster rather than through its public hostname, which
-        # resolves to an address that is advertised but not routed.
-        'kcp.server=' + internal_server,
-        'kcp.serverName=' + hostnames[0],
+        # TWO values, not one. The manager reads `kcp.kubeconfigSecretName` and the
+        # installer reads `init.kcpAdminSecretName`, and they are separate because
+        # in production they SHOULD be: the installer needs kcp admin, the manager
+        # needs only enough to resolve APIExportEndpointSlices. Setting one and
+        # leaving the other on its `kcp-frontproxy-kubeconfig` default is a Job
+        # stuck in ContainerCreating on a Secret that no longer exists — which is
+        # exactly what happened here, because the operator came up fine and only
+        # the install hung.
+        'kcp.kubeconfigSecretName=' + KCP_KUBECONFIG_SECRET,
+        'init.kcpAdminSecretName=' + KCP_KUBECONFIG_SECRET,
+        # EMPTY on purpose — "use the kubeconfig as-is".
+        #
+        # These exist to redirect a client away from kcp's public hostname when
+        # that hostname resolves, in-cluster, to an address that is advertised but
+        # not routed. kcp is addressed over sslip.io here, which resolves to the
+        # node and routes from inside the cluster as well as outside, so the
+        # address in the kubeconfig is already the right one. Setting them would
+        # override a working address with a guess at a Service name that carries a
+        # hash.
+        'kcp.server=',
+        'kcp.serverName=',
         'init.mode=job',
         'init.jobNameSuffix=dev',
 
         # The tenancy VW, serving `users` self-provision.
         'virtualWorkspace.enabled=true',
         # Exposed by SNI on the shared passthrough listener, exactly like kcp and
-        # the IdP — so `tenancyctl --server https://<hostname>:8443` works from the
-        # host with no port-forward and no special case.
+        # the IdP — so `tenancyctl --server https://<hostname>:31443` works from
+        # the host with no port-forward and no special case.
         'virtualWorkspace.gatewayApi.enabled=' + ('true' if gateway.get('name') else 'false'),
         'virtualWorkspace.gatewayApi.name=' + gateway.get('name', ''),
         'virtualWorkspace.gatewayApi.namespace=' + gateway.get('namespace', ''),
@@ -122,9 +154,57 @@ def deploy_tenancy(
         # Dev kcp is single-replica and there is no kube client for a lock.
         'leaderElect=false',
         'log.level=debug',
-    ] + [
-        'hostAliases[0].hostnames[{}]={}'.format(i, h) for i, h in enumerate(hostnames)
     ]
+
+    # The kcp admin credential, minted by kcp-operator rather than borrowed.
+    #
+    # A Kubeconfig CR names a front proxy, a user and groups; the operator issues
+    # the client certificate and writes a ready-to-use kubeconfig into the Secret
+    # this names. The front proxy is selected by the labels the deployer stamps on
+    # everything it generates, which are the only stable handle on a name that
+    # carries a hash.
+    #
+    # Runs before the install Job and the manager, both of which mount the Secret.
+    local_resource(
+        KCP_RESOURCE,
+        cmd='''set -eo pipefail
+NS={ns}
+PM={pm}
+
+echo "waiting for the front proxy of PlatformMesh $PM..."
+until FP=$(kubectl -n "$NS" get frontproxies.operator.kcp.io \\
+      -l deploy.platform-mesh.io/platform-mesh="$PM",deploy.platform-mesh.io/component=frontproxy \\
+      -o jsonpath='{{.items[0].metadata.name}}' 2>/dev/null) && [ -n "$FP" ]; do
+  sleep 2
+done
+echo "front proxy: $FP"
+
+kubectl apply -f - <<EOF
+apiVersion: operator.kcp.io/v1alpha1
+kind: Kubeconfig
+metadata:
+  name: tenancy-operator
+  namespace: $NS
+spec:
+  target:
+    frontProxyRef:
+      name: $FP
+  targetWorkspace: root
+  username: tenancy-operator
+  groups:
+    - system:kcp:admin
+  validity: 720h
+  secretRef:
+    name: {secret}
+EOF
+
+kubectl -n "$NS" wait kubeconfig/tenancy-operator --for=condition=Available --timeout=5m
+kubectl -n "$NS" wait "secret/{secret}" --for=create --timeout=5m'''.format(
+            ns=namespace, pm=platform_mesh_name, secret=KCP_KUBECONFIG_SECRET),
+        resource_deps=resource_deps,
+        labels=[LABEL],
+        allow_parallel=True,
+    )
 
     component_build(
         name='tenancy-operator',
@@ -168,6 +248,10 @@ def deploy_tenancy(
         # finishes. Tilt reports that deadlock as an unhelpful
         # `serviceaccount "tenancy-operator" not found` on the Job.
         objects=['tenancy-operator:serviceaccount'],
-        resource_deps=resource_deps,
+        # Waits for the credential, not just the namespace: the Job mounts the
+        # Secret the Kubeconfig CR produces, and a pod whose Secret does not exist
+        # yet sits in ContainerCreating rather than failing with something that
+        # names the missing object.
+        resource_deps=resource_deps + [KCP_RESOURCE],
         labels=[LABEL],
     )

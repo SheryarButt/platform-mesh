@@ -5,11 +5,18 @@
 # create the shard Deployment until the referenced CA secret (dex-ca) exists — so
 # Dex ships in the base `infra` profile.
 #
-# Topology mirrors kcp: the gateway (manifests/gateway.yaml) is TLS-passthrough on
-# :8443 and routes by SNI, so Dex terminates its own TLS with a cert valid for
-# idp.pm.localhost and is reached through the gateway via a TLSRoute. The public
-# issuer host is idp.pm.localhost (not dex.*) so the implementation stays swappable.
+# Topology mirrors kcp: the `eg` gateway is TLS-passthrough on the pinned NodePort
+# and routes by SNI, so Dex terminates its own TLS with a cert valid for its
+# sslip.io name and is reached through the gateway via a TLSRoute. The public
+# issuer host is idp.* (not dex.*) so the implementation stays swappable.
 # The signing CA is published as the `dex-ca` secret the RootShard's OIDC caFileRef mounts.
+#
+# __CLUSTER__ and __PORT__ are substituted by the Tiltfile with the cluster ID
+# (the node's dashed IP) and the gateway NodePort. They are placeholders rather
+# than a fixed hostname because the issuer URL has to resolve to the SAME address
+# from three places — the host, the kcp shards verifying tokens, and the tenancy
+# virtual workspace — and only a sslip.io name does that without hostAliases.
+# A literal here would be a fourth place to keep in sync with the node's IP.
 #
 # Development-only: in-memory storage, a single static test user (dex/dex),
 # skipApprovalScreen. Do not use as a template for prod.
@@ -51,7 +58,7 @@ metadata:
 spec:
   secretName: dex-server
   dnsNames:
-    - idp.pm.localhost
+    - idp.__CLUSTER__.sslip.io
     - dex
     - dex.platform-mesh-system
     - dex.platform-mesh-system.svc
@@ -69,7 +76,7 @@ metadata:
   namespace: platform-mesh-system
 data:
   config.yaml: |
-    issuer: https://idp.pm.localhost:8443
+    issuer: https://idp.__CLUSTER__.sslip.io:__PORT__
     storage:
       type: memory
     web:
@@ -182,7 +189,7 @@ spec:
       port: 5556
       targetPort: https
 ---
-# --- gateway route (SNI idp.pm.localhost → dex, TLS passthrough) ------------
+# --- gateway route (SNI idp.<cluster>.sslip.io → dex, TLS passthrough) -------
 apiVersion: gateway.networking.k8s.io/v1alpha2
 kind: TLSRoute
 metadata:
@@ -192,11 +199,11 @@ spec:
   parentRefs:
     - group: gateway.networking.k8s.io
       kind: Gateway
-      name: platform-mesh
-      namespace: platform-mesh-system
+      name: eg
+      namespace: envoy-gateway-system
       sectionName: passthrough
   hostnames:
-    - idp.pm.localhost
+    - idp.__CLUSTER__.sslip.io
   rules:
     - backendRefs:
         - name: dex

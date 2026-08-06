@@ -14,46 +14,20 @@
 
 # Tilt wiring for the platform-mesh-deployer, living beside the code and the
 # kustomizations it deploys. The root Tiltfile loads deploy_deployer() and calls
-# it when the `deployer` profile is on.
+# it unconditionally: this component IS the environment's kcp.
 #
-# This profile is MUTUALLY EXCLUSIVE with the static kcp install. The deployer's
-# whole job is to build kcp itself — it compiles a PlatformMesh into RootShard /
-# Shard / FrontProxy admin CRs, which a kcp-operator then turns into Deployments.
-# Running it next to deploy_kcp() would mean two owners of the same shards, and
-# the operator it needs is the ntnn fork (split config/workload controllers,
-# Compiled* CRDs), which owns the same operator.kcp.io CRDs as upstream. The root
-# Tiltfile gates both off; see the header there.
+# The deployer's whole job is to build kcp — it compiles a PlatformMesh into
+# RootShard / Shard / FrontProxy admin CRs, which a kcp-operator turns into
+# Deployments. It is the only source of kcp in this environment: anything else
+# writing those CRs would own the same shards, and the operator this needs is the
+# ntnn fork (split config/workload controllers, Compiled* CRDs), which owns the
+# same operator.kcp.io CRDs as the upstream operator.
 #
 # Shape mirrors test/e2e TestSingleCluster: one cluster acting as its own config
 # plane and workload cluster, addressed over sslip.io so the hostnames kcp
 # advertises resolve from inside the cluster as well as out.
 
 LABEL = 'deployer'
-
-# The deployer addresses every cluster it engages by an ID that must (a) be a
-# DNS label and (b) appear in the hostnames its CEL templates build, because the
-# shards advertise those hostnames and clients dial them verbatim. The node's IP
-# in dashed form is both: `172-18-0-2` is a legal label, and
-# `root.172-18-0-2.sslip.io` resolves straight back to the node with no DNS
-# server to run and no /etc/hosts to edit.
-#
-# Resolved from the cluster; falls back to a placeholder so `TILT_NO_INFRA=1
-# tilt alpha tiltfile-result` still renders with no cluster at all.
-#
-# NOTE: no .format() on the jsonpath — it is full of braces.
-CLUSTER_ID = os.getenv('DEPLOYER_CLUSTER_ID', '') or (str(local(
-    'kubectl get nodes -o jsonpath=' +
-    "'{.items[0].status.addresses[?(@.type==\"InternalIP\")].address}'" +
-    ' 2>/dev/null || true',
-    quiet=True, echo_off=True)).strip().replace('.', '-') or '127-0-0-1')
-
-# The gateway's pinned NodePort (config/bases/envoy-gateway/gateway.yaml).
-#
-# It has to be a NodePort, not the gateway's own 8443: sslip.io resolves these
-# hostnames to the NODE address, and nothing is listening on node:8443. Every
-# `port:` in the PlatformMesh below is this number for that reason — a shard that
-# advertises a port the node does not serve comes up healthy and is unreachable.
-GATEWAY_NODEPORT = 31443
 
 # CoreDNS in kind forwards to the host resolver, and many of those drop answers
 # that point at private IPs (DNS rebinding protection) — which is exactly what
@@ -74,9 +48,11 @@ COREDNS_SSLIP_BLOCK = '''sslip.io:53 {
 def deploy_deployer(
         repo_root,
         namespace,
+        cluster_id,
+        gateway_nodeport,
         component_binary,
+        oidc={},
         platform_mesh_name='dev',
-        kcp_operator_ref='main',
         resource_deps=[]):
     """Deploy the platform-mesh-deployer and a dev PlatformMesh for it to build.
 
@@ -88,14 +64,29 @@ def deploy_deployer(
       namespace:    the provider namespace — where the deployer watches for
                     kubeconfig secrets (--provider-namespace) and writes its
                     admin CRs. Must match config/dev's overlay namespace.
+      cluster_id:   the ID this cluster is engaged under, and the middle label of
+                    every hostname below. Must be (a) a legal DNS label and (b)
+                    the node's dashed IP, so `root.<id>.sslip.io` resolves back to
+                    the node. Passed in rather than resolved here because dex is
+                    addressed the same way and is configured before kcp exists.
+      gateway_nodeport: the port every hostname is served on. It has to be a
+                    NodePort, not the gateway's own listener port: sslip.io
+                    resolves to the NODE, and nothing listens on node:8443. A
+                    shard that advertises a port the node does not serve comes up
+                    healthy and is unreachable.
+      oidc:         the SAME dict dex is configured from. The shards verify tokens
+                    against this issuer URL, so a value that merely looks right is
+                    a token kcp rejects with nothing useful in the log.
       component_binary: passed in rather than loaded here, for the same reason as
                     repo_root: the build's ./bin and ./runtime.Dockerfile are
                     relative to contrib/tilt.
-      kcp_operator_ref: git ref of the ntnn/kcp-operator fork to install.
       resource_deps: prerequisites for the leaf resources (e.g. the namespace).
     """
 
     cfg = lambda *p: os.path.join(repo_root, 'operators/platform-mesh-deployer/config', *p)
+
+    def sslip(name):
+        return '{}.{}.sslip.io'.format(name, cluster_id)
 
     # ---------------------------------------------------------------------
     # prerequisites the deployer compiles against
@@ -116,10 +107,11 @@ def deploy_deployer(
     # The `eg` gateway the PlatformMesh's ingress stack attaches to, plus the
     # NodePort that makes it reachable at the sslip.io addresses.
     #
-    # A SECOND gateway alongside the base env's `platform-mesh` one, deliberately:
-    # that gateway restricts itself to `*.pm.localhost` hostnames, so a TLSRoute
-    # for `root.172-18-0-2.sslip.io` would not attach to it at all — the listener
-    # and route hostnames have to intersect. Same envoy controller programs both.
+    # The environment's ONLY gateway: dex and the tenancy virtual workspace hang
+    # their TLSRoutes off it too. It has no `hostnames` restriction, which is what
+    # lets one listener carry `fp.<id>.sslip.io`, `idp.<id>.sslip.io` and
+    # `tenancy.<id>.sslip.io` at once — a listener and a route whose hostnames do
+    # not intersect simply never attach, with no error on either object.
     k8s_yaml(cfg('bases', 'envoy-gateway', 'gateway.yaml'))
     k8s_resource(
         new_name='deployer-gateway',
@@ -221,7 +213,7 @@ spec:
     - backendRefs:
         - name: etcd
           port: 2379
-'''.format(ns=namespace, cluster=CLUSTER_ID)))
+'''.format(ns=namespace, cluster=cluster_id)))
 
     k8s_resource(
         'etcd',
@@ -381,7 +373,7 @@ kubectl -n "$NS" create secret generic "$SECRET" \\
       deploy.platform-mesh.io/rootshard=true \\
       deploy.platform-mesh.io/frontproxy=true \\
       deploy.platform-mesh.io/shards-default=true \\
-  | kubectl apply -f -'''.format(ns=namespace, pm=platform_mesh_name, cluster=CLUSTER_ID),
+  | kubectl apply -f -'''.format(ns=namespace, pm=platform_mesh_name, cluster=cluster_id),
         resource_deps=resource_deps,
         labels=[LABEL],
         allow_parallel=True,
@@ -390,6 +382,29 @@ kubectl -n "$NS" create secret generic "$SECRET" \\
     # ---------------------------------------------------------------------
     # the installation to build
     # ---------------------------------------------------------------------
+
+    # The OIDC block the root shard authenticates against, rendered from the SAME
+    # dict dex is configured from so the issuer the shards verify against and the
+    # issuer dex advertises cannot drift. Indented to sit under `spec.auth` in the
+    # RootShardTemplate below.
+    #
+    # Without it kcp has no external authenticator at all: the only identities
+    # are the operator's own certificates, so every human is anonymous and every
+    # tenancy binding names a subject that can never authenticate.
+    _oidc_block = ''
+    if oidc.get('issuerURL') and oidc.get('clientID'):
+        _oidc_block = '\n'.join([
+            '  auth:',
+            '    oidc:',
+            '      issuerURL: ' + oidc['issuerURL'],
+            '      clientID: ' + oidc['clientID'],
+            '      usernameClaim: ' + oidc.get('usernameClaim', 'email'),
+            '      usernamePrefix: "' + oidc.get('usernamePrefix', '') + '"',
+            '      groupsClaim: ' + oidc.get('groupsClaim', 'groups'),
+            '      caFileRef:',
+            '        name: ' + oidc.get('caFileRef', {}).get('name', 'dex-ca'),
+            '        key: ' + oidc.get('caFileRef', {}).get('key', 'ca.crt'),
+        ])
 
     # A dev PlatformMesh and the two topology templates it references, mirroring
     # test/e2e's fixture. The quoting is not a typo: hostnameTemplate, the etcd
@@ -414,6 +429,7 @@ spec:
       name: kcp
       kind: ClusterIssuer
       group: cert-manager.io
+{oidc}
 ---
 apiVersion: deploy.platform-mesh.io/v1alpha1
 kind: ShardTemplate
@@ -476,7 +492,7 @@ spec:
       exposure:
         hostnameTemplate: '"fp." + cluster + ".sslip.io"'
         port: {port}
-'''.format(ns=namespace, pm=platform_mesh_name, cluster=CLUSTER_ID, port=GATEWAY_NODEPORT)))
+'''.format(ns=namespace, pm=platform_mesh_name, cluster=cluster_id, port=gateway_nodeport, oidc=_oidc_block)))
 
     k8s_resource(
         new_name='platformmesh',
@@ -506,8 +522,7 @@ spec:
     # an admin kubeconfig to poke the result with
     # ---------------------------------------------------------------------
 
-    # The counterpart to the static profile's `kcp-admin extract`. kcp-operator
-    # already mints client credentials on request — a Kubeconfig CR names a
+    # kcp-operator already mints client credentials on request — a Kubeconfig CR names a
     # front proxy, a user and groups, and the operator issues the cert and writes
     # a ready-to-use kubeconfig into a Secret. This asks for one and dumps it to
     # disk.
@@ -574,5 +589,5 @@ echo'''.format(ns=namespace, pm=platform_mesh_name),
         allow_parallel=True,
     )
 
-    print('deployer profile: cluster={} platformMesh={} front-proxy=https://fp.{}.sslip.io:{}'.format(
-        CLUSTER_ID, platform_mesh_name, CLUSTER_ID, GATEWAY_NODEPORT))
+    print('kcp: platformMesh={} cluster={} front-proxy=https://{}:{}'.format(
+        platform_mesh_name, cluster_id, sslip('fp'), gateway_nodeport))

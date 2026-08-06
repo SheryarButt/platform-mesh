@@ -91,7 +91,7 @@ Profiles are independent feature layers, not an ordered ladder — each only eve
 
 | Profile | Adds |
 |---------|------|
-| `infra` | the base environment — namespace, cert-manager issuer, envoy `Gateway`, etcd, dex, and kcp (pinned released image, never built from source). **Always on**; naming it is allowed but redundant |
+| `infra` | the base environment — namespace, cert-manager issuer, envoy `Gateway`, a mutual-TLS etcd, dex, and kcp, which `platform-mesh-deployer` builds from a `PlatformMesh`. **Always on**; naming it is allowed but redundant |
 | `core` | nothing yet (reserved) |
 | `auth` | the ReBAC authorization webhook secret on kcp (L3) |
 | `tenancy` | the tenancy tree inside kcp plus the `tenancy-operator`, hot-reloaded from source |
@@ -99,12 +99,13 @@ Profiles are independent feature layers, not an ordered ladder — each only eve
 
 ### Working against local checkouts
 
-The kcp Tilt module and the Helm charts are fetched remotely by default. Point them at local clones to work offline or to hack on them:
+The Helm charts are fetched remotely by default. Point them at a local clone to work offline or to hack on them:
 
 ```sh
-export KCP_TILT_DIR=$HOME/go/src/github.com/kcp-dev/kcp/contrib/tilt
 export HELM_CHARTS_DIR=$HOME/go/src/github.com/platform-mesh/helm-charts
 ```
+
+kcp needs no such override: it is built in-cluster from a `PlatformMesh` rather than fetched, so there is nothing external to pin.
 
 ### Validating manifests without a cluster
 
@@ -112,7 +113,7 @@ export HELM_CHARTS_DIR=$HOME/go/src/github.com/platform-mesh/helm-charts
 TILT_NO_INFRA=1 tilt alpha tiltfile-result -f contrib/tilt/Tiltfile -- --profile=full
 ```
 
-This renders the local manifests and the kcp custom resources with all hooks applied — no cluster and no remote fetches — so gateway wiring, OIDC issuer and the authorization webhook can be confirmed before deploying.
+This renders the local manifests and the `PlatformMesh` and topology templates kcp is built from, with every substitution applied — no cluster and no remote fetches — so gateway wiring, OIDC issuer and the authorization webhook can be confirmed before deploying.
 
 See [contrib/tilt/README.md](contrib/tilt/README.md) for the full environment: what each resource is, how to poke at the tenancy tree in kcp, and the hooks the kcp static install exposes.
 

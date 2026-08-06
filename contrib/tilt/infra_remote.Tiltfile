@@ -20,12 +20,12 @@
 load('ext://cert_manager', 'deploy_cert_manager')
 load('ext://helm_remote', 'helm_remote')
 
-# cert-manager — issues the self-signed CA the kcp shards use.
+# cert-manager — issues the self-signed CAs dex and the kcp shards root from.
 deploy_cert_manager(version='v1.19.2')
 
-# Envoy Gateway controller — programs the `platform-mesh` Gateway (Gateway CR in
-# manifests/gateway.yaml). Production uses traefik; envoy here keeps parity with
-# the kcp reference and is enough to prove the routing.
+# Envoy Gateway controller — programs the `eg` Gateway the deployer brings
+# (config/bases/envoy-gateway). Production uses traefik; envoy here is enough to
+# prove the routing, and it carries every SNI name in the environment.
 namespace_yaml = 'apiVersion: v1\nkind: Namespace\nmetadata:\n  name: envoy-gateway-system\n'
 k8s_yaml(blob(namespace_yaml))
 helm_remote(
@@ -37,9 +37,10 @@ helm_remote(
     version='v1.7.0',
 )
 
-# kcp-operator is NOT here: it lives in infra_kcp_operator.Tiltfile, included
-# conditionally by the root Tiltfile. The `deployer` profile replaces it with the
-# ntnn fork, and the two cannot coexist (same CRDs, same Deployment).
+# kcp-operator is NOT here. platform-mesh-deployer installs the ntnn fork it
+# needs (split config/workload controllers plus the Compiled* CRDs its admin CRs
+# compile into); it owns the same operator.kcp.io CRDs and the same Deployment as
+# the upstream operator, so only one of them can ever be installed.
 
 # ---------------------------------------------------------------------------
 # Delivery engines for the provider-operator's ManagedProvider deploy step
@@ -83,13 +84,10 @@ helm_remote(
     version='0.3.0',
 )
 
-# Ingress port-forward to the gateway so root.pm.localhost:8443 is reachable
-# from the host. Mirrors the kcp reference port-forward loop.
-local_resource(
-    'ingress',
-    serve_cmd='kubectl -n envoy-gateway-system wait gateway/platform-mesh --for=condition=Programmed --timeout=5m 2>/dev/null; ' +
-              'while true; do svc=$(kubectl -n envoy-gateway-system get svc -l gateway.envoyproxy.io/owning-gateway-name=platform-mesh -o jsonpath="{.items[0].metadata.name}" 2>/dev/null); ' +
-              '[ -n "$svc" ] && kubectl -n envoy-gateway-system port-forward "svc/$svc" 8443:8443 || true; sleep 2; done',
-    labels=['infra'],
-    allow_parallel=True,
-)
+# NO INGRESS PORT-FORWARD any more.
+#
+# It existed because *.pm.localhost resolves to loopback, so the host could only
+# reach the gateway through a tunnel. Every hostname is now
+# <name>.<node-ip>.sslip.io on the gateway's pinned NodePort, which the host
+# resolves and routes to directly — so there is nothing to forward, and no
+# long-running process whose death silently breaks every kubectl.

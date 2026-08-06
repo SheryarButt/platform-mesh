@@ -27,19 +27,33 @@ vars:
 
   # --- local dev environment (contrib/tilt, `--profile=tenancy`) --------------
   #
+  # Every dev hostname is <name>.<CLUSTER_ID>.sslip.io on the gateway's NodePort,
+  # where CLUSTER_ID is the node's InternalIP with dots replaced by dashes. It is
+  # resolved from the cluster rather than written down because it changes with the
+  # kind cluster, and because a literal here would be a fourth copy of the node's
+  # address to keep in step with the Tiltfile, dex and the PlatformMesh.
+  #
+  # sslip.io resolves those names to the node from the host and from inside the
+  # cluster alike, which is why none of this needs a port-forward or /etc/hosts.
+  CLUSTER_ID:
+    sh: kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null | tr '.' '-'
+  GATEWAY_PORT: '{{.GATEWAY_PORT | default "31443"}}'
+
   # Defaults matching what the Tiltfile hands to kcp and to the operator.
   # Override on the command line if yours differ, but the issuer and client ID
   # MUST match kcp's OIDC config or a token minted here is rejected there: the
   # RBAC identity is derived from the issuer, so a mismatch reads as a puzzling
   # 403 rather than a bad token.
-  OIDC_ISSUER: '{{.OIDC_ISSUER | default "https://idp.pm.localhost:8443"}}'
+  OIDC_ISSUER: '{{.OIDC_ISSUER | default (printf "https://idp.%s.sslip.io:%s" .CLUSTER_ID .GATEWAY_PORT)}}'
   OIDC_CLIENT_ID: '{{.OIDC_CLIENT_ID | default "platform-mesh"}}'
-  KCP_SERVER: '{{.KCP_SERVER | default "https://pm.localhost:8443"}}'
+  # The front proxy, reached at the hostname the PlatformMesh told it to
+  # advertise. Not a Service name: the deployer generates those with a hash.
+  KCP_SERVER: '{{.KCP_SERVER | default (printf "https://fp.%s.sslip.io:%s" .CLUSTER_ID .GATEWAY_PORT)}}'
   NAMESPACE: '{{.NAMESPACE | default "platform-mesh-system"}}'
 
-  # contrib/tilt/.secret is gitignored, and is already where the kcp Tilt module
-  # drops the admin kubeconfigs — so the CAs pulled from the cluster live beside
-  # them rather than in a second place to keep in step.
+  # contrib/tilt/.secret is gitignored, and is already where the Tilt dev env
+  # drops the admin kubeconfig — so the CAs pulled from the cluster live beside
+  # it rather than in a second place to keep in step.
   #
   # REPO_ROOT is resolved here rather than reusing the tools Taskfile's TOPLEVEL:
   # vars from an included Taskfile resolve inside `cmds`, but NOT when referenced
@@ -51,10 +65,12 @@ vars:
   DEX_CA: '{{.REPO_ROOT}}/contrib/tilt/.secret/kcp/dex-ca.crt'
   KCP_CA: '{{.REPO_ROOT}}/contrib/tilt/.secret/kcp/kcp-ca.crt'
   VW_CA: '{{.REPO_ROOT}}/contrib/tilt/.secret/kcp/tenancy-vw-ca.crt'
-  # Reached through the same gateway as kcp and the IdP, by SNI. `.localhost`
-  # resolves to loopback, and the CLI dials it that way itself because Go does
-  # not implement RFC 6761.
-  VW_SERVER: '{{.VW_SERVER | default "https://tenancy.pm.localhost:8443"}}'
+  # The admin kubeconfig the `deployer-admin` Tilt resource writes, minted by
+  # kcp-operator against the generated front proxy.
+  ADMIN_KUBECONFIG: '{{.REPO_ROOT}}/contrib/tilt/.secret/kcp/tilt-dev-admin.kubeconfig'
+  # Reached through the same gateway as kcp and the IdP, by SNI — one more name
+  # on the one listener.
+  VW_SERVER: '{{.VW_SERVER | default (printf "https://tenancy.%s.sslip.io:%s" .CLUSTER_ID .GATEWAY_PORT)}}'
 
 tasks:
   ## Development
@@ -109,20 +125,20 @@ tasks:
       # dex signs its own serving cert from a private CA, so the CLI and the
       # browser both need it to reach the issuer.
       - kubectl get secret dex-ca -n {{.NAMESPACE}} -o jsonpath='{.data.ca\.crt}' | base64 -d > {{.DEX_CA}}
-      # kcp's CA comes out of the admin kubeconfig the kcp Tilt module extracts,
-      # so there is one source rather than a second copy to keep in step.
+      # kcp's CA comes out of the admin kubeconfig the Tilt dev env extracts
+      # (deployer-admin), so there is one source rather than a second copy.
       - |
         python3 - <<'EOF' > {{.KCP_CA}}
         import base64, re, sys
-        src = "{{.SECRET_DIR}}/tilt-frontproxy.kubeconfig"
+        src = "{{.ADMIN_KUBECONFIG}}"
         m = re.search(r"certificate-authority-data:\s*(\S+)", open(src).read())
         if not m:
             sys.exit("no certificate-authority-data in " + src)
         sys.stdout.write(base64.b64decode(m.group(1)).decode())
         EOF
-      # The tenancy virtual workspace serves its own cert. Its SANs already include
-      # `localhost` (values.yaml extraDnsNames), so verification works against the
-      # Tilt port-forward without disabling it.
+      # The tenancy virtual workspace serves its own cert, with a SAN for the
+      # sslip.io name it is routed on — so verification works against the real
+      # address, with nothing to disable and no tunnel in the way.
       - kubectl get secret tenancy-virtual-workspace-cert -n {{.NAMESPACE}} -o jsonpath='{.data.ca\.crt}' | base64 -d > {{.VW_CA}}
       - 'echo "CAs written to {{.SECRET_DIR}}"'
 
@@ -179,7 +195,8 @@ tasks:
     deps: [tenancyctl, dev-ca]
     cmds:
       # --server makes this the `get users/~` call rather than a
-      # local token decode. Reachable because the Tiltfile port-forwards the VW.
+      # local token decode. Reachable directly: the VW is one more SNI name on
+      # the gateway, at an address that resolves from the host.
       - '{{.BIN}}/tenancyctl whoami --server={{.VW_SERVER}} --vw-ca-file={{.VW_CA}}'
 
   dev-provision:
@@ -223,7 +240,7 @@ tasks:
           echo "CLUSTER is required — there is no default workspace in this model." >&2
           echo >&2
           echo "List the workspaces you can reach:" >&2
-          echo "  KUBECONFIG={{.SECRET_DIR}}/tilt-frontproxy.kubeconfig \\" >&2
+          echo "  KUBECONFIG={{.ADMIN_KUBECONFIG}} \\" >&2
           echo "    kubectl --server {{.KCP_SERVER}}/clusters/root:tenancy:tenants get workspaces" >&2
           echo >&2
           echo "Then:  CLUSTER=<id> task dev-kubeconfig" >&2
