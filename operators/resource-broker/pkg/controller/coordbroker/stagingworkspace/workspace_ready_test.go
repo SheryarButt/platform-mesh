@@ -55,18 +55,18 @@ func TestWorkspaceReadyFinalizers(t *testing.T) {
 
 func TestWorkspaceReadyProcess(t *testing.T) {
 	tests := []struct {
-		name        string
-		treeObjs    []ctrlruntimeclient.Object
-		wantPending bool
-		wantOK      bool
-		wantPhase   pmcoordbrokerv1alpha1.StagingWorkspacePhase
-		wantCluster string
-		verify      func(t *testing.T, treeClient ctrlruntimeclient.Client)
+		name                string
+		treeObjs            []ctrlruntimeclient.Object
+		wantStopWithRequeue bool
+		wantOK              bool
+		wantPhase           pmcoordbrokerv1alpha1.StagingWorkspacePhase
+		wantCluster         string
+		verify              func(t *testing.T, treeClient ctrlruntimeclient.Client)
 	}{
 		{
-			name:        "creates workspace",
-			wantPending: true,
-			wantPhase:   pmcoordbrokerv1alpha1.StagingWorkspacePhasePending,
+			name:                "creates workspace",
+			wantStopWithRequeue: true,
+			wantPhase:           pmcoordbrokerv1alpha1.StagingWorkspacePhasePending,
 			verify: func(t *testing.T, treeClient ctrlruntimeclient.Client) {
 				ws := &kcptenancyv1alpha1.Workspace{}
 				require.NoError(t, treeClient.Get(t.Context(), ctrlruntimeclient.ObjectKey{Name: testName}, ws))
@@ -77,8 +77,8 @@ func TestWorkspaceReadyProcess(t *testing.T) {
 			treeObjs: []ctrlruntimeclient.Object{&kcptenancyv1alpha1.Workspace{
 				ObjectMeta: metav1.ObjectMeta{Name: testName},
 			}},
-			wantPending: true,
-			wantPhase:   pmcoordbrokerv1alpha1.StagingWorkspacePhasePending,
+			wantStopWithRequeue: true,
+			wantPhase:           pmcoordbrokerv1alpha1.StagingWorkspacePhasePending,
 		},
 		{
 			name:        "ready workspace records cluster name",
@@ -96,7 +96,7 @@ func TestWorkspaceReadyProcess(t *testing.T) {
 
 			result, err := s.Process(t.Context(), sw)
 			require.NoError(t, err)
-			assert.Equal(t, tt.wantPending, result.IsPending())
+			assert.Equal(t, tt.wantStopWithRequeue, result.IsStopWithRequeue())
 			if tt.wantOK {
 				assert.True(t, result.IsContinue())
 				assert.Zero(t, result.Requeue())
@@ -126,7 +126,7 @@ func TestWorkspaceReadyProcessTerminatingWorkspace(t *testing.T) {
 	sw := testStagingWorkspace()
 	result, err := s.Process(t.Context(), sw)
 	require.NoError(t, err)
-	assert.True(t, result.IsPending())
+	assert.True(t, result.IsStopWithRequeue())
 	assert.Equal(t, pmcoordbrokerv1alpha1.StagingWorkspacePhasePending, sw.Status.Phase)
 }
 
