@@ -18,7 +18,7 @@ require (
 	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
 	sigs.k8s.io/controller-runtime v0.24.1
 	sigs.k8s.io/gateway-api v1.6.1
-	sigs.k8s.io/multicluster-runtime v0.24.1
+	sigs.k8s.io/multicluster-runtime v0.24.2-0.20260806063852-035f642f8818
 )
 
 replace github.com/kcp-dev/multicluster-provider/client => github.com/kcp-dev/multicluster-provider/client v0.8.1-0.20260714141811-833f063357f8
