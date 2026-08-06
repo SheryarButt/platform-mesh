@@ -2,7 +2,6 @@
 > This Repository is under development and not ready for productive use. It is in an alpha stage. That means APIs and concepts may change on short notice including breaking changes or complete removal of apis.
 
 # platform-mesh-operator
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/go.platform-mesh.io/platform-mesh-operator/badge)](https://scorecard.dev/viewer/?uri=go.platform-mesh.io/platform-mesh-operator)
 
 The platform-mesh-operator bootstraps and reconciles platform-mesh environments. It reconciles a `Kind: PlatformMesh` resource which looks like this:
 

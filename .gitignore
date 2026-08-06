@@ -21,6 +21,7 @@ vendor/
 .idea/
 .vscode/
 .claude/
+.cursor/
 .run/
 CLAUDE.local.md
 .gocache/
