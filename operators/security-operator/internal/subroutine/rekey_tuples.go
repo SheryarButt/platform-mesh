@@ -41,7 +41,12 @@ import (
 	kcpcorev1alpha1 "github.com/kcp-dev/sdk/apis/core/v1alpha1"
 )
 
-const rekeyEventComponent = "security-operator"
+const (
+	rekeyEventComponent = "security-operator"
+	// rekeyEventAction is the "action" field of the events API: what this
+	// controller did to the org, regardless of the per-event outcome.
+	rekeyEventAction = "RekeyOrphanedTuples"
+)
 
 // RekeyTuplesSubroutine re-keys FGA tuples that were orphaned by an org
 // workspace re-creation: the org's logical cluster hash is embedded in every
@@ -156,7 +161,7 @@ func (s *RekeyTuplesSubroutine) reconcile(ctx context.Context, obj ctrlruntimecl
 			Int("count", len(stale)).
 			Msg("a descendant Account shares the org's name, stale tuples cannot be attributed to the org, skipping re-key")
 		metrics.RekeyedTuples.WithLabelValues("skipped_ambiguous").Add(float64(len(stale)))
-		cluster.GetEventRecorderFor(rekeyEventComponent).Eventf(lc, corev1.EventTypeWarning, "OrphanedTupleRekeySkipped",
+		cluster.GetEventRecorder(rekeyEventComponent).Eventf(lc, nil, corev1.EventTypeWarning, "OrphanedTupleRekeySkipped", rekeyEventAction,
 			"a descendant Account named %q exists in the org workspace; %d stale tuples cannot be attributed to the org, skipping re-key", accountName, len(stale))
 		return subroutines.OK(), nil
 	case apierrors.IsNotFound(err):
@@ -178,7 +183,7 @@ func (s *RekeyTuplesSubroutine) reconcile(ctx context.Context, obj ctrlruntimecl
 				Str("user", t.User).
 				Msg("stale tuple references multiple old cluster ids, skipping")
 			metrics.RekeyedTuples.WithLabelValues("skipped_ambiguous").Inc()
-			cluster.GetEventRecorderFor(rekeyEventComponent).Eventf(lc, corev1.EventTypeWarning, "OrphanedTupleRekeySkipped",
+			cluster.GetEventRecorder(rekeyEventComponent).Eventf(lc, nil, corev1.EventTypeWarning, "OrphanedTupleRekeySkipped", rekeyEventAction,
 				"tuple (object=%s user=%s) references multiple old cluster ids, skipping re-key", t.Object, t.User)
 			continue
 		}
@@ -209,7 +214,7 @@ func (s *RekeyTuplesSubroutine) reconcile(ctx context.Context, obj ctrlruntimecl
 				Int("count", len(group)).
 				Msg("referenced logical cluster is still alive, skipping re-key for this cluster id")
 			metrics.RekeyedTuples.WithLabelValues("skipped_live").Add(float64(len(group)))
-			cluster.GetEventRecorderFor(rekeyEventComponent).Eventf(lc, corev1.EventTypeWarning, "OrphanedTupleRekeySkipped",
+			cluster.GetEventRecorder(rekeyEventComponent).Eventf(lc, nil, corev1.EventTypeWarning, "OrphanedTupleRekeySkipped", rekeyEventAction,
 				"logical cluster %s referenced by %d tuples of account %q is still alive, skipping re-key", oldClusterID, len(group), accountName)
 			continue
 		}
@@ -234,7 +239,7 @@ func (s *RekeyTuplesSubroutine) reconcile(ctx context.Context, obj ctrlruntimecl
 			Int("count", len(group)).
 			Msg("re-keyed orphaned tuples")
 		metrics.RekeyedTuples.WithLabelValues("rekeyed").Add(float64(len(group)))
-		cluster.GetEventRecorderFor(rekeyEventComponent).Eventf(lc, corev1.EventTypeNormal, "OrphanedTuplesRekeyed",
+		cluster.GetEventRecorder(rekeyEventComponent).Eventf(lc, nil, corev1.EventTypeNormal, "OrphanedTuplesRekeyed", rekeyEventAction,
 			"re-keyed %d FGA tuples of account %q from dead cluster id %s to %s", len(group), accountName, oldClusterID, currentClusterID)
 	}
 

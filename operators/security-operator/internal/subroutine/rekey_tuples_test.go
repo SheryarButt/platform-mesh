@@ -38,7 +38,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	kcpcorev1alpha1 "github.com/kcp-dev/sdk/apis/core/v1alpha1"
@@ -63,7 +63,7 @@ type rekeyTestMocks struct {
 	deadClient    *mocks.MockClient
 	storeIDGetter *mocks.MockStoreIDGetter
 	fgaClient     *mocks.MockOpenFGAServiceClient
-	recorder      *record.FakeRecorder
+	recorder      *events.FakeRecorder
 }
 
 func newRekeyTestMocks(t *testing.T) *rekeyTestMocks {
@@ -76,7 +76,7 @@ func newRekeyTestMocks(t *testing.T) *rekeyTestMocks {
 		deadClient:    mocks.NewMockClient(t),
 		storeIDGetter: mocks.NewMockStoreIDGetter(t),
 		fgaClient:     mocks.NewMockOpenFGAServiceClient(t),
-		recorder:      record.NewFakeRecorder(50),
+		recorder:      events.NewFakeRecorder(50),
 	}
 }
 
@@ -179,7 +179,7 @@ func TestRekeyTuplesSubroutine_RekeysStaleGroupWithDeadCluster(t *testing.T) {
 	m.expectRead(staleCreatorTuple(), staleOwnerGroupTuple(), currentCreatorTuple())
 	m.expectNoSameNameChild()
 	m.expectLiveness(apierrors.NewNotFound(lcGroupResource, "cluster"))
-	m.cluster.EXPECT().GetEventRecorderFor(mock.Anything).Return(m.recorder)
+	m.cluster.EXPECT().GetEventRecorder(mock.Anything).Return(m.recorder)
 
 	var ops []string
 	var written []*openfgav1.TupleKey
@@ -251,7 +251,7 @@ func TestRekeyTuplesSubroutine_SkipsGroupWhenClusterStillAlive(t *testing.T) {
 	m.expectNoSameNameChild()
 	// The referenced cluster still exists: never guess, never touch tuples.
 	m.expectLiveness(nil)
-	m.cluster.EXPECT().GetEventRecorderFor(mock.Anything).Return(m.recorder)
+	m.cluster.EXPECT().GetEventRecorder(mock.Anything).Return(m.recorder)
 
 	sub := m.newSubroutine(true)
 	result, err := sub.Process(context.Background(), &kcpcorev1alpha1.LogicalCluster{})
@@ -272,7 +272,7 @@ func TestRekeyTuplesSubroutine_TreatsForbiddenAsDead(t *testing.T) {
 	m.expectRead(staleCreatorTuple())
 	m.expectNoSameNameChild()
 	m.expectLiveness(apierrors.NewForbidden(lcGroupResource, "cluster", assert.AnError))
-	m.cluster.EXPECT().GetEventRecorderFor(mock.Anything).Return(m.recorder)
+	m.cluster.EXPECT().GetEventRecorder(mock.Anything).Return(m.recorder)
 
 	m.fgaClient.EXPECT().Write(mock.Anything, mock.Anything).Return(&openfgav1.WriteResponse{}, nil).Times(2)
 
@@ -317,7 +317,7 @@ func TestRekeyTuplesSubroutine_ChunksGroupsOver100Tuples(t *testing.T) {
 	m.expectRead(stale...)
 	m.expectNoSameNameChild()
 	m.expectLiveness(apierrors.NewNotFound(lcGroupResource, "cluster"))
-	m.cluster.EXPECT().GetEventRecorderFor(mock.Anything).Return(m.recorder)
+	m.cluster.EXPECT().GetEventRecorder(mock.Anything).Return(m.recorder)
 
 	var ops []string
 	m.fgaClient.EXPECT().Write(mock.Anything, mock.Anything).
@@ -354,7 +354,7 @@ func TestRekeyTuplesSubroutine_SkipsAllWhenSameNameDescendantAccountExists(t *te
 	m.expectRead(staleCreatorTuple(), staleOwnerGroupTuple())
 	// The guard finds an Account named like the org in the org workspace.
 	m.clusterClient.EXPECT().Get(mock.Anything, types.NamespacedName{Name: rekeyTestOrg}, mock.Anything).Return(nil)
-	m.cluster.EXPECT().GetEventRecorderFor(mock.Anything).Return(m.recorder)
+	m.cluster.EXPECT().GetEventRecorder(mock.Anything).Return(m.recorder)
 	// Note: no liveness and no Write expectations are set, so any FGA write or
 	// kcp client call fails the test.
 
@@ -405,7 +405,7 @@ func TestRekeyTuplesSubroutine_IgnoresForeignObjectTypeKeys(t *testing.T) {
 	m.expectRead(apiExportTuple, staleCreatorTuple())
 	m.expectNoSameNameChild()
 	m.expectLiveness(apierrors.NewNotFound(lcGroupResource, "cluster"))
-	m.cluster.EXPECT().GetEventRecorderFor(mock.Anything).Return(m.recorder)
+	m.cluster.EXPECT().GetEventRecorder(mock.Anything).Return(m.recorder)
 
 	var written []*openfgav1.TupleKey
 	var deletedKeys []*openfgav1.TupleKeyWithoutCondition
