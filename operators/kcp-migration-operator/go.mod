@@ -1,6 +1,6 @@
 module go.platform-mesh.io/kcp-migration-operator
 
-go 1.26.0
+go 1.26.3
 
 require (
 	github.com/go-task/slim-sprig/v3 v3.0.0
@@ -108,3 +108,9 @@ require (
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.0 // indirect
 )
+
+replace go.platform-mesh.io/apis => ../../apis
+
+replace go.platform-mesh.io/golang-commons => ../../golang-commons
+
+replace go.platform-mesh.io/subroutines => ../../subroutines

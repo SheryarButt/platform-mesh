@@ -43,6 +43,8 @@ on:
     paths:
       - 'operators/extension-manager-operator/**'
       - 'apis/**'
+      - 'golang-commons/**'
+      - 'subroutines/**'
       - 'go.work'
       - 'go.work.sum'
       - '.github/workflows/extension-manager-operator.yml'

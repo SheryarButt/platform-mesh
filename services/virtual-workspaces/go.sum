@@ -191,8 +191,8 @@ github.com/kcp-dev/kubernetes/staging/src/k8s.io/streaming v0.0.0-20260602065202
 github.com/kcp-dev/kubernetes/staging/src/k8s.io/streaming v0.0.0-20260602065202-e006560fc76a/go.mod h1:9sXYRxV6dk0iOTol8hn0L/nfV42D5q/zcF2TOvoamfg=
 github.com/kcp-dev/logicalcluster/v3 v3.0.5 h1:JbYakokb+5Uinz09oTXomSUJVQsqfxEvU4RyHUYxHOU=
 github.com/kcp-dev/logicalcluster/v3 v3.0.5/go.mod h1:EWBUBxdr49fUB1cLMO4nOdBWmYifLbP1LfoL20KkXYY=
-github.com/kcp-dev/multicluster-provider v0.8.0 h1:GpifvXjgUUy/V3BDwcPayBhcg85ANN/lI/zWNkEeJpk=
-github.com/kcp-dev/multicluster-provider v0.8.0/go.mod h1:7LkQot2Ljmsv1w5ZjfHpjVEbQwtFQiA6LAWHbiHCGUI=
+github.com/kcp-dev/multicluster-provider v0.8.1-0.20260714141811-833f063357f8 h1:IGFbH0CwjWYGocSWYYfrog46OYolS0L2nA0Ti86lEzg=
+github.com/kcp-dev/multicluster-provider v0.8.1-0.20260714141811-833f063357f8/go.mod h1:7LkQot2Ljmsv1w5ZjfHpjVEbQwtFQiA6LAWHbiHCGUI=
 github.com/kcp-dev/sdk v0.32.3 h1:aJZYLduj+6Xcnjbw4MjYKCp/WfpX6XGFXCMalKMT0Ek=
 github.com/kcp-dev/sdk v0.32.3/go.mod h1:861Aee5vMdMs1gA6Xg8DPlLhy/pt5ReYzdIcsFVr/b4=
 github.com/kcp-dev/virtual-workspace-framework v0.32.3 h1:ClVA2Y5c4Dh5jfR7EEwIo+G2YAugP7RhYmkc0uspbTw=
@@ -249,8 +249,8 @@ github.com/robfig/cron/v3 v3.0.1/go.mod h1:eQICP3HwyT7UooqI/z+Ov+PtYAWygg1TEWWzG
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
-github.com/sirupsen/logrus v1.9.3 h1:dueUQJ1C2q9oE3F7wvmSGAaVtTmUizReu6fjN8uqzbQ=
-github.com/sirupsen/logrus v1.9.3/go.mod h1:naHLuLoDiP4jHNo9R0sCBMtWGeIprob74mVsIT4qYEQ=
+github.com/sirupsen/logrus v1.9.4 h1:TsZE7l11zFCLZnZ+teH4Umoq5BhEIfIzfRDZ1Uzql2w=
+github.com/sirupsen/logrus v1.9.4/go.mod h1:ftWc9WdOfJ0a92nsE2jF5u5ZwH8Bv2zdeOC42RjbV2g=
 github.com/soheilhy/cmux v0.1.5 h1:jjzc5WVemNEDTLwv9tlmemhC73tI08BNOIGwBOo10Js=
 github.com/soheilhy/cmux v0.1.5/go.mod h1:T7TcVDs9LWfQgPlPsdngu6I6QIoyIFZDDC6sNE1GqG0=
 github.com/spf13/cobra v1.10.2 h1:DMTTonx5m65Ic0GOoRY2c16WCbHxOOw6xxezuLaBpcU=
@@ -309,8 +309,6 @@ go.opentelemetry.io/otel/trace v1.44.0 h1:jxF5CsGYCe74MCRx2X4g7WsY/VBKRqqpNvXlX/
 go.opentelemetry.io/otel/trace v1.44.0/go.mod h1:oLl1jrMQAVo6v3GAggN+1VH9VIz9iUSvW53sW1Q8PIE=
 go.opentelemetry.io/proto/otlp v1.10.0 h1:IQRWgT5srOCYfiWnpqUYz9CVmbO8bFmKcwYxpuCSL2g=
 go.opentelemetry.io/proto/otlp v1.10.0/go.mod h1:/CV4QoCR/S9yaPj8utp3lvQPoqMtxXdzn7ozvvozVqk=
-go.platform-mesh.io/apis v0.0.3 h1:UEE6UJo07NG8rkgdHxox0tPAfHZb0xkMcrJe7RmQeq0=
-go.platform-mesh.io/apis v0.0.3/go.mod h1:EVGHwmU3TD2fihHslTET/J94rW8LWagQzW8/vgRLAkA=
 go.uber.org/goleak v1.3.1-0.20251210191316-2b7fd8a0d244 h1:OdZ8e4E9yDUGiis9x2ta/Ec5yhMAKT6ZivRvakyxC7E=
 go.uber.org/goleak v1.3.1-0.20251210191316-2b7fd8a0d244/go.mod h1:CoHD4mav9JJNrW/WLlf7HGZPjdw8EucARQHekz1X6bE=
 go.uber.org/multierr v1.11.0 h1:blXXJkSxSSfBVBlC76pxqeO+LN3aDfLQo+309xJstO0=

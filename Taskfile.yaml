@@ -63,6 +63,11 @@ vars:
     - search-service
     - virtual-workspaces
 
+  LIBRARIES:
+    - apis
+    - subroutines
+    - golang-commons
+
 tasks:
   default:
     cmds:
@@ -371,8 +376,19 @@ tasks:
         # Forward version-pin replaces from go.work into the module's go.mod so
         # it resolves standalone, e.g. in docker builds.
         replaces=$(GOWORK= go work edit -json | jq -r '.Replace[] | "\(.Old.Path)=\(.New.Path)@\(.New.Version)"')
+        {{- if not (has (index .MATCH 0) .LIBRARIES)}}
+        # Point in-repo dependencies at their source tree for the same reason.
+        # This also decouples this component from needing a release of the used library.
+        up=$(printf '%s' "$dir" | awk -F/ '{for (i = 1; i <= NF; i++) printf "../"}')
+        for d in $(GOWORK= go work edit -json | jq -r '.Use[].DiskPath'); do
+          if [ "$d" != "./$dir" ]; then
+            p=$(go mod edit -json "$d/go.mod" | jq -r '.Module.Path')
+            replaces="$replaces $p=$up${d#./}"
+          fi
+        done
+        {{- end}}
         cd "$dir"
-        for r in $replaces; do go mod edit -replace="$r"; done
+        go mod edit $(printf ' -replace=%s' $replaces)
         go mod tidy
         # Drop old replaces and those whose Old path isn't referenced by this module.
         deps=$(go list -m -f '{{`{{.Path}}`}}' all)

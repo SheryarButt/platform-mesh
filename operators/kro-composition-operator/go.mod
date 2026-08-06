@@ -5,8 +5,8 @@ go 1.26.3
 require (
 	github.com/gobuffalo/flect v1.0.3
 	github.com/kcp-dev/logicalcluster/v3 v3.0.5
-	github.com/kcp-dev/multicluster-provider v0.8.0
-	github.com/kcp-dev/multicluster-provider/client v0.0.0-00010101000000-000000000000
+	github.com/kcp-dev/multicluster-provider v0.8.1-0.20260714141811-833f063357f8
+	github.com/kcp-dev/multicluster-provider/client v0.8.0
 	github.com/kcp-dev/sdk v0.32.3
 	github.com/kubernetes-sigs/kro v0.9.2
 	github.com/stretchr/testify v1.11.1
@@ -22,7 +22,7 @@ require (
 // kcp-dev/multicluster-provider/client carries an internal replace directive that
 // breaks `go work sync`; pin it to the real module version, matching the sibling
 // components and the root go.work.
-replace github.com/kcp-dev/multicluster-provider/client => github.com/kcp-dev/multicluster-provider/client v0.8.0
+replace github.com/kcp-dev/multicluster-provider/client => github.com/kcp-dev/multicluster-provider/client v0.8.1-0.20260714141811-833f063357f8
 
 require (
 	cel.dev/expr v0.25.1 // indirect
