@@ -1,0 +1,32 @@
+apiVersion: core.platform-mesh.io/v1alpha1
+kind: Store
+metadata:
+  name: orgs
+spec:
+  coreModule: |2
+
+    module core
+
+    type user
+
+    type role
+      relations
+        define assignee: [user, user:*]
+
+    type tenancy_kcp_io_workspace
+      relations
+        define owner: [role#assignee]
+        define member: [role#assignee]
+
+        define create_core_platform-mesh_io_accounts: member
+        define list_core_platform-mesh_io_accounts: member
+        define get_core_platform-mesh_io_accounts: member
+        define watch_core_platform-mesh_io_accounts: member
+
+  tuples:
+  - object: role:authenticated
+    relation: assignee
+    user: user:*
+  - object: tenancy_kcp_io_workspace:orgs
+    relation: member
+    user: role:authenticated#assignee

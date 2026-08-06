@@ -1,0 +1,30 @@
+apiVersion: core.platform-mesh.io/v1alpha1
+kind: IdentityProviderConfiguration
+metadata:
+  name: welcome
+spec:
+  registrationAllowed: {{ .registrationAllowed }}
+  clients:
+  - clientType: confidential
+    clientName: welcome
+    postLogoutRedirectUris:
+    - https://{{ .baseDomainPort }}/logout*
+    {{- range .welcomeAdditionalPostLogoutRedirectUris }}
+    - {{ . }}
+    {{- end }}
+    redirectUris:
+    - https://{{ .baseDomainPort }}/callback*
+    {{- range .welcomeAdditionalRedirectUris }}
+    - {{ . }}
+    {{- end }}
+    secretRef:
+      name: portal-client-secret-welcome
+      namespace: default
+  - clientType: public
+    clientName: welcome-kubectl
+    redirectUris:
+      - http://localhost:8000/*
+      - http://localhost:18000/*
+    secretRef:
+      name: welcome-kubectl-client-secret
+      namespace: default

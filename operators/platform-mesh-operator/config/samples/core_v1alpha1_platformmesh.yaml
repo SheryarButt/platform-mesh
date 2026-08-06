@@ -1,0 +1,15 @@
+apiVersion: core.platform-mesh.io/v1alpha1
+kind: PlatformMesh
+metadata:
+  labels:
+    app.kubernetes.io/name: platform-mesh-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: platform-mesh-sample
+  namespace: platform-mesh-system
+spec:
+  kcp:
+    providerConnections:
+    - endpointSliceName: core.platform-mesh.io
+      path: root:platform-mesh-system
+      secret: platform-mesh-operator-kubeconfig
+      adminAuth: true

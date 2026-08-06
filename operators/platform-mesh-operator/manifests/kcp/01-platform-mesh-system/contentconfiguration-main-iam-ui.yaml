@@ -1,0 +1,74 @@
+apiVersion: ui.platform-mesh.io/v1alpha1
+kind: ContentConfiguration
+metadata:
+  labels:
+    ui.platform-mesh.io/entity: main
+  name: main-iam-ui
+spec:
+  inlineConfiguration:
+    content: |-
+      {
+        "name": "iam-ui",
+        "luigiConfigFragment": {
+          "data": {
+            "nodes": [
+              {
+                "pathSegment": "members",
+                "label": "Members",
+                "icon": "company-view",
+                "order": 800,
+                "entityType": "main",
+                "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/iam/ui/#/organization/members",
+                "viewGroup": "members",
+                "category": {
+                    "id": "settings",
+                    "isGroup": true,
+                    "label": "Settings & Access",
+                    "order": 1000
+                },
+                "context": {
+                  "resourceDefinition": {
+                    "group": "core.platform-mesh.io",
+                    "kind": "Account"
+                  }
+                }
+              },
+              {
+                "pathSegment": "add-members",
+                "entityType": "main",
+                "label": "members",
+                "hideFromNav": true,
+                "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/iam/ui/#/organization/add-members",
+                "viewGroup": "members",
+                "context": {
+                  "resourceDefinition": {
+                    "group": "core.platform-mesh.io",
+                    "kind": "Account"
+                  }
+                }
+              }
+            ],
+            "texts": [
+              {
+                "locale": "",
+                "textDictionary": {
+                  "members": "Members"
+                }
+              },
+              {
+                "locale": "en",
+                "textDictionary": {
+                  "members": "Members"
+                }
+              },
+              {
+                "locale": "de",
+                "textDictionary": {
+                  "members": "Mitglieder"
+                }
+              }
+            ]
+          }
+        }
+      }
+    contentType: json
