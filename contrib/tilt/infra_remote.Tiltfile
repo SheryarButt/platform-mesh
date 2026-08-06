@@ -37,32 +37,9 @@ helm_remote(
     version='v1.7.0',
 )
 
-# kcp-operator — reconciles the RootShard/Shard/FrontProxy CRs that deploy_kcp
-# emits. Pinned to a released version.
-#
-# The operator's own config/manager kustomization pins `newTag: e2e` — a
-# floating CI tag, not a release (`:e2e` is not even a stable image). We pull the
-# base at the release ref and override the image tag to the same release via a
-# generated overlay, so we run a reproducible `:vX.Y.Z` image. `kubectl -k`
-# resolves the remote base natively; Tilt's builtin kustomize() does not fetch
-# remote URLs. Override the version with KCP_OPERATOR_VERSION.
-KCP_OPERATOR_VERSION = os.getenv('KCP_OPERATOR_VERSION', 'v0.8.2')
-local_resource(
-    'kcp-operator',
-    cmd='''set -eo pipefail
-tmp=$(mktemp -d)
-cat > "$tmp/kustomization.yaml" <<EOF
-resources:
-  - https://github.com/kcp-dev/kcp-operator/config/default?ref={v}
-images:
-  - name: ghcr.io/kcp-dev/kcp-operator
-    newTag: {v}
-EOF
-kubectl apply --server-side -k "$tmp"
-rm -rf "$tmp"'''.format(v=KCP_OPERATOR_VERSION),
-    labels=['infra'],
-    allow_parallel=True,
-)
+# kcp-operator is NOT here: it lives in infra_kcp_operator.Tiltfile, included
+# conditionally by the root Tiltfile. The `deployer` profile replaces it with the
+# ntnn fork, and the two cannot coexist (same CRDs, same Deployment).
 
 # ---------------------------------------------------------------------------
 # Delivery engines for the provider-operator's ManagedProvider deploy step

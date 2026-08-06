@@ -81,11 +81,14 @@ def chart_path(name, version, oci_repo, cache_dir='.cache/charts'):
     return dest
 
 
-def _component_binary(name, path, deps, image, labels):
+def component_binary(name, path, deps, image, labels=['components']):
     """Compile a component to a linux binary and bake it into the thin runtime image.
 
     Split out from component_build() so the build half stays separable from the
-    deploy half.
+    deploy half — and PUBLIC, because not every component deploys from a Helm
+    chart. A component whose manifests are kustomize (platform-mesh-deployer)
+    calls this directly and then does its own k8s_yaml(kustomize(...)); the build,
+    the live_update sync and the image ref are identical either way.
     """
     # Paths here resolve relative to THIS Tiltfile's directory (contrib/tilt), so
     # the binary output and runtime image are addressed as ./bin and
@@ -145,7 +148,7 @@ def component_build(name, path, deps, image, chart, namespace, values=[], helm_s
     (e.g. crds.enabled=false to skip the kcp APIExport/APIResourceSchema objects,
     whose CRDs only exist inside kcp workspaces, not the runtime cluster).
     """
-    _component_binary(name, path, deps, image, labels)
+    component_binary(name, path, deps, image, labels)
     k8s_yaml(helm(
         chart,
         name=name,
