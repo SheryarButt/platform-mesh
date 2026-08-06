@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/platform-mesh/platform-mesh-operator/cmd"
+	"go.platform-mesh.io/platform-mesh-operator/cmd"
 )
 
 func main() {

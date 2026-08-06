@@ -5,7 +5,7 @@ import (
 
 	"github.com/mandelsoft/goutils/errors"
 	"github.com/opencontainers/go-digest"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/ocm/grammar"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/ocm/grammar"
 )
 
 type RefSpec struct {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	corev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"

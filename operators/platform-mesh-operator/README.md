@@ -2,7 +2,7 @@
 > This Repository is under development and not ready for productive use. It is in an alpha stage. That means APIs and concepts may change on short notice including breaking changes or complete removal of apis.
 
 # platform-mesh-operator
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/platform-mesh/platform-mesh-operator/badge)](https://scorecard.dev/viewer/?uri=github.com/platform-mesh/platform-mesh-operator)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/go.platform-mesh.io/platform-mesh-operator/badge)](https://scorecard.dev/viewer/?uri=go.platform-mesh.io/platform-mesh-operator)
 
 The platform-mesh-operator bootstraps and reconciles platform-mesh environments. It reconciles a `Kind: PlatformMesh` resource which looks like this:
 
@@ -282,7 +282,7 @@ profile.components (base) → TemplateVars → spec.Values.services (deep-merged
 
 ## Architecture
 
-The operator uses a subroutine-based architecture (`github.com/platform-mesh/subroutines`) with a lifecycle manager that executes subroutines **sequentially in a fixed order**. If any subroutine returns an error or explicitly stops the chain, the remaining subroutines are skipped and the reconcile loop is retried after a requeue interval.
+The operator uses a subroutine-based architecture (`go.platform-mesh.io/subroutines`) with a lifecycle manager that executes subroutines **sequentially in a fixed order**. If any subroutine returns an error or explicitly stops the chain, the remaining subroutines are skipped and the reconcile loop is retried after a requeue interval.
 
 ### Subroutine Execution Order
 

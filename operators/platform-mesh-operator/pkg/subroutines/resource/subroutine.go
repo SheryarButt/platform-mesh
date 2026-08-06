@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/platform-mesh/golang-commons/logger"
-	subroutineslib "github.com/platform-mesh/subroutines"
+	"go.platform-mesh.io/golang-commons/logger"
+	subroutineslib "go.platform-mesh.io/subroutines"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,11 +17,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	"github.com/platform-mesh/platform-mesh-operator/internal/metrics"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/ocm"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
+	"go.platform-mesh.io/apis/core/v1alpha1"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/internal/metrics"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/ocm"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
 )
 
 const (

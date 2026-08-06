@@ -22,8 +22,8 @@ import (
 	"testing"
 
 	"github.com/go-logr/logr"
-	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/stretchr/testify/suite"
+	pmconfig "go.platform-mesh.io/golang-commons/config"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -46,9 +46,9 @@ import (
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
+	corev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
 )
 
 // fakeCtrlManager implements sigs.k8s.io/controller-runtime/pkg/manager.Manager for unit tests.

@@ -25,9 +25,9 @@ import (
 	"time"
 
 	mcapiexportprovider "github.com/kcp-dev/multicluster-provider/apiexport"
-	pmcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	pmcontext "go.platform-mesh.io/golang-commons/context"
 	"k8s.io/apimachinery/pkg/util/wait"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
@@ -38,11 +38,11 @@ import (
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	mcmultiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
 
-	"github.com/platform-mesh/golang-commons/traces"
+	"go.platform-mesh.io/golang-commons/traces"
 
-	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
-	"github.com/platform-mesh/platform-mesh-operator/internal/controller/providers"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
+	"go.platform-mesh.io/platform-mesh-operator/internal/controller"
+	"go.platform-mesh.io/platform-mesh-operator/internal/controller/providers"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
 )
 
 var operatorCmd = &cobra.Command{

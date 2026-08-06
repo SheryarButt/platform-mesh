@@ -7,7 +7,7 @@ import (
 	"github.com/creasty/defaults"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	mcapiexportprovider "github.com/kcp-dev/multicluster-provider/apiexport"
-	pmconfig "github.com/platform-mesh/golang-commons/config"
+	pmconfig "go.platform-mesh.io/golang-commons/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,10 +17,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	mcmultiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
 
-	providersv1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	providerscontroller "github.com/platform-mesh/platform-mesh-operator/internal/controller/providers"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
+	providersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	providerscontroller "go.platform-mesh.io/platform-mesh-operator/internal/controller/providers"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
 )
 
 func (s *KindTestSuite) TestManagedProvider01Bootstrap() {

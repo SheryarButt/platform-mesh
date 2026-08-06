@@ -3,8 +3,8 @@ package merge
 import (
 	"testing"
 
-	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/assert"
+	"go.platform-mesh.io/golang-commons/logger"
 )
 
 func TestObjectMerge(t *testing.T) {

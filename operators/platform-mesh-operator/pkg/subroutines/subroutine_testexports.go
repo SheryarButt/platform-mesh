@@ -3,12 +3,12 @@ package subroutines
 import (
 	"context"
 
-	"github.com/platform-mesh/golang-commons/logger"
+	"go.platform-mesh.io/golang-commons/logger"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	corev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
 )
 
 // Test hooks for private functions (used by tests in package subroutines).

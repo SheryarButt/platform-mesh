@@ -15,7 +15,7 @@ import (
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
 	kcpapisv1alpha2 "github.com/kcp-dev/sdk/apis/apis/v1alpha2"
-	"github.com/platform-mesh/golang-commons/context/keys"
+	"go.platform-mesh.io/golang-commons/context/keys"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -28,25 +28,25 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	mcmultiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
 
-	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/suite"
+	"go.platform-mesh.io/golang-commons/logger"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
-	providersv1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/kapply"
+	"go.platform-mesh.io/apis/core/v1alpha1"
+	providersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/kapply"
 
 	fluxcdv2 "github.com/fluxcd/helm-controller/api/v2"
 	fluxcdv1 "github.com/fluxcd/source-controller/api/v1beta2"
-	pmconfig "github.com/platform-mesh/golang-commons/config"
+	pmconfig "go.platform-mesh.io/golang-commons/config"
 	"k8s.io/client-go/rest"
 
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
-	providerscontroller "github.com/platform-mesh/platform-mesh-operator/internal/controller/providers"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/internal/controller"
+	providerscontroller "go.platform-mesh.io/platform-mesh-operator/internal/controller/providers"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
 
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )

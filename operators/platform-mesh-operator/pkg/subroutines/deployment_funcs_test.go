@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/stretchr/testify/suite"
+	pmconfig "go.platform-mesh.io/golang-commons/config"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,8 +14,8 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/apis/core/v1alpha1"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
 )
 
 type DeploymentFuncsTestSuite struct {

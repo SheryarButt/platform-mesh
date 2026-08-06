@@ -20,16 +20,16 @@ import (
 	"context"
 	"time"
 
-	gcerrors "github.com/platform-mesh/golang-commons/errors"
-	"github.com/platform-mesh/golang-commons/logger"
-	"github.com/platform-mesh/subroutines"
+	gcerrors "go.platform-mesh.io/golang-commons/errors"
+	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/subroutines"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	providersv1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	corev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	providersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
 )
 
 const (

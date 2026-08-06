@@ -20,12 +20,12 @@ import (
 	"context"
 	"fmt"
 
-	pmconfig "github.com/platform-mesh/golang-commons/config"
-	"github.com/platform-mesh/golang-commons/controller/filter"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
-	"github.com/platform-mesh/subroutines"
-	"github.com/platform-mesh/subroutines/conditions"
-	"github.com/platform-mesh/subroutines/lifecycle"
+	pmconfig "go.platform-mesh.io/golang-commons/config"
+	"go.platform-mesh.io/golang-commons/controller/filter"
+	"go.platform-mesh.io/golang-commons/controller/lifecycle/ratelimiter"
+	"go.platform-mesh.io/subroutines"
+	"go.platform-mesh.io/subroutines/conditions"
+	"go.platform-mesh.io/subroutines/lifecycle"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -35,10 +35,10 @@ import (
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 
-	providersv1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	pmsubroutines "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
-	pmsubs "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/providers"
+	providersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	pmsubroutines "go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
+	pmsubs "go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/providers"
 )
 
 const ManagedProviderControllerName = "ManagedProviderReconciler"

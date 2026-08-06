@@ -2,7 +2,7 @@ template: testify
 template-data:
   unroll-variadic: true
 packages:
-  github.com/platform-mesh/platform-mesh-operator/pkg/subroutines:
+  go.platform-mesh.io/platform-mesh-operator/pkg/subroutines:
     config:
       dir: pkg/subroutines/mocks
       pkgname: mocks

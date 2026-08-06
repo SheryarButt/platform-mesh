@@ -20,11 +20,11 @@ import (
 	"context"
 	"fmt"
 
-	pmconfig "github.com/platform-mesh/golang-commons/config"
-	"github.com/platform-mesh/golang-commons/controller/filter"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
-	"github.com/platform-mesh/subroutines"
-	"github.com/platform-mesh/subroutines/lifecycle"
+	pmconfig "go.platform-mesh.io/golang-commons/config"
+	"go.platform-mesh.io/golang-commons/controller/filter"
+	"go.platform-mesh.io/golang-commons/controller/lifecycle/ratelimiter"
+	"go.platform-mesh.io/subroutines"
+	"go.platform-mesh.io/subroutines/lifecycle"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/util/workqueue"
@@ -36,10 +36,10 @@ import (
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	"github.com/platform-mesh/platform-mesh-operator/internal/metrics"
-	pmsubs "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/resource"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/internal/metrics"
+	pmsubs "go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/resource"
 )
 
 var (
