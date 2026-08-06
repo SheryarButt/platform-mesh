@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deploy.platform-mesh.io_ocmmodules.yaml
+  - deploy.platform-mesh.io_ocmmodulesetups.yaml
+  - deploy.platform-mesh.io_platformmeshes.yaml
+  - deploy.platform-mesh.io_rootshardtemplates.yaml
+  - deploy.platform-mesh.io_shardtemplates.yaml
+  - deploy.platform-mesh.io_frontproxytemplates.yaml
+  - deploy.platform-mesh.io_cacheservertemplates.yaml
+  - deploy.platform-mesh.io_virtualworkspacetemplates.yaml
