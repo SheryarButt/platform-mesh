@@ -1,5 +1,5 @@
 /*
-Copyright 2026.
+Copyright The Platform Mesh Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -115,10 +115,6 @@ type ProviderList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Provider `json:"items"`
-}
-
-func init() {
-	SchemeBuilder.Register(&Provider{}, &ProviderList{})
 }
 
 func (i *Provider) GetConditions() []metav1.Condition {
