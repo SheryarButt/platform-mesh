@@ -17,6 +17,7 @@ use (
 	./operators/resource-broker
 	./operators/search-operator
 	./operators/security-operator
+	./operators/tenancy-operator
 	./operators/terminal-controller-manager
 	./services/iam-service
 	./services/kubernetes-graphql-gateway

@@ -30,6 +30,6 @@ spec:
       version: 1.0.0
       digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
   workspaces:
-    - root:orgs
+    - root:modules:account-operator
   kubeconfigRefs:
     - name: account-operator-kubeconfig

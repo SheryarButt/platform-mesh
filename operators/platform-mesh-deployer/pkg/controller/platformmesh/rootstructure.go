@@ -28,8 +28,14 @@ import (
 )
 
 // roots are the workspaces every PlatformMesh gets. OCMModules live below
-// root:modules; organisations below root:orgs.
-var roots = []string{ocmmodule.WorkspaceBase, "root:orgs"}
+// root:modules.
+//
+// Organisations are NOT here. root:orgs used to be provisioned alongside, but
+// nothing ever reconciled it: the tenancy model roots its own tree at
+// --paths-root (root:tenancy) and holds organisations under root:tenancy:tenants,
+// so root:orgs was an empty workspace whose name claimed something it did not
+// own.
+var roots = []string{ocmmodule.WorkspaceBase}
 
 // reconcileRootStructure creates the kcp workspaces a PlatformMesh needs before
 // anything can be installed into it. It runs after the topology because kcp

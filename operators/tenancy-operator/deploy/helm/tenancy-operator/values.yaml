@@ -1,0 +1,261 @@
+# Copyright The Platform Mesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+replicaCount: 1
+
+image:
+  registry: ghcr.io
+  repository: platform-mesh/platform-mesh/tenancy-operator
+  # -- Defaults to .Chart.AppVersion when empty.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  # -- Defaults to the release fullname when empty.
+  name: ""
+
+# -- Installs the tenancy tree into kcp. Runs `tenancy-operator init` with a kcp
+# ADMIN kubeconfig: creating workspaces, APIExports, WorkspaceTypes and the
+# install-time APIBindings genuinely needs admin — but only once, so it runs in a
+# container that exits and takes the credential with it. The manager never holds it.
+#
+# Modes:
+#   initContainer  default; ordering is a property of the pod, nothing extra to
+#                  schedule or clean up. The right shape in production.
+#   job            a standalone object with its own name, logs and completion
+#                  status — a first-class resource in a dev UI, separately
+#                  waitable and re-runnable.
+#   none           the tree is installed out of band; the manager will wait for a
+#                  tree it cannot create.
+init:
+  mode: initContainer
+  kcpAdminSecretName: kcp-frontproxy-kubeconfig
+  kcpAdminSecretKey: kubeconfig
+  workspaceReadyTimeout: 2m
+  # -- job mode only.
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 600
+  # -- job mode only. Empty means "hash the installer spec", so any change makes a
+  # new Job (Job.spec is immutable). Set a fixed value for a stable Job name when
+  # the deploying tool recreates Jobs itself — a dev loop, where a name that
+  # changes every build would mean a new UI resource every build.
+  jobNameSuffix: ""
+
+# -- How the operator reaches kcp.
+#
+# This kubeconfig needs NO pre-scoping: the operator appends /clusters/<exports>
+# itself from the paths below. It exists so the operator can resolve the
+# APIExportEndpointSlices; every read and write after that goes through the
+# virtual workspace URLs those slices publish, bounded by each export's permission
+# claims — which is what keeps this component from holding cluster-admin on kcp.
+#
+# In production this should be a NARROW credential — enough to read the endpoint
+# slices in the exports workspace and nothing more. It defaults to the same admin
+# secret the installer uses only because a dev kcp offers no other identity; that
+# is a gap to close before this ships, not the intended shape.
+kcp:
+  kubeconfigSecretName: kcp-frontproxy-kubeconfig
+  kubeconfigSecretKey: kubeconfig
+  # -- Dial kcp at this address instead of the one in the kubeconfig, verifying
+  # its certificate as `serverName`.
+  #
+  # kcp's public hostname usually resolves, in-cluster, to a gateway address that
+  # is ADVERTISED but not routed — so a pod resolves the name and still cannot
+  # connect, which looks like a broken credential rather than a broken route.
+  # The front-proxy Service is a direct path that always works:
+  #
+  #   server: https://frontproxy-front-proxy.platform-mesh-system.svc:8443
+  #   serverName: pm.localhost
+  #
+  # Empty means "use the kubeconfig as-is".
+  server: ""
+  serverName: ""
+  # -- One APIExportEndpointSlice per export. A controller cannot watch across
+  # logical clusters without a wildcard endpoint, and kcp gives exactly one per
+  # export — so the four-way export split means four slices.
+  endpointSlices:
+    platform: tenancy-platform
+    tenancy: tenancy
+    provisioner: tenancy-provisioner
+    access: tenancy-access
+
+# -- The workspace layout. Only `root` is normally set: everything else derives
+# from it, and MUST match what the installer built the tree with. `root` is not
+# kcp's `root` on purpose — the platform should not claim a workspace that may
+# already belong to someone else's tree.
+paths:
+  root: root:tenancy
+  tenantFleetRoot: ""
+  directory: ""
+  exports: ""
+  providers: ""
+  virtualWorkspacePrefix: ""
+
+# -- MUST mirror kcp's own Authentication.OIDC settings.
+#
+# `rbacIdentity` is derived from these, and it is the subject of every
+# ClusterRoleBinding the operator writes. If these and kcp disagree, every binding
+# names a user who never authenticates: a silent 403 in a workspace the person is
+# a member of, with a Membership and a binding that both look correct.
+oidc:
+  usernameClaim: email
+  # EMPTY by default, matching kube's own behaviour for usernameClaim=email: the
+  # claim is used verbatim and no prefix is applied. A default of "pm:" here was
+  # an invention, and because it is only ever compared against kcp's setting
+  # indirectly — through bindings that look correct — the mismatch surfaced as an
+  # unexplainable 403 in a workspace the user owned.
+  #
+  # Set it only to mirror a kcp that sets one. It is never a free choice.
+  usernamePrefix: "pm:"
+
+tenancy:
+  personalTenantsEnabled: true
+  # -- Soft caps; a platform admin raises them per User / per Tenant on the
+  # object itself. 0 means "use the operator's built-in default".
+  tenantQuota: 10
+  projectQuota: 50
+  # -- How server-assigned Tenant/Project names are minted: uuid, base36,
+  # words or displayname. Applies only to names created after it changes —
+  # existing objects keep theirs, because the name is also a workspace path.
+  namingStrategy: uuid
+  tenantWorkspaceType: tenant
+  projectWorkspaceType: project
+
+# -- Individual bootstrap steps, so one can be disabled while its dependency lands.
+reconcilers:
+  seedTenant: true
+  seedProject: true
+  tenantWorkspace: true
+  ownerMembership: true
+  membershipRBAC: true
+  projectWorkspace: true
+  index: true
+
+controllers:
+  user: true
+  tenant: true
+  project: true
+  # Creates `default` in tenant workspaces.
+  workspace: true
+  # Projects Memberships into the role bindings kcp actually enforces. Turning
+  # this off leaves Memberships as records that grant nothing.
+  membership: true
+
+leaderElect: false
+
+log:
+  level: info
+
+# -- Ports the operator actually binds (golang-commons defaults). Changing these
+# changes the --metrics-bind-address / --health-probe-bind-address flags too, so
+# the probes cannot drift from the server.
+metrics:
+  port: 9090
+health:
+  port: 8090
+
+# -- REQUIRED wherever kcp's hostnames do not resolve in-cluster.
+#
+# The operator follows APIExportEndpointSlices, and kcp publishes an ABSOLUTE URL
+# in them (https://root.<domain>/services/apiexport/...) which the multicluster
+# provider dials verbatim. No kubeconfig rewriting can redirect that. In a kind
+# dev cluster *.localhost resolves to 127.0.0.1, so without these entries the
+# operator ends up talking to itself and dies with `connection refused`.
+#
+# Example:
+#   hostAliases:
+#   - ip: 10.96.2.2
+#     hostnames: [pm.localhost, root.pm.localhost]
+hostAliases: []
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+
+# -- The tenancy virtual workspace.
+#
+# A SEPARATE workload from the manager above, deliberately: it is stateless and
+# scales horizontally with one watch per caller, while the manager is a
+# leader-elected singleton. Same image, different command.
+#
+# It serves `users` only for now — self-registration and self-read, the one call a
+# new identity makes. That is what turns an authenticated token into a provisioned
+# project without anything hand-applying a User.
+virtualWorkspace:
+  enabled: false
+  replicaCount: 1
+
+  # -- Where it listens, and the Service that fronts it.
+  bindAddress: ":6443"
+  service:
+    port: 6443
+
+  # -- Its serving certificate. The front-proxy routes to this server, so an
+  # ephemeral self-signed cert would fail verification on every restart.
+  cert:
+    secretName: tenancy-virtual-workspace-cert
+    duration: 8760h0m0s
+    renewBefore: 168h0m0s
+    extraDnsNames: [localhost]
+    issuer:
+      kind: Issuer
+      name: root-server-ca
+    key:
+      algorithm: RSA
+      size: 4096
+
+  # -- Exposing the virtual workspace outside the cluster, the same way kcp and
+  # the IdP are exposed: one SNI hostname on a shared passthrough listener.
+  gatewayApi:
+    enabled: false
+    name: ""
+    # Defaults to the release namespace.
+    namespace: ""
+    sectionName: passthrough
+    # e.g. tenancy.pm.localhost. Also added to the serving certificate, without
+    # which a client dialling this name gets a certificate error rather than a
+    # working endpoint.
+    hostname: ""
+
+  # -- MUST be the same issuer kcp authenticates against: one configuration, read
+  # twice. The VW verifies the caller's token ITSELF — it has to resolve a
+  # caller to a User before kcp is involved — so a mismatch here means a token kcp
+  # accepts is rejected, or worse, resolved to a different identity than the one
+  # kcp will enforce RBAC against.
+  #
+  # caSecretName is needed for a private-CA or self-signed issuer, which is the
+  # normal case for a dev broker.
+  oidc:
+    issuerURL: ""
+    clientID: ""
+    caSecretName: ""
+    caSecretKey: ca.crt
+
+# -- Extra flags appended verbatim, for anything this chart does not model yet.
+extraArgs: []
