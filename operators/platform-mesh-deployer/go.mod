@@ -38,7 +38,7 @@ require (
 	ocm.software/open-component-model/bindings/go/runtime v0.0.8
 	sigs.k8s.io/controller-runtime v0.24.1
 	sigs.k8s.io/gateway-api v1.6.1
-	sigs.k8s.io/multicluster-runtime v0.24.1
+	sigs.k8s.io/multicluster-runtime v0.24.2-0.20260806063852-035f642f8818
 	sigs.k8s.io/yaml v1.6.0
 )
 
