@@ -1,0 +1,36 @@
+apiVersion: tenancy.kcp.io/v1alpha1
+kind: WorkspaceAuthenticationConfiguration
+metadata:
+  name: orgs-authentication
+spec:
+  jwt:
+    - issuer:
+        url: https://{{ .baseDomainPort }}/keycloak/realms/welcome
+        audiences:
+        {{- if .welcomeAudiences }}
+        {{- range .welcomeAudiences }}
+        - {{ . }}
+        {{- end }}
+        {{- else }} []
+        {{- end }}
+        audienceMatchPolicy: MatchAny
+        {{- with .domainCADec }}
+        certificateAuthority: |
+{{ . | indent 10 }}
+        {{- end }}
+      claimMappings:
+        groups:
+          claim: groups
+          prefix: ""
+        username:
+      {{- if eq .featureDisableEmailVerification "true" }}
+          expression: claims.email
+      {{- else }}
+          claim: email
+          prefix: ""
+      {{- end }}
+      {{- if eq .featureDisableEmailVerification "true" }}
+      claimValidationRules:
+        - expression: "claims.?email_verified.orValue(true) == true || claims.?email_verified.orValue(true) == false"
+          message: "Allowing both verified and unverified emails"
+      {{- end }}
