@@ -1,6 +1,6 @@
 module go.platform-mesh.io/kcp-migration-operator
 
-go 1.26.3
+go 1.26.0
 
 require (
 	github.com/go-task/slim-sprig/v3 v3.0.0
