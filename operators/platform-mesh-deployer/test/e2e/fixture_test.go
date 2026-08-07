@@ -27,7 +27,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	operatorv1alpha1 "github.com/kcp-dev/kcp-operator/sdk/apis/operator/v1alpha1"
@@ -65,8 +64,8 @@ func platformMesh(etcdEndpoint string) (*pmdeployv1alpha1.PlatformMesh, []ctrlru
 		},
 	}
 	// host builds an sslip.io exposure; cluster carries the dashed node IP so it self-resolves.
-	host := func(expr string) pmdeployv1alpha1.Exposure {
-		return pmdeployv1alpha1.Exposure{
+	host := func(expr string) *pmdeployv1alpha1.Exposure {
+		return &pmdeployv1alpha1.Exposure{
 			HostnameTemplate: expr,
 			Port:             31443,
 		}
@@ -116,17 +115,11 @@ func platformMesh(etcdEndpoint string) (*pmdeployv1alpha1.PlatformMesh, []ctrlru
 					Name:        "root",
 					TemplateRef: &pmdeployv1alpha1.TemplateReference{Name: "root"},
 					Exposure:    host(`"root." + cluster + ".sslip.io"`),
-					VirtualWorkspaces: pmdeployv1alpha1.VirtualWorkspaceSpec{
-						Exposure: host(`"vw-root." + cluster + ".sslip.io"`),
-					},
 				},
 				ShardGroups: []pmdeployv1alpha1.ShardGroup{{
 					Name:        "default",
 					TemplateRef: &pmdeployv1alpha1.TemplateReference{Name: "default"},
-					Exposure:    ptr.To(host(`component + "." + cluster + ".sslip.io"`)),
-					VirtualWorkspaces: pmdeployv1alpha1.VirtualWorkspaceSpec{
-						Exposure: host(`"vw." + component + "." + cluster + ".sslip.io"`),
-					},
+					Exposure:    host(`component + "." + cluster + ".sslip.io"`),
 				}},
 				FrontProxy: pmdeployv1alpha1.FrontProxy{
 					Name:     "fp",

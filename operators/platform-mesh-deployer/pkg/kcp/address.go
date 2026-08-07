@@ -32,6 +32,10 @@ import (
 // server, not a route onto its pod network. So each component is addressed by
 // the external endpoint the deployer itself published for it, which is a
 // subject alternative name of its serving certificate and therefore verifies.
+//
+// A component without an exposure has no such endpoint and falls back to its
+// in-cluster Service name, which only resolves when the deployer runs beside
+// it — the single-cluster case that omitting exposures describes.
 type Addresser struct {
 	// Dial reaches the published hosts. Nil dials them directly; the e2e runs
 	// the deployer where they do not route and supplies one.
@@ -42,7 +46,7 @@ var _ operatorclient.Addresser = Addresser{}
 
 // RootShard addresses a root shard by the URL it advertises to the other shards.
 func (a Addresser) RootShard(rootShard *operatorv1alpha1.RootShard) operatorclient.Endpoint {
-	return a.endpoint(rootShard.Spec.ShardBaseURL)
+	return a.endpoint(operatorclient.InCluster{}.RootShard(rootShard).URL)
 }
 
 // RootShardProxy addresses the front proxy rather than the root shard's internal
@@ -56,10 +60,9 @@ func (a Addresser) RootShardProxy(rootShard *operatorv1alpha1.RootShard) operato
 	return a.endpoint("https://" + net.JoinHostPort(ext.Hostname, strconv.FormatUint(uint64(ext.Port), 10)))
 }
 
-// Shard addresses a shard by the URL it advertises, rendered from its group's
-// exposure. A group without one is rejected when the PlatformMesh is validated.
+// Shard addresses a shard by the URL it advertises.
 func (a Addresser) Shard(shard *operatorv1alpha1.Shard) operatorclient.Endpoint {
-	return a.endpoint(shard.Spec.ShardBaseURL)
+	return a.endpoint(operatorclient.InCluster{}.Shard(shard).URL)
 }
 
 func (a Addresser) endpoint(url string) operatorclient.Endpoint {
