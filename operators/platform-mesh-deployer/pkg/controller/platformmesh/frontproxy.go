@@ -79,6 +79,14 @@ func (r *reconciler) buildFrontProxySpec(ctx context.Context, pm *pmdeployv1alph
 		return spec, err
 	}
 
+	// kcp's --authentication-drop-groups defaults to a security list that
+	// includes system:masters, and kcp-operator passes the field verbatim, so
+	// setting it replaces that list rather than adding to it. It would also
+	// strip the system:kcp:admin the deployer authenticates with.
+	if spec.Auth != nil && spec.Auth.DropGroups != nil {
+		return spec, fmt.Errorf("front proxy %q template sets auth.dropGroups, which is not supported", name)
+	}
+
 	spec.RootShard.Reference = &corev1.LocalObjectReference{Name: rootRef}
 
 	host, err := celtemplate.Eval(frontProxy.Exposure.HostnameTemplate, celCtx)
