@@ -34,6 +34,7 @@ import (
 
 	"go.platform-mesh.io/platform-mesh-deployer/pkg/config"
 	"go.platform-mesh.io/platform-mesh-deployer/pkg/deployer"
+	"go.platform-mesh.io/platform-mesh-deployer/pkg/kcp"
 	"go.platform-mesh.io/platform-mesh-deployer/pkg/ocm"
 
 	corev1 "k8s.io/api/core/v1"
@@ -59,18 +60,8 @@ const (
 	// PlatformMeshName is the installation every e2e fixture deploys.
 	PlatformMeshName = "customer-a"
 
-	defaultKCPOperatorImage = "ghcr.io/ntnn/kcp-operator:split"
-
 	kindClusterPrefix = "pm-deployer-e2e"
 )
-
-// kcpOperatorImage is loaded into every kind cluster; overridable for local builds.
-func kcpOperatorImage() string {
-	if img := os.Getenv("KCP_OPERATOR_IMAGE"); img != "" {
-		return img
-	}
-	return defaultKCPOperatorImage
-}
 
 // Cluster is a started kind cluster.
 type Cluster struct {
@@ -97,6 +88,9 @@ func Start(t *testing.T, workloadClusters int) *Env {
 	cfgPlane := createCluster(t, "config")
 	createNamespace(t, cfgPlane.Client, ProviderNamespace)
 	applyKustomize(t, cfgPlane, base("crd"))
+	// The deployer runs kcp-operator's controllers itself, so only its CRDs are
+	// installed, on the config plane and on every workload cluster.
+	applyKustomize(t, cfgPlane, base("bases", "kcp-operator", "crds"))
 	applyKustomize(t, cfgPlane, base("bases", "cert-manager"))
 	rolloutWait(t, cfgPlane, "cert-manager", "deployment/cert-manager")
 	rolloutWait(t, cfgPlane, "cert-manager", "deployment/cert-manager-cainjector")
@@ -108,23 +102,17 @@ func Start(t *testing.T, workloadClusters int) *Env {
 
 	env := &Env{Config: cfgPlane}
 	if workloadClusters == 0 {
-		// Single cluster: one operator running both config and workload groups.
-		applyKustomize(t, cfgPlane, base("bases", "kcp-operator", "default"))
-		rolloutWait(t, cfgPlane, "kcp-operator-system", "deployment/kcp-operator-controller-manager")
 		env.Workloads = []*Cluster{cfgPlane}
 	} else {
-		applyKustomize(t, cfgPlane, base("bases", "kcp-operator", "config"))
-		rolloutWait(t, cfgPlane, "kcp-operator-system", "deployment/kcp-operator-controller-manager")
 		for i := range workloadClusters {
 			w := createCluster(t, fmt.Sprintf("workload-%d", i))
 			installEnvoyGateway(t, w)
-			applyKustomize(t, w, base("bases", "kcp-operator", "workload"))
-			rolloutWait(t, w, "kcp-operator-system", "deployment/kcp-operator-controller-manager")
+			applyKustomize(t, w, base("bases", "kcp-operator", "crds"))
 			env.Workloads = append(env.Workloads, w)
 		}
 	}
 
-	startDeployer(t, cfgPlane)
+	startDeployer(t, env)
 	t.Cleanup(func() {
 		if t.Failed() {
 			dumpDiagnostics(t, cfgPlane)
@@ -168,7 +156,6 @@ func createCluster(t *testing.T, role string) *Cluster {
 		}
 		_ = exec.Command("kind", "delete", "cluster", "--name", name).Run()
 	})
-	sh(t, "kind", "load", "docker-image", "--name", name, kcpOperatorImage())
 
 	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	require.NoError(t, err)
@@ -216,7 +203,8 @@ func patchCoreDNS(t *testing.T, c *Cluster) {
 	rolloutWait(t, c, "kube-system", "deployment/coredns")
 }
 
-func startDeployer(t *testing.T, c *Cluster) {
+func startDeployer(t *testing.T, e *Env) {
+	c := e.Config
 	t.Helper()
 	// Without this the deployer's own reconcile errors are silently dropped,
 	// leaving a failing test with nothing to go on. Still needed next to the
@@ -242,6 +230,9 @@ func startDeployer(t *testing.T, c *Cluster) {
 	// hostname is blocked by DNS rebind protection and the node address is
 	// not routable on every container runtime.
 	cfg.KcpDial = FrontProxyDialer(t, c)
+	// The kcp-operator controllers address the shards as well, so they go
+	// through the gateway, which routes to either by SNI.
+	cfg.KcpAddress = kcp.Addresser{Dial: e.GatewayDialer(t)}
 	require.NoError(t, deployer.AddProviders(provider, mgr, cfg))
 	require.NoError(t, deployer.Setup(mgr, cfg))
 
@@ -361,7 +352,6 @@ func dumpDiagnostics(t *testing.T, c *Cluster) {
 		{"-n", ProviderNamespace, "get", "rootshards,compiledrootshards,frontproxies,compiledfrontproxies,shards,compiledshards,cacheservers,compiledcacheservers,virtualworkspaces,compiledvirtualworkspaces"},
 		{"-n", ProviderNamespace, "get", "certificates,issuers,clusterissuers,secrets"},
 		{"-n", ProviderNamespace, "get", "events", "--sort-by=.lastTimestamp"},
-		{"-n", "kcp-operator-system", "logs", "deployment/kcp-operator-controller-manager", "--tail=200"},
 	} {
 		out, _ := exec.Command("kubectl", append([]string{"--kubeconfig", path}, args...)...).CombinedOutput() //nolint:gosec // test-controlled args
 		t.Logf("=== kubectl %v ===\n%s", args, out)

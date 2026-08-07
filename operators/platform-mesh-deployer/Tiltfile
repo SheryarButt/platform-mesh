@@ -17,11 +17,10 @@
 # it unconditionally: this component IS the environment's kcp.
 #
 # The deployer's whole job is to build kcp — it compiles a PlatformMesh into
-# RootShard / Shard / FrontProxy admin CRs, which a kcp-operator turns into
-# Deployments. It is the only source of kcp in this environment: anything else
-# writing those CRs would own the same shards, and the operator this needs is the
-# ntnn fork (split config/workload controllers, Compiled* CRDs), which owns the
-# same operator.kcp.io CRDs as the upstream operator.
+# RootShard / Shard / FrontProxy admin CRs and then, running kcp-operator's own
+# controller groups in-process, into Deployments. It is the only source of kcp in
+# this environment: anything else writing those CRs would own the same shards, as
+# would a separately deployed kcp-operator.
 #
 # Shape mirrors test/e2e TestSingleCluster: one cluster acting as its own config
 # plane and workload cluster, addressed over sslip.io so the hostnames kcp
@@ -146,20 +145,18 @@ kubectl -n kube-system rollout status deployment/coredns --timeout=180s''',
         allow_parallel=True,
     )
 
-    # kcp-operator — the ntnn FORK, not upstream.
+    # kcp-operator's CRDs, without kcp-operator.
     #
-    # The deployer emits admin CRs and expects something to compile them into
-    # Compiled* CRs and then into workloads; upstream has neither the split
-    # controllers nor those CRDs. This is the same base test/e2e uses for the
-    # single-cluster case (`default` = both controller groups in one process),
-    # and the same fork the module pins via the `replace` in go.mod — bump the two
-    # together or the deployer writes CRs the operator cannot read.
+    # The deployer runs both of kcp-operator's controller groups in its own
+    # process, so there is no operator Deployment to install them — but the
+    # deployer still writes operator.kcp.io admin CRs and reconciles the
+    # deploy.operator.kcp.io compiled ones, so the schemas have to be here.
     #
     # kubectl -k, not Tilt's kustomize(): the base is a remote GitHub URL and the
     # builtin does not fetch those.
     local_resource(
-        'kcp-operator',
-        cmd='kubectl apply --server-side --force-conflicts -k ' + cfg('bases', 'kcp-operator', 'default'),
+        'kcp-operator-crds',
+        cmd='kubectl apply --server-side --force-conflicts -k ' + cfg('bases', 'kcp-operator', 'crds'),
         labels=[LABEL],
         allow_parallel=True,
     )
@@ -309,7 +306,7 @@ spec:
             'platform-mesh-deployer-manager-role:clusterrole',
             'platform-mesh-deployer-manager-rolebinding:clusterrolebinding',
         ],
-        resource_deps=resource_deps + ['kcp-operator', 'deployer-crds'],
+        resource_deps=resource_deps + ['kcp-operator-crds', 'deployer-crds'],
         labels=[LABEL],
     )
 

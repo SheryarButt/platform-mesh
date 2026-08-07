@@ -1,5 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# kcp-operator is running as part of deployer, so only the CRDs are needed
 resources:
-  - github.com/ntnn/kcp-operator/config/crd?ref=main
+  - github.com/ntnn/kcp-operator/config/crd?ref=b3aeb506baee4657de1f687a737f9cee8570c122
+  - github.com/ntnn/kcp-operator/config/crd/deploy?ref=b3aeb506baee4657de1f687a737f9cee8570c122

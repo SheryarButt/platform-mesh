@@ -6,8 +6,8 @@ operators/services you are working on hot-reload in seconds.
 
 **kcp is built, not installed.** The base environment runs
 `platform-mesh-deployer` and hands it a `PlatformMesh`; the deployer compiles
-that into kcp-operator admin CRs and kcp appears. Every profile sits on the kcp
-that comes out.
+that into kcp-operator admin CRs, reconciles them itself, and kcp appears. Every
+profile sits on the kcp that comes out.
 
 ## What it deploys
 
@@ -15,7 +15,7 @@ that comes out.
 |---|---|
 | **Local infra** (`manifests/`) | `platform-mesh-system` namespace, a self-signed cert-manager `Issuer`, and Dex |
 | **Remote infra** (`infra_remote.Tiltfile`, skipped by `TILT_NO_INFRA=1`) | cert-manager, the envoy gateway controller, Flux, the OCM controller |
-| **kcp** (always) | `platform-mesh-deployer` hot-reloaded from source, the ntnn kcp-operator fork, a mutual-TLS etcd, the `eg` gateway, and a dev `PlatformMesh`. See [How kcp gets built](#how-kcp-gets-built) |
+| **kcp** (always) | `platform-mesh-deployer` hot-reloaded from source, the kcp-operator CRDs it reconciles, a mutual-TLS etcd, the `eg` gateway, and a dev `PlatformMesh`. See [How kcp gets built](#how-kcp-gets-built) |
 | **tenancy** (`tenancy`/`full`) | the RFC 010 tenancy tree inside that kcp, plus `tenancy-operator`. See [Tenancy profile](#tenancy-profile) |
 
 ## Prerequisites
@@ -117,8 +117,9 @@ port-forward to `svc/eg-nodeport`.
 ## How kcp gets built
 
 `platform-mesh-deployer` compiles a `PlatformMesh` plus a `RootShardTemplate` and
-a `ShardTemplate` into `RootShard`/`Shard`/`FrontProxy` admin CRs; the kcp-operator
-compiles those into `Compiled*` CRs and then into Deployments. The wiring lives
+a `ShardTemplate` into `RootShard`/`Shard`/`FrontProxy` admin CRs, then — running
+kcp-operator's controller groups in its own manager — into `Compiled*` CRs and
+Deployments. The wiring lives
 with the component, at
 [`operators/platform-mesh-deployer/Tiltfile`](../../operators/platform-mesh-deployer/Tiltfile);
 this Tiltfile supplies only what is environment-wide (namespace, cluster ID,
@@ -133,22 +134,23 @@ config plane and workload cluster.
 | `deployer-gateway` | the `eg` Gateway + the pinned NodePort — the environment's only gateway |
 | `deployer-dns` | CoreDNS `*.sslip.io` answers |
 | `deployer-etcd` | mutual-TLS etcd, reachable through the gateway |
-| `kcp-operator` | the ntnn fork |
+| `kcp-operator-crds` | the `operator.kcp.io` and `deploy.operator.kcp.io` CRDs |
 | `deployer-crds` | the `deploy.platform-mesh.io` CRDs |
 | `platform-mesh-deployer` | the operator, built from source and live-updated |
 | `deployer-engage` | the kubeconfig Secret that engages this cluster as its own workload cluster |
 | `platformmesh` | the dev `PlatformMesh` and its two topology templates |
 | `deployer-admin` | an admin kubeconfig for the built kcp, written to `.secret/kcp/` |
 
-### The kcp-operator is a fork
+### There is no kcp-operator Deployment
 
-The deployer needs **ntnn/kcp-operator** — split config/workload controllers plus
-the `Compiled*` CRDs its admin CRs compile into — pinned by the `replace` in the
-module's `go.mod`. It owns the same `operator.kcp.io` CRDs and the same Deployment
-as the upstream operator, so upstream is not installed at all.
+The deployer imports **ntnn/kcp-operator** and registers both of its controller
+groups on its own manager: the config group on the config plane, the workload
+group on the engaged clusters. Nothing runs the operator as a separate
+Deployment, so only its CRDs are installed.
 
-**Bump the fork ref in `config/bases/kcp-operator/*` and the `go.mod` replace
-together**, or the deployer writes CRs the operator cannot read.
+**Bump the ref in `config/bases/kcp-operator/crds` and the `go.mod` replace
+together**, or the deployer reconciles CRs against a schema that is not
+installed.
 
 ### Two resources that delete more than they look like
 
@@ -165,10 +167,11 @@ They are separate resources from `platform-mesh-deployer` precisely so that
 restarting the operator (the routine gesture) cannot trigger either.
 
 If a shard is left `Provisioning` with no Deployment after such an event, the
-kcp-operator is in exponential backoff on a race that has since resolved:
+workload controllers are in exponential backoff on a race that has since
+resolved:
 
 ```sh
-kubectl -n kcp-operator-system rollout restart deploy/kcp-operator-controller-manager
+kubectl -n platform-mesh-system rollout restart deploy/platform-mesh-deployer-controller-manager
 ```
 
 ### Poking kcp
@@ -183,10 +186,11 @@ kubectl get shards.core.kcp.io
 kubectl get logicalcluster
 ```
 
-No port-forward and no extra envoy config. The credential is minted by
-kcp-operator: the resource creates a `Kubeconfig` CR naming the front proxy, user
-`tilt-admin` and group `system:kcp:admin`, and the operator issues the cert and
-writes a ready-to-use kubeconfig into a Secret.
+No port-forward and no extra envoy config. The credential is minted by the
+kcp-operator Kubeconfig controller the deployer runs: the resource creates a
+`Kubeconfig` CR naming the front proxy, user `tilt-admin` and group
+`system:kcp:admin`, and the controller issues the cert and writes a ready-to-use
+kubeconfig into a Secret.
 
 It is deliberately a *different* credential from the `dev-provisioner` Kubeconfig
 the deployer mints for itself — sharing that one would make hand-run commands

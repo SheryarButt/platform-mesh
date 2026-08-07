@@ -59,12 +59,7 @@ tasks:
       - go test -count=1 . ./pkg/... ./cmd/...
 
   test-e2e:
-    vars:
-      KCP_OPERATOR_IMAGE: '{{.KCP_OPERATOR_IMAGE | default "ghcr.io/ntnn/kcp-operator:split"}}'
-    env:
-      KCP_OPERATOR_IMAGE: '{{.KCP_OPERATOR_IMAGE}}'
     cmds:
-      - docker pull {{.KCP_OPERATOR_IMAGE}}
       - go test -count=1 -timeout 40m ./test/e2e/... {{.ADDITIONAL_COMMAND_ARGS}}
 
   cover:
