@@ -36,6 +36,9 @@ import (
 // the installation is misconfigured, not that it is still starting.
 func (r *reconciler) reconcileTopology(ctx context.Context) (bool, error) {
 	pm := r.pm
+	if err := validateTopology(pm); err != nil {
+		return r.topologyFailed(err)
+	}
 	if err := r.reconcileRootShard(ctx, pm); err != nil {
 		return r.topologyFailed(err)
 	}
@@ -58,6 +61,19 @@ func (r *reconciler) reconcileTopology(ctx context.Context) (bool, error) {
 func (r *reconciler) topologyFailed(err error) (bool, error) {
 	meta.SetStatusCondition(&r.pm.Status.Conditions, topologyFailed(r.pm.Generation, err))
 	return false, err
+}
+
+// validateTopology rejects a topology the deployer could render but not reach.
+func validateTopology(pm *pmdeployv1alpha1.PlatformMesh) error {
+	for _, group := range pm.Spec.Topology.ShardGroups {
+		// Without an exposure a shard gets no shardBaseURL, and that URL is the
+		// only address for it that resolves outside its own cluster — which is
+		// where the kcp-operator controllers this deployer runs live.
+		if group.Exposure == nil {
+			return fmt.Errorf("shard group %q has no exposure, so its shards have no address the deployer can reach", group.Name)
+		}
+	}
+	return nil
 }
 
 // resolveTemplate converts the referenced template CR's spec into out.

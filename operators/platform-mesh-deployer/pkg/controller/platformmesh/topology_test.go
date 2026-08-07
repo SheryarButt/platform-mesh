@@ -369,6 +369,10 @@ func TestReconcileCacheServerRef(t *testing.T) {
 		return []pmdeployv1alpha1.ShardGroup{{
 			Name:           "eu",
 			CacheServerRef: ref,
+			Exposure: &pmdeployv1alpha1.Exposure{
+				HostnameTemplate: `component + "." + cluster + ".sslip.io"`,
+				Port:             31443,
+			},
 		}}
 	}
 
@@ -482,4 +486,49 @@ func TestReconcileTemplateRef(t *testing.T) {
 			assert.Equal(t, tc.prefix, rs.Spec.Etcd.Prefix)
 		}
 	})
+}
+
+func TestValidateTopology(t *testing.T) {
+	t.Parallel()
+
+	t.Run("shard group without exposure is rejected", func(t *testing.T) {
+		pm := platformMesh()
+		pm.Spec.Topology.ShardGroups = []pmdeployv1alpha1.ShardGroup{{Name: "eu"}}
+
+		err := validateTopology(pm)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `shard group "eu" has no exposure`)
+	})
+
+	t.Run("shard group with exposure is accepted", func(t *testing.T) {
+		pm := platformMesh()
+		pm.Spec.Topology.ShardGroups = []pmdeployv1alpha1.ShardGroup{{
+			Name:     "eu",
+			Exposure: &pmdeployv1alpha1.Exposure{HostnameTemplate: `"eu.example.com"`, Port: 6443},
+		}}
+
+		assert.NoError(t, validateTopology(pm))
+	})
+}
+
+func TestBuildFrontProxySpecRejectsDropGroups(t *testing.T) {
+	t.Parallel()
+	pm := platformMesh()
+	tpl := &pmdeployv1alpha1.FrontProxyTemplate{
+		ObjectMeta: metav1.ObjectMeta{Name: "fp", Namespace: "pm"},
+		Spec: operatorv1alpha1.FrontProxySpec{
+			Auth: &operatorv1alpha1.AuthSpec{DropGroups: []string{"system:kcp:admin"}},
+		},
+	}
+	pm.Spec.Topology.FrontProxy.TemplateRef = &pmdeployv1alpha1.TemplateReference{Name: "fp"}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme(t)).WithObjects(pm, rootShardTemplate(), tpl).Build()
+	reg := clusters.NewRegistry()
+	engage(t, reg, "rootshard#customer-a--east")
+	engage(t, reg, "frontproxy#customer-a--fp")
+	r := newReconciler(t, cl, reg, pm)
+
+	_, err := r.buildFrontProxySpec(t.Context(), pm, pm.Spec.Topology.FrontProxy, "fp", "root")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "auth.dropGroups")
 }
