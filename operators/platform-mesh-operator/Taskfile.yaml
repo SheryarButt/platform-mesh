@@ -35,14 +35,6 @@ tasks:
     cmds:
       - "{{.MOCKERY}}"
 
-  kindtest:
-    deps: [tools:mkcert, tools:kind]
-    env:
-      KIND_BINARY: '{{.KIND}}'
-      MKCERT_BINARY: '{{.MKCERT}}'
-    cmds:
-      - go test -timeout 30m -coverprofile=cover.out go.platform-mesh.io/platform-mesh-operator/test/e2e/kind {{.ADDITIONAL_COMMAND_ARGS}}
-
   test:
     deps: [mockery, tools:kind, tools:mkcert]
     env:
@@ -94,6 +86,14 @@ tasks:
       FUZZTIME: '{{.FUZZTIME | default "30s"}}'
     cmds:
       - go test ./pkg/ocm/ -run=^$ -fuzz=FuzzParseRef -fuzztime={{.FUZZTIME}} -count=1
+
+  test-e2e:
+    deps: [tools:mkcert, tools:kind]
+    env:
+      KIND_BINARY: '{{.KIND}}'
+      MKCERT_BINARY: '{{.MKCERT}}'
+    cmds:
+      - go test -timeout 30m -coverprofile=cover.out go.platform-mesh.io/platform-mesh-operator/test/e2e/kind {{.ADDITIONAL_COMMAND_ARGS}}
 
   manifests:
     cmds:
