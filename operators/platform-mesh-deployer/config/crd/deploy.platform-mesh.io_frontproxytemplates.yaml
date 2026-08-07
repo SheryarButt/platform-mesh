@@ -55,8 +55,9 @@ spec:
             type: object
           spec:
             description: |-
-              FrontProxyTemplateSpec mirrors FrontProxySpec with all fields optional.
-              The deprecated externalHostname field is intentionally not mirrored.
+              Spec is a FrontProxySpec, so the schema requires rootShard even though the
+              deployer overwrites it with the RootShard it renders. Set it to any
+              placeholder.
             properties:
               additionalPathMappings:
                 description: 'Optional: AdditionalPathMappings configures // TODO
@@ -209,6 +210,9 @@ spec:
                     - configSecretName
                     type: object
                 type: object
+                x-kubernetes-validations:
+                - message: OIDC requires ServiceAccount auth to be enabled.
+                  rule: '!has(self.oidc) || (has(self.serviceAccount) && self.serviceAccount.enabled)'
               caBundleSecretRef:
                 description: |-
                   CABundle references a v1.Secret object that contains the CA bundle
@@ -1758,6 +1762,12 @@ spec:
                 - hostname
                 - port
                 type: object
+              externalHostname:
+                description: |-
+                  Optional: ExternalHostname under which the FrontProxy can be reached. If empty, the RootShard's external hostname will be used only.
+
+                  Deprecated: use spec.External for configuration of external access instead.
+                type: string
               extraArgs:
                 description: 'Optional: ExtraArgs defines additional command line
                   arguments to pass to the front-proxy container.'
@@ -1926,7 +1936,13 @@ spec:
                         type: string
                     type: object
                 type: object
+            required:
+            - rootShard
             type: object
+            x-kubernetes-validations:
+            - message: Cannot set both ExternalHostname (deprecated) and External.hostname.
+                Use External.hostname only.
+              rule: '!(has(self.externalHostname) && has(self.external.hostname))'
         type: object
     served: true
     storage: true
