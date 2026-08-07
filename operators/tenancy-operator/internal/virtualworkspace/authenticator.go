@@ -47,6 +47,34 @@ func newAuthenticator(opts OIDCOptions) (authenticator.Request, error) {
 				"and must be configured with the same issuer as kcp")
 	}
 
+	jwt := jwtAuthenticatorFor(opts)
+
+	// A private-CA or self-signed issuer is the normal case for a dev broker, so
+	// the CA is configuration rather than an edge case.
+	var ca dynamiccertificates.CAContentProvider
+	if opts.CAFile != "" {
+		var err error
+		ca, err = dynamiccertificates.NewDynamicCAContentFromFile("oidc-ca", opts.CAFile)
+		if err != nil {
+			return nil, fmt.Errorf("reading the OIDC CA from %s: %w", opts.CAFile, err)
+		}
+	}
+
+	tokenAuth, err := oidcauth.New(context.Background(), oidcauth.Options{
+		JWTAuthenticator:     jwt,
+		CAContentProvider:    ca,
+		SupportedSigningAlgs: []string{"RS256", "ES256"},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("building the OIDC authenticator for issuer %s: %w", opts.IssuerURL, err)
+	}
+
+	return &claimsAuthenticator{delegate: group.NewAuthenticatedGroupAdder(bearertoken.New(tokenAuth))}, nil
+}
+
+// jwtAuthenticatorFor is the claim mapping alone, separated from the plumbing
+// around it so the mirror can be asserted in a test.
+func jwtAuthenticatorFor(opts OIDCOptions) apiserver.JWTAuthenticator {
 	jwt := apiserver.JWTAuthenticator{
 		Issuer: apiserver.Issuer{
 			URL:       opts.IssuerURL,
@@ -82,33 +110,30 @@ func newAuthenticator(opts OIDCOptions) (authenticator.Request, error) {
 		UserValidationRules: nil,
 	}
 
-	// A private-CA or self-signed issuer is the normal case for a dev broker, so
-	// the CA is configuration rather than an edge case.
-	var ca dynamiccertificates.CAContentProvider
-	if opts.CAFile != "" {
-		var err error
-		ca, err = dynamiccertificates.NewDynamicCAContentFromFile("oidc-ca", opts.CAFile)
-		if err != nil {
-			return nil, fmt.Errorf("reading the OIDC CA from %s: %w", opts.CAFile, err)
+	// Groups, when the deployment has an issuer that carries them.
+	//
+	// Mapped the same way kcp maps them, because the two answers have to agree:
+	// kcp evaluates a Group subject in a ClusterRoleBinding against the groups IT
+	// extracted, while this server decides what the caller may see through the
+	// tenancy API against the groups extracted HERE. A prefix set on one side only
+	// does not fail — it silently splits one group into two, and the caller is
+	// admitted by one plane and not the other.
+	//
+	// Left unset when there is no claim configured: an empty Claim with a non-nil
+	// Prefix is rejected by the authenticator's own validation, so "no groups" has
+	// to be the absence of the mapping rather than an empty one.
+	//
+	// Unlike the username claim, this one is OPTIONAL in the token. A token with no
+	// `groups` claim authenticates and simply carries no groups, which is what lets
+	// one issuer serve identities that are in groups and identities that are not.
+	if opts.GroupsClaim != "" {
+		jwt.ClaimMappings.Groups = apiserver.PrefixedClaimOrExpression{
+			Claim:  opts.GroupsClaim,
+			Prefix: &opts.GroupsPrefix,
 		}
 	}
 
-	tokenAuth, err := oidcauth.New(context.Background(), oidcauth.Options{
-		JWTAuthenticator:     jwt,
-		CAContentProvider:    ca,
-		SupportedSigningAlgs: []string{"RS256", "ES256"},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("building the OIDC authenticator for issuer %s: %w", opts.IssuerURL, err)
-	}
-
-	// NewAuthenticatedGroupAdder is what puts `system:authenticated` on the
-	// caller. The OIDC authenticator only emits groups from the token's `groups`
-	// claim, so without this wrapper every successful authentication produces a
-	// user in NO groups — and the authorizer, which allows exactly that group,
-	// denies it with "caller is not authenticated" for a caller it just
-	// authenticated. The real apiserver wraps its authenticators the same way.
-	return &claimsAuthenticator{delegate: group.NewAuthenticatedGroupAdder(bearertoken.New(tokenAuth))}, nil
+	return jwt
 }
 
 // claimsAuthenticator decorates a successful authentication with the raw issuer

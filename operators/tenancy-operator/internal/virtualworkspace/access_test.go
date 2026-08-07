@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	pmtenancyv1alpha1 "go.platform-mesh.io/apis/tenancy/v1alpha1"
+	"go.platform-mesh.io/tenancy-operator/pkg/identity"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -155,4 +156,85 @@ func TestResolveAccessKeepsTheClusterID(t *testing.T) {
 	), "u")
 	require.NoError(t, err)
 	assert.Equal(t, "c1", got.Tenants["tenant"].ClusterID)
+}
+
+// groupIndexClient holds a directory where one GROUP has been granted something
+// and the caller personally has nothing.
+func groupIndexClient(t *testing.T, group string, entries ...pmtenancyv1alpha1.MembershipIndexEntry) ctrlruntimeclient.Client {
+	t.Helper()
+	s := runtime.NewScheme()
+	utilruntime.Must(pmtenancyv1alpha1.AddToScheme(s))
+
+	name, err := identity.GroupName(group)
+	require.NoError(t, err)
+
+	return fake.NewClientBuilder().WithScheme(s).WithObjects(&pmtenancyv1alpha1.GroupMembershipIndex{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec:       pmtenancyv1alpha1.GroupMembershipIndexSpec{Group: group, Entries: entries},
+	}).Build()
+}
+
+// A caller with no index of their own still sees everything their groups reach.
+// Under a group-driven installation this is the NORMAL state, not an edge case:
+// nobody has a personal grant and every tenant is reached through a group.
+func TestResolveAccessIncludesGroupGrants(t *testing.T) {
+	cl := groupIndexClient(t, "acme-engineering", pmtenancyv1alpha1.MembershipIndexEntry{
+		TenantUUID: "t1", TenantClusterID: "c1", Role: pmtenancyv1alpha1.MembershipRoleMember,
+	})
+
+	got, err := resolveAccess(context.Background(), cl, "nobody", "acme-engineering")
+	require.NoError(t, err)
+
+	require.Contains(t, got.Tenants, "t1")
+	assert.Equal(t, pmtenancyv1alpha1.MembershipRoleMember, got.Tenants["t1"].Role)
+}
+
+// Groups the caller does not hold reach nothing. The index is keyed by group, so
+// this is the check that the caller's OWN token is what selects the rows.
+func TestResolveAccessIgnoresGroupsTheCallerDoesNotHold(t *testing.T) {
+	cl := groupIndexClient(t, "acme-engineering", pmtenancyv1alpha1.MembershipIndexEntry{
+		TenantUUID: "t1", TenantClusterID: "c1", Role: pmtenancyv1alpha1.MembershipRoleAdmin,
+	})
+
+	got, err := resolveAccess(context.Background(), cl, "nobody", "some-other-group")
+	require.NoError(t, err)
+	assert.Empty(t, got.Tenants)
+}
+
+// The strongest role wins across the two halves, the same way it does within one.
+// A personal viewer grant plus an admin group must not report viewer.
+func TestResolveAccessTakesTheStrongestRoleAcrossUserAndGroup(t *testing.T) {
+	s := runtime.NewScheme()
+	utilruntime.Must(pmtenancyv1alpha1.AddToScheme(s))
+	name, err := identity.GroupName("owners")
+	require.NoError(t, err)
+
+	cl := fake.NewClientBuilder().WithScheme(s).WithObjects(
+		&pmtenancyv1alpha1.UserMembershipIndex{
+			ObjectMeta: metav1.ObjectMeta{Name: "u"},
+			Spec: pmtenancyv1alpha1.UserMembershipIndexSpec{Entries: []pmtenancyv1alpha1.MembershipIndexEntry{
+				{TenantUUID: "t1", TenantClusterID: "c1", Role: pmtenancyv1alpha1.MembershipRoleViewer},
+			}},
+		},
+		&pmtenancyv1alpha1.GroupMembershipIndex{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Spec: pmtenancyv1alpha1.GroupMembershipIndexSpec{Group: "owners", Entries: []pmtenancyv1alpha1.MembershipIndexEntry{
+				{TenantUUID: "t1", TenantClusterID: "c1", Role: pmtenancyv1alpha1.MembershipRoleAdmin},
+			}},
+		},
+	).Build()
+
+	got, err := resolveAccess(context.Background(), cl, "u", "owners")
+	require.NoError(t, err)
+	assert.Equal(t, pmtenancyv1alpha1.MembershipRoleAdmin, got.Tenants["t1"].Role)
+}
+
+// `system:authenticated` is on every authenticated caller and is added by this
+// server. If it reached a Membership subject, one grant would admit everyone who
+// can log in — and the request resolving it would look entirely ordinary.
+func TestGrantableGroupsDropsSyntheticGroups(t *testing.T) {
+	got := grantableGroups([]string{
+		"system:authenticated", "acme-engineering", "system:masters", "", "platform-admins",
+	})
+	assert.Equal(t, []string{"acme-engineering", "platform-admins"}, got)
 }

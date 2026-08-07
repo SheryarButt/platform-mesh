@@ -31,6 +31,9 @@ spec:
     - jsonPath: .spec.user
       name: User
       type: string
+    - jsonPath: .spec.group
+      name: Group
+      type: string
     - jsonPath: .spec.scope
       name: Scope
       type: string
@@ -47,8 +50,8 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Membership grants a User a role in a Tenant or a Project. The controller
-          turns it into kcp RBAC.
+          Membership grants a role in a Tenant or a Project to a subject — a User, or
+          everyone in an identity-provider group. The controller turns it into kcp RBAC.
 
           Memberships always live in the Tenant workspace, whatever their scope. Because
           of that, deleting a Project does not remove its Memberships — the Project
@@ -72,8 +75,35 @@ spec:
           metadata:
             type: object
           spec:
-            description: MembershipSpec defines the desired state of a Membership.
+            description: |-
+              MembershipSpec defines the desired state of a Membership.
+
+              Exactly one of user or group is set — the subject of the grant. They are two
+              fields rather than one polymorphic one because they are not interchangeable:
+              `user` names an object the platform holds and can verify, `group` names a claim
+              the identity provider makes and the platform can only take on trust. Code that
+              means "the person" should say user and mean it.
             properties:
+              group:
+                description: |-
+                  Group grants to everyone whose token carries this group, present and
+                  future. The value is the group as the IDENTITY PROVIDER emits it, without
+                  the prefix kcp applies — the prefix is deployment configuration, and a
+                  Membership that hardcoded it would stop matching the day it changed.
+
+                  UNVERIFIABLE, and that is the trade. There is no object to check it against,
+                  so a typo is a Membership that grants nobody anything while reporting Ready,
+                  and there is no way to enumerate who holds it. In exchange it grants people
+                  who have never signed in, which no user-subject Membership can do.
+
+                  Revocation belongs to the identity provider. Removing someone from the group
+                  there stops their next token carrying it, and kcp stops admitting them.
+                  Deleting this Membership revokes it for EVERYONE.
+
+                  Mutually exclusive with User.
+                maxLength: 253
+                minLength: 1
+                type: string
               project:
                 description: |-
                   Project is the UUID of the target Project. Required when scope=project, and
@@ -94,16 +124,20 @@ spec:
                 - project
                 type: string
               user:
-                description: User is the metadata.name of a User in the directory
-                  workspace.
+                description: |-
+                  User is the metadata.name of a User in the directory workspace.
+
+                  Mutually exclusive with Group.
                 maxLength: 253
                 minLength: 1
                 type: string
             required:
             - role
             - scope
-            - user
             type: object
+            x-kubernetes-validations:
+            - message: exactly one of spec.user or spec.group must be set
+              rule: has(self.user) != has(self.group)
           status:
             description: MembershipStatus defines the observed state of a Membership.
             properties:

@@ -187,6 +187,10 @@ tasks:
     desc: Show the identity in the cached token.
     cmds:
       - task --dir operators/tenancy-operator dev-whoami
+  dev-grant-group:
+    desc: 'Grant an IdP group access to a tenant (TENANT=<uuid|name> [GROUP=<g>] [ROLE=<role>]).'
+    cmds:
+      - task --dir operators/tenancy-operator dev-grant-group TENANT={{.TENANT}} GROUP={{.GROUP}} ROLE={{.ROLE}}
   dev-kubeconfig:
     desc: 'Write a kubeconfig for one workspace (CLUSTER=<id> task dev-kubeconfig).'
     cmds:

@@ -111,8 +111,13 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - run: task test-${COMPONENT}
 
-  # Integration (envtest) suite: downloads the shared kcp (tools:kcp) and runs
-  # the kcp-backed controller tests under internal/controller.
+  # e2e suite (test/e2e): downloads the shared kcp (tools:kcp) and runs the model
+  # against a REAL one. It asserts kcp's answers rather than ours — whether a
+  # binding we wrote actually admits anybody, and whether the installed API
+  # surface serves what the operator needs — which is the class of failure the
+  # unit suites cannot reach, because a fake client evaluates no RBAC.
+  #
+  # A release gate: docker-build-latest and docker-build-push both need it.
   test-e2e:
     runs-on: ubuntu-latest
     env:

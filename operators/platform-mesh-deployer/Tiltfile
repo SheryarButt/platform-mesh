@@ -401,6 +401,12 @@ kubectl -n "$NS" create secret generic "$SECRET" \\
             '      usernameClaim: ' + oidc.get('usernameClaim', 'email'),
             '      usernamePrefix: "' + oidc.get('usernamePrefix', '') + '"',
             '      groupsClaim: ' + oidc.get('groupsClaim', 'groups'),
+            # Rendered ALWAYS, and never allowed to fall through to kcp's own
+            # default, which is `oidc:` rather than empty. The tenancy VW mirrors
+            # this pair to decide what a caller's groups are called; a prefix that
+            # only one of them applies splits every group in two and admits the
+            # holder on one plane while denying them on the other.
+            '      groupsPrefix: "' + oidc.get('groupsPrefix', '') + '"',
             '      caFileRef:',
             '        name: ' + oidc.get('caFileRef', {}).get('name', 'dex-ca'),
             '        key: ' + oidc.get('caFileRef', {}).get('key', 'ca.crt'),

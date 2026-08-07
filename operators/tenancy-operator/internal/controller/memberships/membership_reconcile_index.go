@@ -24,6 +24,7 @@ import (
 	pmtenancyv1alpha1 "go.platform-mesh.io/apis/tenancy/v1alpha1"
 	"go.platform-mesh.io/tenancy-operator/internal/controller/chain"
 	"go.platform-mesh.io/tenancy-operator/pkg/clusters"
+	"go.platform-mesh.io/tenancy-operator/pkg/identity"
 	"go.platform-mesh.io/tenancy-operator/pkg/paths"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -83,6 +84,15 @@ func (r *membershipIndex) Reconcile(ctx context.Context, cl ctrlruntimeclient.Cl
 		return chain.StopAndRequeue, nil
 	}
 
+	if m.SubjectKind() == pmtenancyv1alpha1.SubjectKindGroup {
+		if err := r.upsertGroupEntry(ctx, directory, m, entry); err != nil {
+			chain.MarkFalse(m, r.Name(), "Error", err.Error())
+			return chain.StopAndRequeue, err
+		}
+		chain.MarkTrue(m, r.Name())
+		return chain.Continue, nil
+	}
+
 	umi := &pmtenancyv1alpha1.UserMembershipIndex{
 		ObjectMeta: metav1.ObjectMeta{Name: m.Spec.User},
 	}
@@ -107,6 +117,43 @@ func (r *membershipIndex) Reconcile(ctx context.Context, cl ctrlruntimeclient.Cl
 	return chain.Continue, nil
 }
 
+// upsertGroupEntry maintains the row on the GROUP's index.
+func (r *membershipIndex) upsertGroupEntry(
+	ctx context.Context,
+	directory ctrlruntimeclient.Client,
+	m *pmtenancyv1alpha1.Membership,
+	entry *pmtenancyv1alpha1.MembershipIndexEntry,
+) error {
+	name, err := identity.GroupName(m.Spec.Group)
+	if err != nil {
+		return err
+	}
+
+	gmi := &pmtenancyv1alpha1.GroupMembershipIndex{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	if _, err := controllerutil.CreateOrUpdate(ctx, directory, gmi, func() error {
+		// Written on every pass, not only on create: it is the only readable record
+		// of which group a digest-named object is for, and a rename at the identity
+		// provider should show up here rather than leaving a stale label on an object
+		// whose name cannot say it is stale.
+		gmi.Spec.Group = m.Spec.Group
+		gmi.Spec.Entries = upsertEntry(gmi.Spec.Entries, *entry)
+		return nil
+	}); err != nil {
+		return fmt.Errorf("upserting index for group %q: %w", m.Spec.Group, err)
+	}
+
+	want := int32(len(gmi.Spec.Entries)) //nolint:gosec // entry count cannot realistically overflow int32
+	if gmi.Status.EntryCount == want {
+		return nil
+	}
+	gmi.Status.EntryCount = want
+	gmi.Status.ObservedGeneration = gmi.Generation
+	if err := directory.Status().Update(ctx, gmi); err != nil {
+		return fmt.Errorf("updating index status for group %q: %w", m.Spec.Group, err)
+	}
+	return nil
+}
+
 // Finalize removes this Membership's row.
 //
 // Best-effort on a missing Tenant: if the Tenant is gone the row is
@@ -124,6 +171,13 @@ func (r *membershipIndex) Finalize(ctx context.Context, cl ctrlruntimeclient.Cli
 		return chain.Continue, nil //nolint:nilerr // nothing identifiable to prune
 	}
 
+	if m.SubjectKind() == pmtenancyv1alpha1.SubjectKindGroup {
+		if err := r.pruneGroupEntry(ctx, directory, m, tenantUUID); err != nil {
+			return chain.StopAndRequeue, err
+		}
+		return chain.Continue, nil
+	}
+
 	umi := &pmtenancyv1alpha1.UserMembershipIndex{}
 	if err := directory.Get(ctx, ctrlruntimeclient.ObjectKey{Name: m.Spec.User}, umi); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -132,13 +186,7 @@ func (r *membershipIndex) Finalize(ctx context.Context, cl ctrlruntimeclient.Cli
 		return chain.StopAndRequeue, err
 	}
 
-	kept := make([]pmtenancyv1alpha1.MembershipIndexEntry, 0, len(umi.Spec.Entries))
-	for _, e := range umi.Spec.Entries {
-		if e.TenantUUID == tenantUUID && e.ProjectUUID == m.Spec.Project {
-			continue
-		}
-		kept = append(kept, e)
-	}
+	kept := prune(umi.Spec.Entries, tenantUUID, m.Spec.Project)
 	if len(kept) == len(umi.Spec.Entries) {
 		return chain.Continue, nil
 	}
@@ -151,6 +199,54 @@ func (r *membershipIndex) Finalize(ctx context.Context, cl ctrlruntimeclient.Cli
 		return chain.StopAndRequeue, err
 	}
 	return chain.Continue, nil
+}
+
+// pruneGroupEntry removes this Membership's row from the group's index.
+func (r *membershipIndex) pruneGroupEntry(
+	ctx context.Context,
+	directory ctrlruntimeclient.Client,
+	m *pmtenancyv1alpha1.Membership,
+	tenantUUID string,
+) error {
+	name, err := identity.GroupName(m.Spec.Group)
+	if err != nil {
+		return err
+	}
+
+	gmi := &pmtenancyv1alpha1.GroupMembershipIndex{}
+	if err := directory.Get(ctx, ctrlruntimeclient.ObjectKey{Name: name}, gmi); err != nil {
+		return ctrlruntimeclient.IgnoreNotFound(err)
+	}
+
+	kept := prune(gmi.Spec.Entries, tenantUUID, m.Spec.Project)
+	if len(kept) == len(gmi.Spec.Entries) {
+		return nil
+	}
+
+	gmi.Spec.Entries = kept
+	if err := directory.Update(ctx, gmi); err != nil {
+		return fmt.Errorf("pruning index %q: %w", gmi.Name, err)
+	}
+
+	want := int32(len(kept)) //nolint:gosec // entry count cannot realistically overflow int32
+	if gmi.Status.EntryCount == want {
+		return nil
+	}
+	gmi.Status.EntryCount = want
+	gmi.Status.ObservedGeneration = gmi.Generation
+	return directory.Status().Update(ctx, gmi)
+}
+
+// prune drops the row for one (tenant, project) key.
+func prune(entries []pmtenancyv1alpha1.MembershipIndexEntry, tenantUUID, project string) []pmtenancyv1alpha1.MembershipIndexEntry {
+	kept := make([]pmtenancyv1alpha1.MembershipIndexEntry, 0, len(entries))
+	for _, e := range entries {
+		if e.TenantUUID == tenantUUID && e.ProjectUUID == project {
+			continue
+		}
+		kept = append(kept, e)
+	}
+	return kept
 }
 
 // entryFor builds the row this Membership is responsible for.

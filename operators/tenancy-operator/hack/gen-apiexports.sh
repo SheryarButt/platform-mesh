@@ -48,7 +48,7 @@ CRD_DIR="config/crd"
 OUT_DIR="deploy/kcp/resources"
 
 # Which CRDs back which schema-bearing export. Split by audience.
-PLATFORM_CRDS=(users tenants usermembershipindices)
+PLATFORM_CRDS=(users tenants usermembershipindices groupmembershipindices)
 TENANT_CRDS=(memberships projects)
 
 work="$(mktemp -d)"

@@ -76,6 +76,68 @@ This is why the process runs **more than one manager**: a controller cannot watc
 across logical clusters by wishing, and kcp gives it exactly one wildcard endpoint
 per export. One manager per export is the concrete cost of the split above.
 
+## Operational models
+
+A `Membership` names **either a User or a group**, and that one choice is what an
+installation's operating model is made of. There is no mode flag: the three models
+below are configurations, not code paths, so an installation moves between them by
+changing which calls it makes rather than how it is built.
+
+Two axes, and they are independent — "users or groups" only decides the first:
+
+- **What a grant names.** `spec.user`, a person the platform holds an object for;
+  or `spec.group`, a claim the identity provider makes.
+- **Who creates a Tenant.** The user themselves, a platform admin up front, or the
+  identity provider by way of a group that already implies one.
+
+| | **A — users only** | **B — groups only** | **C — both** |
+|---|---|---|---|
+| grant | one Membership per person | one per group | groups for standing access, users for exceptions |
+| onboarding | ordered: they sign in, *then* you grant | zero-touch: join the group, next login works | zero-touch for the common path |
+| revocation | platform-side, immediate | at the IdP, on next token | both, per grant |
+| "who has access?" | answerable here | only "which groups" — ask the IdP | exact for users, IdP for groups |
+| personal tenants | on | off | either |
+
+Configured by which of these you set, and which calls you make:
+
+```sh
+--tenancy-personal-tenants-enabled=false   # no home tenants; the IdP says where you belong
+--oidc-groups-claim / --oidc-groups-prefix # must mirror kcp exactly (see below)
+tenancyctl memberships add <user> …        # a user grant
+tenancyctl memberships add --group <g> …   # a group grant
+```
+
+Pre-creating the tree is the other half of B and C, and needs nothing new: an admin
+creates Tenants through the VW (they become `status.firstAdmin`), and each Tenant's
+`spec.projectCreation: admin` stops members making their own Projects.
+
+**Three things a group grant cannot do**, all following from one fact — the
+platform never learns who is in a group, it only ever sees the groups on a token
+in front of it:
+
+1. **It cannot be verified.** Nothing is checked on create, because there is
+   nothing to check against. A typo is a Membership that grants nobody while
+   reporting `Ready`.
+2. **It cannot be the last admin.** A group-subject admin is not evidence that any
+   admin exists — an empty group and a full one are the same object here. So a
+   group may hold admin, and may not be the *only* admin: every Tenant keeps one
+   user-subject admin, which is the break-glass identity. The last-admin guard
+   enforces exactly this.
+3. **It cannot be left.** Deleting a group Membership revokes it for everyone
+   holding that group, so self-leave is refused on one. You leave the group at the
+   identity provider.
+
+In exchange it does the one thing a user grant cannot: it reaches people who have
+**never signed in**, because it names no object that has to exist first.
+
+**Group membership is read from the token being presented, never from storage.**
+`User.status.groups` exists and is a debugging sample — it does not shrink when
+somebody leaves a group, so resolving a grant from it would keep granting after the
+IdP revoked. Access resolves from `GroupMembershipIndex`, keyed by group, matched
+against the caller's live claims. That is also why group grants are *not* fanned
+out onto members: materializing them would need a member list nobody has, and would
+leave rows behind for anyone who left until they next signed in.
+
 ## Layout
 
 | path | what |
@@ -157,6 +219,21 @@ name lie about what is in it.
 
 This convention is local to this operator; the rest of the repo has not adopted it.
 
+### e2e file naming
+
+The same idea one directory over. `test/e2e` is one file per subject, so the file
+list says what the platform is claimed to do:
+
+```
+fixture_test.go             # kcp, the installer, the running operator, the waits
+scenarios_<subject>_test.go # one subject's journeys
+```
+
+`<subject>` is what the scenarios are ABOUT — `users`, `groups`, `projects`,
+`naming`, `install`, `rbac` — not which controller happens to run. A scenario
+crosses four controllers and two exports by design, so filing it under one of them
+would put the same journey in a different file each time somebody re-read it.
+
 ### Two things that must not drift
 
 **`pkg/paths`.** Every root is a flag. The platform must not claim `root:` (kcp's
@@ -178,6 +255,24 @@ Choosing a *mutable* claim like `email` extends that hazard to a single user —
 address change invalidates their bindings. The operator logs a warning at boot when
 the configured claim is mutable. The `User` object itself is safe either way: it is
 keyed on `hash(issuer + "/" + sub)`, which no claim convention affects.
+
+**Groups mirror the same way, with one extra trap.** `--oidc-groups-claim` /
+`--oidc-groups-prefix` exist for the same reason the username pair does, and both
+planes read them: kcp matches a `Group` subject in a `ClusterRoleBinding` against
+the groups *it* extracted, and the tenancy VW decides what a caller may see from
+the groups extracted *there*. The trap is that the two ends disagree about what
+"unset" means — kcp defaults an unset `groupsPrefix` to **`oidc:`**, this operator
+defaults it to `pm:`, and an empty string is a third, valid answer. So the value is
+written down explicitly on both sides (`contrib/tilt/Tiltfile`'s `KCP_OIDC` feeds
+the RootShard and this chart from one dict) rather than left to either default.
+Getting it wrong splits one IdP group into two names, and nothing logs it: kcp
+admits the holder of `oidc:platform-admins` while the tenancy API answers for
+`pm:platform-admins`.
+
+Nothing grants on a group yet — `Membership` still names a `User` — so today this
+only decides what the VW *sees*. It is wired first because the claim path is what a
+group grant would be built on, and because it is verifiable on its own:
+`tenancyctl whoami` prints the groups a token carries.
 
 ## Two commands, one binary
 
@@ -234,6 +329,38 @@ gitignored `contrib/tilt/.secret/kcp/`), because dex's serving cert is signed by
 private CA. The dev credentials are `dex@pm.localhost` / `dex`. Your **browser**
 must trust that CA too, or the issuer URL shows a warning — the `--oidc-ca-file`
 flag only covers the CLI.
+
+Both dev identities carry groups, which `dev-whoami` prints:
+
+| identity | groups |
+|---|---|
+| `dex@pm.localhost` | `platform-admins`, `acme-engineering` |
+| `bob@pm.localhost` | `acme-engineering` |
+
+One group nobody else is in and one they share — the pair it takes to tell a group
+grant apart from a per-user one. kcp and the VW both see them prefixed
+(`pm:acme-engineering`), and an empty list in `dev-whoami` means the token was
+minted without the `groups` scope, not that the user is in none.
+
+**The Tilt profile runs model C**, and the shared group is what makes it C rather
+than A:
+
+```sh
+task dev-login                                  # dex@, admin of its own tenant
+task dev-tenants                                # find its name
+TENANT=<name> task dev-grant-group              # grant acme-engineering: member
+task dev-login-bob                              # a browser, and log out of dex first
+task dev-memberships TENANT=<name>              # one User row, one Group row
+```
+
+bob@ now reaches that tenant with **no Membership naming bob** — the grant names a
+group their token happens to carry. Removing `acme-engineering` from bob in
+`manifests/dex.yaml` and signing in again takes it away, with nothing to clean up
+here, which is the property the whole read-time design exists for.
+
+The dev environment leaves personal tenants **on**, which C allows. Turn them off
+with `--tenancy-personal-tenants-enabled=false` to see B: nobody gets a home tenant
+and every grant arrives through a group.
 
 Two constraints worth knowing before they surprise you:
 
@@ -304,8 +431,10 @@ work end to end.
    dispose of its Memberships implicitly, because they live one tier up in the
    Tenant. The Project reconciler must prune workspace-scope rows explicitly;
    it does not yet.
-5. **Group→Membership sync** and **group-based platform admin** —
-   same claim plumbing, worth doing in one pass.
+5. **Group-based platform admin** — the `AdminChecker` seam behind
+   `--admin-groups`. The claim plumbing it needs is already here (group grants use
+   it), so what is left is the check itself. Platform admin is deliberately *not* a
+   Membership and must never appear in a membership index.
 
 Deletion is **hard**: there is no soft-delete window, no `spec.lifecycle`, and no
 undelete. Deleting a Tenant or Project deletes it, and the finalizer chain
@@ -316,6 +445,7 @@ is what makes the cascade orderly rather than a grace period.
 ```sh
 task build-tenancy-operator      # compile
 task test-tenancy-operator       # unit tests
+task test-e2e-tenancy-operator   # the same model against a REAL kcp (~1 min)
 task lint-tenancy-operator       # fmt + golangci-lint
 task generate-tenancy-operator   # CRDs, deepcopy, and the four APIExports
 ```

@@ -174,7 +174,7 @@ func loginCmd() *cobra.Command {
 				// nobody re-runs the browser flow to fix an unrelated problem.
 				return fmt.Errorf("signed in, but provisioning failed (the token is cached; retry with `tenancyctl users create`): %w", err)
 			}
-			return cli.PrintUser(os.Stdout, user)
+			return cli.PrintUser(os.Stdout, user, cli.TokenGroups(idToken))
 		},
 	}
 	c.Flags().BoolVar(&noBrowser, "no-browser", false, "print the URL instead of opening a browser")
@@ -427,7 +427,7 @@ token, which is useful when the virtual workspace is not reachable.`,
 				return err
 			}
 
-			return cli.PrintUser(os.Stdout, user)
+			return cli.PrintUser(os.Stdout, user, cli.TokenGroups(idToken))
 		},
 	}
 	return cmd
@@ -636,11 +636,11 @@ kubectl path to fall back on.
 
 // membershipsAddCmd grants a user access.
 func membershipsAddCmd() *cobra.Command {
-	var role, project string
+	var role, project, group string
 	c := &cobra.Command{
-		Use:   "add <user> --tenant <uuid|name>",
-		Short: "grant a user access to a tenant or one project (admin only)",
-		Long: `Grant a user access. Requires the admin role in that Tenant.
+		Use:   "add <user>|--group <group> --tenant <uuid|name>",
+		Short: "grant a user or a group access to a tenant or one project (admin only)",
+		Long: `Grant access. Requires the admin role in that Tenant.
 
 <user> is a User NAME — the sha256(issuer + "\n" + sub) digest that "tenancyctl
 whoami" prints — NOT an email address. There is no lookup by email: this API is
@@ -651,6 +651,15 @@ They must have signed in at least once. A User exists only after its owner
 provisions it, so granting to someone who never has is refused rather than left
 pending — an invitation is a different thing and this is deliberately not one.
 
+--group grants to EVERYONE whose token carries that group, including people who
+have never signed in — which is the one thing a user grant cannot do. Give the
+group as your identity provider emits it, without the prefix kcp adds.
+
+Nothing checks that the group exists, because nothing can: the platform holds no
+object for a group and cannot enumerate one. A typo is accepted and grants
+nobody. Revoking is at your identity provider for one person, or here for all of
+them.
+
 --project grants access to ONE project instead of the whole Tenant. Without
 it the grant is tenant-scope, which reaches every project in the Tenant,
 including ones created later.
@@ -659,8 +668,22 @@ including ones created later.
 optional, because a project already knows which tenant it is in; pass it
 anyway to disambiguate a project DISPLAY NAME that two of your tenants share.
 If you pass both and they disagree, the command refuses rather than picking.`,
-		Args: cobra.ExactArgs(1),
+		// A user is positional and a group is a flag, so exactly one of the two
+		// forms is expressible: `add <user>` or `add --group <g>`. Both, or
+		// neither, is refused below rather than resolved in either direction.
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			subject := cli.Subject{Group: group}
+			if len(args) == 1 {
+				subject.User = args[0]
+			}
+			switch {
+			case subject.User == "" && subject.Group == "":
+				return fmt.Errorf("name a subject: a <user> as the argument, or --group for everyone in a group")
+			case subject.User != "" && subject.Group != "":
+				return fmt.Errorf("a grant has one subject: pass a <user> or --group, not both")
+			}
+
 			opts, err := vwOptions()
 			if err != nil {
 				return err
@@ -710,7 +733,7 @@ If you pass both and they disagree, the command refuses rather than picking.`,
 					"(`tenancyctl tenants` lists the ones you belong to), or pass --project to grant access to one project")
 			}
 
-			m, err := cli.CreateMembership(cmd.Context(), opts, tenantUUID, args[0], scope, projectUUID, role)
+			m, err := cli.CreateMembership(cmd.Context(), opts, tenantUUID, subject, scope, projectUUID, role)
 			if err != nil {
 				return err
 			}
@@ -720,6 +743,7 @@ If you pass both and they disagree, the command refuses rather than picking.`,
 	c.Flags().StringVar(&tenant, "tenant", "", "the tenant to grant access in (UUID or display name)")
 	c.Flags().StringVar(&role, "role", pmtenancyv1alpha1.MembershipRoleMember, "admin, member or viewer")
 	c.Flags().StringVar(&project, "project", "", "grant access to one project only (UUID or display name)")
+	c.Flags().StringVar(&group, "group", "", "grant to everyone in this identity-provider group instead of one user")
 	return c
 }
 
@@ -897,7 +921,7 @@ inside unrelated calls, and would leave nothing to rate-limit.`,
 			if err != nil {
 				return err
 			}
-			return cli.PrintUser(os.Stdout, user)
+			return cli.PrintUser(os.Stdout, user, cli.TokenGroups(opts.Token))
 		},
 	}
 }

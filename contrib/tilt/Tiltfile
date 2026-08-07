@@ -126,6 +126,15 @@ KCP_OIDC = {
     # own — with a Membership and a binding that both look correct. Keeping the
     # prefix here rather than in the chart is what stops that drift.
     'usernamePrefix': 'pm:',
+    # Set for the same reason usernamePrefix is, plus one that is sharper for
+    # groups: an unprefixed group claim puts whatever the IdP says straight into
+    # kcp's own group namespace, so an issuer that hands someone `system:masters`
+    # hands them what that name MEANS. The prefix makes that impossible to say.
+    #
+    # It must be written down rather than left out: kcp defaults an unset
+    # groupsPrefix to `oidc:`, so omitting it here would not mean "no prefix", it
+    # would mean "a prefix the tenancy VW was never told about".
+    'groupsPrefix': 'pm:',
     'caFileRef': {'name': 'dex-ca', 'key': 'ca.crt'},
 }
 

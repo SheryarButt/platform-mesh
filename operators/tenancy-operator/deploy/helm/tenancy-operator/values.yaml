@@ -119,6 +119,19 @@ oidc:
   #
   # Set it only to mirror a kcp that sets one. It is never a free choice.
   usernamePrefix: "pm:"
+  # -- The claim carrying the caller's groups. Empty extracts none, which is what
+  # an installation whose issuer has no groups should set.
+  groupsClaim: groups
+  # -- Prefixed for the same reason usernames are, and one more: without a prefix,
+  # an issuer that hands out a group named `system:masters` hands out what that
+  # name MEANS to kcp.
+  #
+  # kcp's own default is NOT empty — a RootShard that leaves groupsPrefix unset
+  # uses `oidc:`. So this value has to mirror an explicitly-set one on that side,
+  # or the two planes disagree about the name of every group: kcp admits the
+  # holder of `oidc:x`, this operator's API answers for `pm:x`, and no error is
+  # logged anywhere.
+  groupsPrefix: "pm:"
 
 tenancy:
   personalTenantsEnabled: true
@@ -223,6 +236,16 @@ virtualWorkspace:
     duration: 8760h0m0s
     renewBefore: 168h0m0s
     extraDnsNames: [localhost]
+    # -- MUST name an issuer that exists in the release namespace. There is no
+    # default that can be right: kcp-operator's own CAs carry a hash in their
+    # names (`<root-shard>-server-ca`), so the value below is a shape, not a
+    # working reference.
+    #
+    # Getting it wrong is quiet and reads as something else entirely — the
+    # Certificate stays Ready=False, its Secret is never created, and what
+    # surfaces is the VW pod stuck on `MountVolume.SetUp failed for volume
+    # "vw-tls"`. The actual reason is two objects away, on the CertificateRequest:
+    # `Referenced "Issuer" not found`.
     issuer:
       kind: Issuer
       name: root-server-ca

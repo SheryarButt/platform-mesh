@@ -31,82 +31,250 @@ import (
 
 func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenAPIDefinition {
 	return map[string]common.OpenAPIDefinition{
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.Membership":                schema_goplatform_meshio_apis_tenancy_v1alpha1_Membership(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.MembershipIndexEntry":      schema_goplatform_meshio_apis_tenancy_v1alpha1_MembershipIndexEntry(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.MembershipList":            schema_goplatform_meshio_apis_tenancy_v1alpha1_MembershipList(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.MembershipSpec":            schema_goplatform_meshio_apis_tenancy_v1alpha1_MembershipSpec(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.MembershipStatus":          schema_goplatform_meshio_apis_tenancy_v1alpha1_MembershipStatus(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.Project":                   schema_goplatform_meshio_apis_tenancy_v1alpha1_Project(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.ProjectList":               schema_goplatform_meshio_apis_tenancy_v1alpha1_ProjectList(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.ProjectSpec":               schema_goplatform_meshio_apis_tenancy_v1alpha1_ProjectSpec(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.ProjectStatus":             schema_goplatform_meshio_apis_tenancy_v1alpha1_ProjectStatus(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.Tenant":                    schema_goplatform_meshio_apis_tenancy_v1alpha1_Tenant(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.TenantList":                schema_goplatform_meshio_apis_tenancy_v1alpha1_TenantList(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.TenantSpec":                schema_goplatform_meshio_apis_tenancy_v1alpha1_TenantSpec(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.TenantStatus":              schema_goplatform_meshio_apis_tenancy_v1alpha1_TenantStatus(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.User":                      schema_goplatform_meshio_apis_tenancy_v1alpha1_User(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.UserList":                  schema_goplatform_meshio_apis_tenancy_v1alpha1_UserList(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.UserMembershipIndex":       schema_goplatform_meshio_apis_tenancy_v1alpha1_UserMembershipIndex(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.UserMembershipIndexList":   schema_goplatform_meshio_apis_tenancy_v1alpha1_UserMembershipIndexList(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.UserMembershipIndexSpec":   schema_goplatform_meshio_apis_tenancy_v1alpha1_UserMembershipIndexSpec(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.UserMembershipIndexStatus": schema_goplatform_meshio_apis_tenancy_v1alpha1_UserMembershipIndexStatus(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.UserSpec":                  schema_goplatform_meshio_apis_tenancy_v1alpha1_UserSpec(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.UserStatus":                schema_goplatform_meshio_apis_tenancy_v1alpha1_UserStatus(ref),
-		"go.platform-mesh.io/apis/tenancy/v1alpha1.UserTenancySpec":           schema_goplatform_meshio_apis_tenancy_v1alpha1_UserTenancySpec(ref),
-		v1.APIGroup{}.OpenAPIModelName():                                      schema_pkg_apis_meta_v1_APIGroup(ref),
-		v1.APIGroupList{}.OpenAPIModelName():                                  schema_pkg_apis_meta_v1_APIGroupList(ref),
-		v1.APIResource{}.OpenAPIModelName():                                   schema_pkg_apis_meta_v1_APIResource(ref),
-		v1.APIResourceList{}.OpenAPIModelName():                               schema_pkg_apis_meta_v1_APIResourceList(ref),
-		v1.APIVersions{}.OpenAPIModelName():                                   schema_pkg_apis_meta_v1_APIVersions(ref),
-		v1.ApplyOptions{}.OpenAPIModelName():                                  schema_pkg_apis_meta_v1_ApplyOptions(ref),
-		v1.Condition{}.OpenAPIModelName():                                     schema_pkg_apis_meta_v1_Condition(ref),
-		v1.CreateOptions{}.OpenAPIModelName():                                 schema_pkg_apis_meta_v1_CreateOptions(ref),
-		v1.DeleteOptions{}.OpenAPIModelName():                                 schema_pkg_apis_meta_v1_DeleteOptions(ref),
-		v1.Duration{}.OpenAPIModelName():                                      schema_pkg_apis_meta_v1_Duration(ref),
-		v1.FieldSelectorRequirement{}.OpenAPIModelName():                      schema_pkg_apis_meta_v1_FieldSelectorRequirement(ref),
-		v1.FieldsV1{}.OpenAPIModelName():                                      schema_pkg_apis_meta_v1_FieldsV1(ref),
-		v1.GetOptions{}.OpenAPIModelName():                                    schema_pkg_apis_meta_v1_GetOptions(ref),
-		v1.GroupKind{}.OpenAPIModelName():                                     schema_pkg_apis_meta_v1_GroupKind(ref),
-		v1.GroupResource{}.OpenAPIModelName():                                 schema_pkg_apis_meta_v1_GroupResource(ref),
-		v1.GroupVersion{}.OpenAPIModelName():                                  schema_pkg_apis_meta_v1_GroupVersion(ref),
-		v1.GroupVersionForDiscovery{}.OpenAPIModelName():                      schema_pkg_apis_meta_v1_GroupVersionForDiscovery(ref),
-		v1.GroupVersionKind{}.OpenAPIModelName():                              schema_pkg_apis_meta_v1_GroupVersionKind(ref),
-		v1.GroupVersionResource{}.OpenAPIModelName():                          schema_pkg_apis_meta_v1_GroupVersionResource(ref),
-		v1.InternalEvent{}.OpenAPIModelName():                                 schema_pkg_apis_meta_v1_InternalEvent(ref),
-		v1.LabelSelector{}.OpenAPIModelName():                                 schema_pkg_apis_meta_v1_LabelSelector(ref),
-		v1.LabelSelectorRequirement{}.OpenAPIModelName():                      schema_pkg_apis_meta_v1_LabelSelectorRequirement(ref),
-		v1.List{}.OpenAPIModelName():                                          schema_pkg_apis_meta_v1_List(ref),
-		v1.ListMeta{}.OpenAPIModelName():                                      schema_pkg_apis_meta_v1_ListMeta(ref),
-		v1.ListOptions{}.OpenAPIModelName():                                   schema_pkg_apis_meta_v1_ListOptions(ref),
-		v1.ManagedFieldsEntry{}.OpenAPIModelName():                            schema_pkg_apis_meta_v1_ManagedFieldsEntry(ref),
-		v1.MicroTime{}.OpenAPIModelName():                                     schema_pkg_apis_meta_v1_MicroTime(ref),
-		v1.ObjectMeta{}.OpenAPIModelName():                                    schema_pkg_apis_meta_v1_ObjectMeta(ref),
-		v1.OwnerReference{}.OpenAPIModelName():                                schema_pkg_apis_meta_v1_OwnerReference(ref),
-		v1.PartialObjectMetadata{}.OpenAPIModelName():                         schema_pkg_apis_meta_v1_PartialObjectMetadata(ref),
-		v1.PartialObjectMetadataList{}.OpenAPIModelName():                     schema_pkg_apis_meta_v1_PartialObjectMetadataList(ref),
-		v1.Patch{}.OpenAPIModelName():                                         schema_pkg_apis_meta_v1_Patch(ref),
-		v1.PatchOptions{}.OpenAPIModelName():                                  schema_pkg_apis_meta_v1_PatchOptions(ref),
-		v1.Preconditions{}.OpenAPIModelName():                                 schema_pkg_apis_meta_v1_Preconditions(ref),
-		v1.RootPaths{}.OpenAPIModelName():                                     schema_pkg_apis_meta_v1_RootPaths(ref),
-		v1.ServerAddressByClientCIDR{}.OpenAPIModelName():                     schema_pkg_apis_meta_v1_ServerAddressByClientCIDR(ref),
-		v1.ShardInfo{}.OpenAPIModelName():                                     schema_pkg_apis_meta_v1_ShardInfo(ref),
-		v1.Status{}.OpenAPIModelName():                                        schema_pkg_apis_meta_v1_Status(ref),
-		v1.StatusCause{}.OpenAPIModelName():                                   schema_pkg_apis_meta_v1_StatusCause(ref),
-		v1.StatusDetails{}.OpenAPIModelName():                                 schema_pkg_apis_meta_v1_StatusDetails(ref),
-		v1.Table{}.OpenAPIModelName():                                         schema_pkg_apis_meta_v1_Table(ref),
-		v1.TableColumnDefinition{}.OpenAPIModelName():                         schema_pkg_apis_meta_v1_TableColumnDefinition(ref),
-		v1.TableOptions{}.OpenAPIModelName():                                  schema_pkg_apis_meta_v1_TableOptions(ref),
-		v1.TableRow{}.OpenAPIModelName():                                      schema_pkg_apis_meta_v1_TableRow(ref),
-		v1.TableRowCondition{}.OpenAPIModelName():                             schema_pkg_apis_meta_v1_TableRowCondition(ref),
-		v1.Time{}.OpenAPIModelName():                                          schema_pkg_apis_meta_v1_Time(ref),
-		v1.Timestamp{}.OpenAPIModelName():                                     schema_pkg_apis_meta_v1_Timestamp(ref),
-		v1.TypeMeta{}.OpenAPIModelName():                                      schema_pkg_apis_meta_v1_TypeMeta(ref),
-		v1.UpdateOptions{}.OpenAPIModelName():                                 schema_pkg_apis_meta_v1_UpdateOptions(ref),
-		v1.WatchEvent{}.OpenAPIModelName():                                    schema_pkg_apis_meta_v1_WatchEvent(ref),
-		runtime.RawExtension{}.OpenAPIModelName():                             schema_k8sio_apimachinery_pkg_runtime_RawExtension(ref),
-		runtime.TypeMeta{}.OpenAPIModelName():                                 schema_k8sio_apimachinery_pkg_runtime_TypeMeta(ref),
-		runtime.Unknown{}.OpenAPIModelName():                                  schema_k8sio_apimachinery_pkg_runtime_Unknown(ref),
-		version.Info{}.OpenAPIModelName():                                     schema_k8sio_apimachinery_pkg_version_Info(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.GroupMembershipIndex":       schema_goplatform_meshio_apis_tenancy_v1alpha1_GroupMembershipIndex(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.GroupMembershipIndexList":   schema_goplatform_meshio_apis_tenancy_v1alpha1_GroupMembershipIndexList(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.GroupMembershipIndexSpec":   schema_goplatform_meshio_apis_tenancy_v1alpha1_GroupMembershipIndexSpec(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.GroupMembershipIndexStatus": schema_goplatform_meshio_apis_tenancy_v1alpha1_GroupMembershipIndexStatus(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.Membership":                 schema_goplatform_meshio_apis_tenancy_v1alpha1_Membership(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.MembershipIndexEntry":       schema_goplatform_meshio_apis_tenancy_v1alpha1_MembershipIndexEntry(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.MembershipList":             schema_goplatform_meshio_apis_tenancy_v1alpha1_MembershipList(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.MembershipSpec":             schema_goplatform_meshio_apis_tenancy_v1alpha1_MembershipSpec(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.MembershipStatus":           schema_goplatform_meshio_apis_tenancy_v1alpha1_MembershipStatus(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.Project":                    schema_goplatform_meshio_apis_tenancy_v1alpha1_Project(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.ProjectList":                schema_goplatform_meshio_apis_tenancy_v1alpha1_ProjectList(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.ProjectSpec":                schema_goplatform_meshio_apis_tenancy_v1alpha1_ProjectSpec(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.ProjectStatus":              schema_goplatform_meshio_apis_tenancy_v1alpha1_ProjectStatus(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.Tenant":                     schema_goplatform_meshio_apis_tenancy_v1alpha1_Tenant(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.TenantList":                 schema_goplatform_meshio_apis_tenancy_v1alpha1_TenantList(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.TenantSpec":                 schema_goplatform_meshio_apis_tenancy_v1alpha1_TenantSpec(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.TenantStatus":               schema_goplatform_meshio_apis_tenancy_v1alpha1_TenantStatus(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.User":                       schema_goplatform_meshio_apis_tenancy_v1alpha1_User(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.UserList":                   schema_goplatform_meshio_apis_tenancy_v1alpha1_UserList(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.UserMembershipIndex":        schema_goplatform_meshio_apis_tenancy_v1alpha1_UserMembershipIndex(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.UserMembershipIndexList":    schema_goplatform_meshio_apis_tenancy_v1alpha1_UserMembershipIndexList(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.UserMembershipIndexSpec":    schema_goplatform_meshio_apis_tenancy_v1alpha1_UserMembershipIndexSpec(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.UserMembershipIndexStatus":  schema_goplatform_meshio_apis_tenancy_v1alpha1_UserMembershipIndexStatus(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.UserSpec":                   schema_goplatform_meshio_apis_tenancy_v1alpha1_UserSpec(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.UserStatus":                 schema_goplatform_meshio_apis_tenancy_v1alpha1_UserStatus(ref),
+		"go.platform-mesh.io/apis/tenancy/v1alpha1.UserTenancySpec":            schema_goplatform_meshio_apis_tenancy_v1alpha1_UserTenancySpec(ref),
+		v1.APIGroup{}.OpenAPIModelName():                                       schema_pkg_apis_meta_v1_APIGroup(ref),
+		v1.APIGroupList{}.OpenAPIModelName():                                   schema_pkg_apis_meta_v1_APIGroupList(ref),
+		v1.APIResource{}.OpenAPIModelName():                                    schema_pkg_apis_meta_v1_APIResource(ref),
+		v1.APIResourceList{}.OpenAPIModelName():                                schema_pkg_apis_meta_v1_APIResourceList(ref),
+		v1.APIVersions{}.OpenAPIModelName():                                    schema_pkg_apis_meta_v1_APIVersions(ref),
+		v1.ApplyOptions{}.OpenAPIModelName():                                   schema_pkg_apis_meta_v1_ApplyOptions(ref),
+		v1.Condition{}.OpenAPIModelName():                                      schema_pkg_apis_meta_v1_Condition(ref),
+		v1.CreateOptions{}.OpenAPIModelName():                                  schema_pkg_apis_meta_v1_CreateOptions(ref),
+		v1.DeleteOptions{}.OpenAPIModelName():                                  schema_pkg_apis_meta_v1_DeleteOptions(ref),
+		v1.Duration{}.OpenAPIModelName():                                       schema_pkg_apis_meta_v1_Duration(ref),
+		v1.FieldSelectorRequirement{}.OpenAPIModelName():                       schema_pkg_apis_meta_v1_FieldSelectorRequirement(ref),
+		v1.FieldsV1{}.OpenAPIModelName():                                       schema_pkg_apis_meta_v1_FieldsV1(ref),
+		v1.GetOptions{}.OpenAPIModelName():                                     schema_pkg_apis_meta_v1_GetOptions(ref),
+		v1.GroupKind{}.OpenAPIModelName():                                      schema_pkg_apis_meta_v1_GroupKind(ref),
+		v1.GroupResource{}.OpenAPIModelName():                                  schema_pkg_apis_meta_v1_GroupResource(ref),
+		v1.GroupVersion{}.OpenAPIModelName():                                   schema_pkg_apis_meta_v1_GroupVersion(ref),
+		v1.GroupVersionForDiscovery{}.OpenAPIModelName():                       schema_pkg_apis_meta_v1_GroupVersionForDiscovery(ref),
+		v1.GroupVersionKind{}.OpenAPIModelName():                               schema_pkg_apis_meta_v1_GroupVersionKind(ref),
+		v1.GroupVersionResource{}.OpenAPIModelName():                           schema_pkg_apis_meta_v1_GroupVersionResource(ref),
+		v1.InternalEvent{}.OpenAPIModelName():                                  schema_pkg_apis_meta_v1_InternalEvent(ref),
+		v1.LabelSelector{}.OpenAPIModelName():                                  schema_pkg_apis_meta_v1_LabelSelector(ref),
+		v1.LabelSelectorRequirement{}.OpenAPIModelName():                       schema_pkg_apis_meta_v1_LabelSelectorRequirement(ref),
+		v1.List{}.OpenAPIModelName():                                           schema_pkg_apis_meta_v1_List(ref),
+		v1.ListMeta{}.OpenAPIModelName():                                       schema_pkg_apis_meta_v1_ListMeta(ref),
+		v1.ListOptions{}.OpenAPIModelName():                                    schema_pkg_apis_meta_v1_ListOptions(ref),
+		v1.ManagedFieldsEntry{}.OpenAPIModelName():                             schema_pkg_apis_meta_v1_ManagedFieldsEntry(ref),
+		v1.MicroTime{}.OpenAPIModelName():                                      schema_pkg_apis_meta_v1_MicroTime(ref),
+		v1.ObjectMeta{}.OpenAPIModelName():                                     schema_pkg_apis_meta_v1_ObjectMeta(ref),
+		v1.OwnerReference{}.OpenAPIModelName():                                 schema_pkg_apis_meta_v1_OwnerReference(ref),
+		v1.PartialObjectMetadata{}.OpenAPIModelName():                          schema_pkg_apis_meta_v1_PartialObjectMetadata(ref),
+		v1.PartialObjectMetadataList{}.OpenAPIModelName():                      schema_pkg_apis_meta_v1_PartialObjectMetadataList(ref),
+		v1.Patch{}.OpenAPIModelName():                                          schema_pkg_apis_meta_v1_Patch(ref),
+		v1.PatchOptions{}.OpenAPIModelName():                                   schema_pkg_apis_meta_v1_PatchOptions(ref),
+		v1.Preconditions{}.OpenAPIModelName():                                  schema_pkg_apis_meta_v1_Preconditions(ref),
+		v1.RootPaths{}.OpenAPIModelName():                                      schema_pkg_apis_meta_v1_RootPaths(ref),
+		v1.ServerAddressByClientCIDR{}.OpenAPIModelName():                      schema_pkg_apis_meta_v1_ServerAddressByClientCIDR(ref),
+		v1.ShardInfo{}.OpenAPIModelName():                                      schema_pkg_apis_meta_v1_ShardInfo(ref),
+		v1.Status{}.OpenAPIModelName():                                         schema_pkg_apis_meta_v1_Status(ref),
+		v1.StatusCause{}.OpenAPIModelName():                                    schema_pkg_apis_meta_v1_StatusCause(ref),
+		v1.StatusDetails{}.OpenAPIModelName():                                  schema_pkg_apis_meta_v1_StatusDetails(ref),
+		v1.Table{}.OpenAPIModelName():                                          schema_pkg_apis_meta_v1_Table(ref),
+		v1.TableColumnDefinition{}.OpenAPIModelName():                          schema_pkg_apis_meta_v1_TableColumnDefinition(ref),
+		v1.TableOptions{}.OpenAPIModelName():                                   schema_pkg_apis_meta_v1_TableOptions(ref),
+		v1.TableRow{}.OpenAPIModelName():                                       schema_pkg_apis_meta_v1_TableRow(ref),
+		v1.TableRowCondition{}.OpenAPIModelName():                              schema_pkg_apis_meta_v1_TableRowCondition(ref),
+		v1.Time{}.OpenAPIModelName():                                           schema_pkg_apis_meta_v1_Time(ref),
+		v1.Timestamp{}.OpenAPIModelName():                                      schema_pkg_apis_meta_v1_Timestamp(ref),
+		v1.TypeMeta{}.OpenAPIModelName():                                       schema_pkg_apis_meta_v1_TypeMeta(ref),
+		v1.UpdateOptions{}.OpenAPIModelName():                                  schema_pkg_apis_meta_v1_UpdateOptions(ref),
+		v1.WatchEvent{}.OpenAPIModelName():                                     schema_pkg_apis_meta_v1_WatchEvent(ref),
+		runtime.RawExtension{}.OpenAPIModelName():                              schema_k8sio_apimachinery_pkg_runtime_RawExtension(ref),
+		runtime.TypeMeta{}.OpenAPIModelName():                                  schema_k8sio_apimachinery_pkg_runtime_TypeMeta(ref),
+		runtime.Unknown{}.OpenAPIModelName():                                   schema_k8sio_apimachinery_pkg_runtime_Unknown(ref),
+		version.Info{}.OpenAPIModelName():                                      schema_k8sio_apimachinery_pkg_version_Info(ref),
+	}
+}
+
+func schema_goplatform_meshio_apis_tenancy_v1alpha1_GroupMembershipIndex(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "GroupMembershipIndex is the group-subject half of the read model: the Tenants and Projects one GROUP has been granted. One exists per group that holds at least one Membership.\n\nIt answers the question a caller's token asks — \"I hold these groups, what do they reach\" — without fanning out over the fleet, which is the same job UserMembershipIndex does for a person. What it deliberately does NOT do is answer the reverse: there is no list of who is in a group, because the platform does not know and cannot be told. Group membership arrives in a token and nowhere else.\n\nWhy this and not rows on each member's UserMembershipIndex: a group grant would then have to be materialized onto every member, which needs a list of members the platform does not have, and would leave rows behind for anyone who left the group until they next signed in — access that outlives its revocation. Indexing BY GROUP means the caller's own live token supplies the membership on every request, so removal at the identity provider takes effect on the next token with nothing to clean up.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(v1.ObjectMeta{}.OpenAPIModelName()),
+						},
+					},
+					"spec": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("go.platform-mesh.io/apis/tenancy/v1alpha1.GroupMembershipIndexSpec"),
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("go.platform-mesh.io/apis/tenancy/v1alpha1.GroupMembershipIndexStatus"),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"go.platform-mesh.io/apis/tenancy/v1alpha1.GroupMembershipIndexSpec", "go.platform-mesh.io/apis/tenancy/v1alpha1.GroupMembershipIndexStatus", v1.ObjectMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_goplatform_meshio_apis_tenancy_v1alpha1_GroupMembershipIndexList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "GroupMembershipIndexList is a list of GroupMembershipIndex resources.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(v1.ListMeta{}.OpenAPIModelName()),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("go.platform-mesh.io/apis/tenancy/v1alpha1.GroupMembershipIndex"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"items"},
+			},
+		},
+		Dependencies: []string{
+			"go.platform-mesh.io/apis/tenancy/v1alpha1.GroupMembershipIndex", v1.ListMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_goplatform_meshio_apis_tenancy_v1alpha1_GroupMembershipIndexSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "GroupMembershipIndexSpec defines the desired state of a GroupMembershipIndex.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"group": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Group is the group this index is for, as the identity provider emits it.\n\nCarried in the spec because metadata.name CANNOT hold it: a group name is whatever the issuer says, and `team-a/admins` — a shape real providers emit — is not a legal object name. The name is a digest of this value, so this field is the only readable statement of which group the object is about.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"entries": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Entries carries one row per Membership granted to this group.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("go.platform-mesh.io/apis/tenancy/v1alpha1.MembershipIndexEntry"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"group"},
+			},
+		},
+		Dependencies: []string{
+			"go.platform-mesh.io/apis/tenancy/v1alpha1.MembershipIndexEntry"},
+	}
+}
+
+func schema_goplatform_meshio_apis_tenancy_v1alpha1_GroupMembershipIndexStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "GroupMembershipIndexStatus defines the observed state of a GroupMembershipIndex.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"entryCount": {
+						SchemaProps: spec.SchemaProps{
+							Description: "EntryCount mirrors len(spec.entries), so `kubectl get` can print it.",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+					"observedGeneration": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ObservedGeneration is the generation of this object the controller last reconciled.",
+							Type:        []string{"integer"},
+							Format:      "int64",
+						},
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -114,7 +282,7 @@ func schema_goplatform_meshio_apis_tenancy_v1alpha1_Membership(ref common.Refere
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "Membership grants a User a role in a Tenant or a Project. The controller turns it into kcp RBAC.\n\nMemberships always live in the Tenant workspace, whatever their scope. Because of that, deleting a Project does not remove its Memberships — the Project reconciler prunes them explicitly. Deleting the Tenant cascades everything.",
+				Description: "Membership grants a role in a Tenant or a Project to a subject — a User, or everyone in an identity-provider group. The controller turns it into kcp RBAC.\n\nMemberships always live in the Tenant workspace, whatever their scope. Because of that, deleting a Project does not remove its Memberships — the Project reconciler prunes them explicitly. Deleting the Tenant cascades everything.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -296,13 +464,19 @@ func schema_goplatform_meshio_apis_tenancy_v1alpha1_MembershipSpec(ref common.Re
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "MembershipSpec defines the desired state of a Membership.",
+				Description: "MembershipSpec defines the desired state of a Membership.\n\nExactly one of user or group is set — the subject of the grant. They are two fields rather than one polymorphic one because they are not interchangeable: `user` names an object the platform holds and can verify, `group` names a claim the identity provider makes and the platform can only take on trust. Code that means \"the person\" should say user and mean it.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"user": {
 						SchemaProps: spec.SchemaProps{
-							Description: "User is the metadata.name of a User in the directory workspace.",
-							Default:     "",
+							Description: "User is the metadata.name of a User in the directory workspace.\n\nMutually exclusive with Group.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"group": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Group grants to everyone whose token carries this group, present and future. The value is the group as the IDENTITY PROVIDER emits it, without the prefix kcp applies — the prefix is deployment configuration, and a Membership that hardcoded it would stop matching the day it changed.\n\nUNVERIFIABLE, and that is the trade. There is no object to check it against, so a typo is a Membership that grants nobody anything while reporting Ready, and there is no way to enumerate who holds it. In exchange it grants people who have never signed in, which no user-subject Membership can do.\n\nRevocation belongs to the identity provider. Removing someone from the group there stops their next token carrying it, and kcp stops admitting them. Deleting this Membership revokes it for EVERYONE.\n\nMutually exclusive with User.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -331,7 +505,7 @@ func schema_goplatform_meshio_apis_tenancy_v1alpha1_MembershipSpec(ref common.Re
 						},
 					},
 				},
-				Required: []string{"user", "scope", "role"},
+				Required: []string{"scope", "role"},
 			},
 		},
 	}
@@ -1083,8 +1257,34 @@ func schema_goplatform_meshio_apis_tenancy_v1alpha1_UserStatus(ref common.Refere
 					},
 					"lastLogin": {
 						SchemaProps: spec.SchemaProps{
-							Description: "LastLogin is stamped by the tenancy virtual workspace on an authenticated request.",
+							Description: "LastLogin is stamped by the tenancy virtual workspace when this identity provisions itself — the explicit `create users` call, which a client makes on every login. A read does not move it, so `whoami` alone is not a login.\n\nA RECORD, like everything else in this status. Nothing consults it, and an identity that has not signed in for a year is not thereby restricted: kcp RBAC does not know this field exists. Reading it as a session or an expiry would be inventing an access-control input out of a timestamp that is only as accurate as the last client to call.",
 							Ref:         ref(v1.Time{}.OpenAPIModelName()),
+						},
+					},
+					"groups": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Groups is a SAMPLE of the groups this identity's token carried the last time it provisioned itself, kept for debugging and nothing else.\n\nNOT AN AUTHORIZATION INPUT, and it cannot become one. It is a copy of an answer that belongs to the identity provider, it is only as fresh as the last login, and it does not shrink when someone is removed from a group — so a grant resolved from this field would keep granting after the IdP revoked it. kcp evaluates group subjects against the groups in the token being presented, which is the only reading that revokes on time.\n\nTRUNCATED, and deliberately: a federated identity can arrive carrying thousands of groups, and every one of them would otherwise be copied into an object the platform stores, watches and lists. At most MaxObservedGroups are kept; GroupCount records how many there really were, so a truncated sample is visibly a sample rather than a short list.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
+					"groupCount": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GroupCount is how many groups that token carried, before truncation.\n\nIts whole job is to make the difference visible: `groups` with 32 entries and a groupCount of 2000 says \"this is a sample\", where the list alone would read as the whole membership.",
+							Type:        []string{"integer"},
+							Format:      "int32",
 						},
 					},
 					"defaultTenant": {

@@ -25,6 +25,8 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+
+	pmtenancyv1alpha1 "go.platform-mesh.io/apis/tenancy/v1alpha1"
 )
 
 // nameNamespace seeds the derived names below. Arbitrary but fixed — changing it
@@ -33,15 +35,22 @@ import (
 var nameNamespace = uuid.MustParse("2b8f4c17-9d3e-4a62-b0f5-7c1e8a94d206")
 
 // Name derives a Membership's name from what it grants.
-//
-// Deterministic: a reconciler that creates the object and then records a pointer
-// cannot do both atomically, so a retry in between must land on the SAME object.
-// Duplicate Memberships mean duplicate role bindings, and revoking one would leave
-// the other live.
-//
-// The key is (user, scope, project) — what makes two Memberships the same grant.
-// project is empty for scope=tenant.
 func Name(user, scope, project string) string {
 	key := strings.Join([]string{user, scope, project}, "\n")
 	return uuid.NewSHA1(nameNamespace, []byte(key)).String()
+}
+
+// NameForGroup is the same for a group-subject grant.
+func NameForGroup(group, scope, project string) string {
+	key := strings.Join([]string{"group", group, scope, project}, "\n")
+	return uuid.NewSHA1(nameNamespace, []byte(key)).String()
+}
+
+// NameFor picks the right one for a subject kind, so callers holding a Membership
+// do not each re-implement the branch.
+func NameFor(kind, subject, scope, project string) string {
+	if kind == pmtenancyv1alpha1.SubjectKindGroup {
+		return NameForGroup(subject, scope, project)
+	}
+	return Name(subject, scope, project)
 }

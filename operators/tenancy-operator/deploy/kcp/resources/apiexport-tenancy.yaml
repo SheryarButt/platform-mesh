@@ -20,7 +20,7 @@ spec:
   resources:
   - group: tenancy.platform-mesh.io
     name: memberships
-    schema: v6457e3fd38cf.memberships.tenancy.platform-mesh.io
+    schema: vf9ed69978b44.memberships.tenancy.platform-mesh.io
     storage:
       crd: {}
   - group: tenancy.platform-mesh.io

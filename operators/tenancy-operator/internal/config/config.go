@@ -101,6 +101,8 @@ type KcpConfig struct {
 type OIDCConfig struct {
 	UsernameClaim  string
 	UsernamePrefix string
+	GroupsClaim    string
+	GroupsPrefix   string
 
 	// IssuerURL is the single trusted issuer. Federation happens in the broker,
 	// outside the platform, so there is exactly one.
@@ -241,6 +243,8 @@ func NewOperatorConfig() OperatorConfig {
 		OIDC: OIDCConfig{
 			UsernameClaim:  string(identity.ClaimEmail),
 			UsernamePrefix: "pm:",
+			GroupsClaim:    "groups",
+			GroupsPrefix:   "pm:",
 		},
 		VirtualWorkspace: VirtualWorkspaceConfig{
 			BindAddress: ":6443",
@@ -291,6 +295,7 @@ func (c *OperatorConfig) IdentityResolver() (*identity.Resolver, error) {
 	return identity.NewResolver(identity.Config{
 		UsernameClaim:  identity.UsernameClaim(c.OIDC.UsernameClaim),
 		UsernamePrefix: c.OIDC.UsernamePrefix,
+		GroupsPrefix:   c.OIDC.GroupsPrefix,
 	})
 }
 
@@ -341,6 +346,8 @@ func (c *OperatorConfig) AddFlags(fs *pflag.FlagSet) {
 
 	fs.StringVar(&c.OIDC.UsernameClaim, "oidc-username-claim", c.OIDC.UsernameClaim, "Claim kcp turns into a username; MUST match kcp's own setting (email|sub)")
 	fs.StringVar(&c.OIDC.UsernamePrefix, "oidc-username-prefix", c.OIDC.UsernamePrefix, "Prefix kcp prepends to the username claim; MUST match kcp's own setting")
+	fs.StringVar(&c.OIDC.GroupsClaim, "oidc-groups-claim", c.OIDC.GroupsClaim, "Claim kcp turns into the caller's groups; MUST match kcp's own setting. Empty disables group extraction")
+	fs.StringVar(&c.OIDC.GroupsPrefix, "oidc-groups-prefix", c.OIDC.GroupsPrefix, "Prefix kcp prepends to every group; MUST match kcp's own setting, which defaults to `oidc:` when left unset there")
 	fs.StringVar(&c.OIDC.IssuerURL, "oidc-issuer-url", c.OIDC.IssuerURL, "The single trusted OIDC issuer; MUST match kcp's own setting (virtual-workspace only)")
 	fs.StringVar(&c.OIDC.ClientID, "oidc-client-id", c.OIDC.ClientID, "Audience tokens must carry (virtual-workspace only)")
 	fs.StringVar(&c.OIDC.CAFile, "oidc-ca-file", c.OIDC.CAFile, "CA bundle for a private-CA issuer (virtual-workspace only)")

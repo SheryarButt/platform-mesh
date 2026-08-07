@@ -78,12 +78,7 @@ func (s *TenantStorage) GetSingularName() string { return "tenant" }
 // Filtered rather than authorized-or-403: a caller with no memberships gets an
 // empty list, which is the normal first-run state and not an error.
 func (s *TenantStorage) List(ctx context.Context, _ *metainternalversion.ListOptions) (runtime.Object, error) {
-	self, err := s.callerName(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	view, err := resolveAccess(ctx, s.client, self)
+	_, view, err := resolveCallerAccess(ctx, s.client)
 	if err != nil {
 		return nil, err
 	}
@@ -110,12 +105,7 @@ func (s *TenantStorage) List(ctx context.Context, _ *metainternalversion.ListOpt
 
 // Get returns one Tenant the caller belongs to.
 func (s *TenantStorage) Get(ctx context.Context, name string, _ *metav1.GetOptions) (runtime.Object, error) {
-	self, err := s.callerName(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	view, err := resolveAccess(ctx, s.client, self)
+	_, view, err := resolveCallerAccess(ctx, s.client)
 	if err != nil {
 		return nil, err
 	}

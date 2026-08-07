@@ -46,6 +46,8 @@ type OIDCOptions struct {
 	CAFile         string
 	UsernameClaim  string
 	UsernamePrefix string
+	GroupsClaim    string
+	GroupsPrefix   string
 }
 
 // ServeOptions configures the HTTP surface.

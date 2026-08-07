@@ -141,12 +141,35 @@ func BaseURL(server string) string {
 	return strings.TrimSuffix(server, "/")
 }
 
+// TokenGroups returns the groups an id_token carries, for display only.
+//
+// Errors are swallowed deliberately: every caller has already used this token
+// successfully, so a parse failure here is a display problem and must not turn a
+// successful command into a failed one.
+func TokenGroups(idToken string) []string {
+	claims, err := ParseClaims(idToken)
+	if err != nil {
+		return nil
+	}
+	return claims.Groups
+}
+
 // PrintUser reports the User the platform holds for the caller.
 //
 // The two seed fields are shown because they are the answer to "why do I have
 // nothing?": both empty on a User that is otherwise Ready means seeding was off,
 // not that provisioning failed.
-func PrintUser(w io.Writer, u *pmtenancyv1alpha1.User) error {
+//
+// groups comes from the TOKEN rather than from the User, and would keep coming
+// from there even if the User grew an observed-groups field: this caller is
+// holding the credential the platform would have copied that field FROM, so the
+// token is the fresher of the two by definition. A stored copy answers a
+// different question — "what were they in last time anyone looked" — for readers
+// who hold no token of theirs.
+//
+// Printed next to rbacIdentity because the two are the same kind of thing: the
+// user subject and the group subjects a ClusterRoleBinding can name.
+func PrintUser(w io.Writer, u *pmtenancyv1alpha1.User, groups []string) error {
 	bw := &errWriter{w: w}
 	bw.printf("\nUser (from the tenancy virtual workspace):\n")
 	bw.printf("  name:        %s\n", u.Name)
@@ -157,6 +180,23 @@ func PrintUser(w io.Writer, u *pmtenancyv1alpha1.User) error {
 		// The join to kcp RBAC. If this does not match what kcp derives from the
 		// same token, every binding names a subject that never authenticates.
 		bw.printf("  rbacIdentity: %s\n", u.Spec.RBACIdentity)
+	}
+	// Always printed, including when empty. "No groups" is the single most common
+	// reason a group-based grant does nothing, and its usual cause is the client
+	// not asking for the scope rather than the person not being in the group — a
+	// line that disappears cannot say that, and its absence reads as "not
+	// applicable here".
+	if len(groups) > 0 {
+		// Unprefixed, as the token carries them. The prefix kcp and the VW apply is
+		// their configuration and this CLI is not told it — printing a guess next
+		// to a real rbacIdentity would be worse than printing none, because the two
+		// would look equally authoritative.
+		bw.printf("  groups:      %s\n", strings.Join(groups, ", "))
+		bw.printf("               (from your token, unprefixed; RBAC subjects carry --oidc-groups-prefix)\n")
+	} else {
+		bw.printf("  groups:      none\n")
+		bw.printf("               (no `groups` claim in the token — check the `groups` scope was requested\n" +
+			"                and that the identity provider issues it)\n")
 	}
 	bw.printf("  seeding:     tenant=%t workspace=%t\n",
 		u.Spec.Tenancy.SeedTenant, u.Spec.Tenancy.SeedProject)
@@ -247,15 +287,23 @@ func PrintMemberships(w io.Writer, memberships []pmtenancyv1alpha1.Membership) e
 
 	tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
 	bw := &errWriter{w: tw}
-	bw.printf("NAME\tUSER\tSCOPE\tPROJECT\tROLE\tTENANT\n")
+	bw.printf("NAME\tKIND\tSUBJECT\tSCOPE\tPROJECT\tROLE\tTENANT\n")
 	for i := range memberships {
 		m := &memberships[i]
 		project := m.Spec.Project
 		if project == "" {
 			project = "-"
 		}
-		bw.printf("%s\t%s\t%s\t%s\t%s\t%s\n",
-			m.Name, abbreviate(m.Spec.User), m.Spec.Scope, project, m.Spec.Role,
+		// Only a User's subject is abbreviated. A digest is unreadable in a column
+		// and nobody types one; a group name is the value an admin wrote and the
+		// value they would write again, so cutting it would make the column
+		// actively misleading.
+		subject := m.SubjectName()
+		if m.SubjectKind() == pmtenancyv1alpha1.SubjectKindUser {
+			subject = abbreviate(subject)
+		}
+		bw.printf("%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			m.Name, m.SubjectKind(), subject, m.Spec.Scope, project, m.Spec.Role,
 			m.Labels[pmtenancyv1alpha1.LabelTenant])
 	}
 	if bw.err != nil {

@@ -18,8 +18,8 @@
 # virtual workspace — and only a sslip.io name does that without hostAliases.
 # A literal here would be a fourth place to keep in sync with the node's IP.
 #
-# Development-only: in-memory storage, a single static test user (dex/dex),
-# skipApprovalScreen. Do not use as a template for prod.
+# Development-only: in-memory storage, two static test users sharing one password
+# (dex/dex, bob/dex), skipApprovalScreen. Do not use as a template for prod.
 
 # --- cert chain -------------------------------------------------------------
 # selfsigned (manifests/issuer.yaml) → dex-ca (root) → dex-server (leaf).
@@ -103,22 +103,44 @@ data:
     # metadata.name hashes (sha256(issuer + "\n" + sub)). So these must be STABLE
     # and DISTINCT: changing one orphans that identity's User and everything keyed
     # to it, and reusing one would make two logins resolve to a single User.
+    #
+    # `groups` needs dex >= 2.45.0 (dexidp/dex#4456). Before that the builtin
+    # password connector emitted no groups at all, whatever the config said — so a
+    # downgrade of the image below does not degrade group testing, it silently
+    # removes it, and the symptom is an empty `groups` claim rather than an error.
+    #
+    # They reach a token only when the client asks for the `groups` scope.
+    # tenancyctl requests it by default; anything else here has to say so too.
     staticPasswords:
       # email: dex@pm.localhost, password: dex
+      #
+      # In two groups on purpose. `platform-admins` is one NOBODY ELSE is in —
+      # what a group-based platform-admin check would key on, where the whole
+      # point is that holding it is not the same as being authenticated.
       - email: dex@pm.localhost
         username: dex
         userID: "00000000-0000-0000-0000-000000000001"
         hash: "$2a$10$AuO2zT4bk2xn1RXP23XqhO5BMo5PoJFs6tv4MUrKk/mtv97DSNoAC"
+        groups:
+          - platform-admins
+          - acme-engineering
       # email: bob@pm.localhost, password: dex
       #
       # A second identity, for the flows that need someone to grant access TO:
       # `memberships add`, self-leave, the last-admin guard, and 404-not-403 —
       # none of which can be exercised with one user, because a single identity is
       # always a member of everything it can see.
+      #
+      # SHARES `acme-engineering` with dex@ and holds nothing else. That overlap is
+      # the interesting one: it is what makes "one grant, two people" observable,
+      # and what makes a group grant distinguishable from a per-user one — the two
+      # look identical until a second member appears without a second Membership.
       - email: bob@pm.localhost
         username: bob
         userID: "00000000-0000-0000-0000-000000000002"
         hash: "$2a$10$AuO2zT4bk2xn1RXP23XqhO5BMo5PoJFs6tv4MUrKk/mtv97DSNoAC"
+        groups:
+          - acme-engineering
 ---
 # --- dex deployment ---------------------------------------------------------
 apiVersion: apps/v1
@@ -140,7 +162,10 @@ spec:
     spec:
       containers:
         - name: dex
-          image: ghcr.io/dexidp/dex:v2.44.0
+          # >= 2.45.0 is a REQUIREMENT, not a currency preference: groups on
+          # staticPasswords landed there (dexidp/dex#4456), and an older image
+          # accepts the same config while issuing tokens with no groups claim.
+          image: ghcr.io/dexidp/dex:v2.45.1
           command: ["dex", "serve", "/etc/dex/config/config.yaml"]
           ports:
             - name: https

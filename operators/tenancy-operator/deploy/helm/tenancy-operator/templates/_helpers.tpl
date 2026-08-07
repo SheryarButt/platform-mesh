@@ -102,6 +102,23 @@ is designed to make impossible.
 - --log-level={{ .Values.log.level }}
 {{- end -}}
 
+{{/*
+The group half of the OIDC mirror, shared by the manager and the VW.
+
+One definition for both, like initContainer above: the VW decides what a caller
+may SEE from the groups it extracts, and the manager will decide what a group
+grant BINDS from the same pair. Two copies of that is two chances for one of them
+to name `pm:platform-admins` while the other names `oidc:platform-admins`.
+
+Always rendered, never conditional on a value being set. kcp's own groupsPrefix
+default is `oidc:` rather than empty, so "the flag is absent" and "the prefix is
+empty" are different configurations and only one of them is ever intended.
+*/}}
+{{- define "tenancy-operator.oidcGroupArgs" }}
+- --oidc-groups-claim={{ .Values.oidc.groupsClaim }}
+- "--oidc-groups-prefix={{ .Values.oidc.groupsPrefix }}"
+{{- end -}}
+
 {{- define "tenancy-operator.args" -}}
 - operator
 {{- include "tenancy-operator.pathArgs" . }}
@@ -111,6 +128,7 @@ is designed to make impossible.
 - --kcp-access-endpoint-slice={{ .Values.kcp.endpointSlices.access }}
 - --oidc-username-claim={{ .Values.oidc.usernameClaim }}
 - "--oidc-username-prefix={{ .Values.oidc.usernamePrefix }}"
+{{- include "tenancy-operator.oidcGroupArgs" . }}
 - --tenancy-personal-tenants-enabled={{ .Values.tenancy.personalTenantsEnabled }}
 - --tenancy-tenant-quota={{ .Values.tenancy.tenantQuota }}
 - --tenancy-project-quota={{ .Values.tenancy.projectQuota }}
@@ -198,6 +216,7 @@ disagreement would have it serving Users into a tree nobody reconciles.
 {{- end }}
 - --oidc-username-claim={{ .Values.oidc.usernameClaim }}
 - "--oidc-username-prefix={{ .Values.oidc.usernamePrefix }}"
+{{- include "tenancy-operator.oidcGroupArgs" . }}
 - "--virtual-workspace-bind-address={{ .Values.virtualWorkspace.bindAddress }}"
 - --virtual-workspace-tls-cert-file=/etc/vw-tls/tls.crt
 - --virtual-workspace-tls-private-key-file=/etc/vw-tls/tls.key

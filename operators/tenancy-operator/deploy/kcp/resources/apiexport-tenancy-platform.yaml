@@ -19,6 +19,11 @@ metadata:
 spec:
   resources:
   - group: tenancy.platform-mesh.io
+    name: groupmembershipindices
+    schema: v11b7bafd2527.groupmembershipindices.tenancy.platform-mesh.io
+    storage:
+      crd: {}
+  - group: tenancy.platform-mesh.io
     name: tenants
     schema: vfb927efc5339.tenants.tenancy.platform-mesh.io
     storage:
@@ -30,7 +35,7 @@ spec:
       crd: {}
   - group: tenancy.platform-mesh.io
     name: users
-    schema: v370e56dae4d1.users.tenancy.platform-mesh.io
+    schema: v1e6f2bef7c7f.users.tenancy.platform-mesh.io
     storage:
       crd: {}
 status: {}
