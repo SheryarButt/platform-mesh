@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -200,4 +201,72 @@ func isPodReady(pod *corev1.Pod) bool {
 		}
 	}
 	return false
+}
+
+// gateway is the envoy proxy fronting every exposed kcp endpoint. It terminates
+// nothing: the listener is TLS passthrough and routes by SNI, so a connection
+// forwarded here reaches whichever component the requested hostname names.
+var gateway = forwardTarget{
+	what:      "gateway",
+	namespace: "envoy-gateway-system",
+	port:      8443,
+	labels: ctrlruntimeclient.MatchingLabels{
+		"gateway.envoyproxy.io/owning-gateway-name": "eg",
+	},
+}
+
+// GatewayDialer dials the exposed kcp endpoints of every cluster in the
+// environment through their gateways.
+//
+// The deployer runs on the host here, where the published sslip.io hostnames
+// resolve to a kind node address that is not routable on every container
+// runtime. Which cluster to forward on comes from the hostname itself: the
+// exposure templates put the cluster ID — the node's dashed IP — in the second
+// label, so "root.10-89-0-91.sslip.io" names both the component and the cluster
+// it runs on. SNI then picks the component, exactly as it would in a real
+// deployment.
+func (e *Env) GatewayDialer(t *testing.T) func(context.Context, string, string) (net.Conn, error) {
+	t.Helper()
+	var (
+		mu      sync.Mutex
+		dialers = map[string]func(context.Context, string, string) (net.Conn, error){}
+	)
+
+	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, _, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, fmt.Errorf("parsing %q: %w", address, err)
+		}
+		cluster, err := e.clusterOf(host)
+		if err != nil {
+			return nil, err
+		}
+
+		mu.Lock()
+		dial, ok := dialers[cluster.Name]
+		if !ok {
+			dial = lazyDialer(t, cluster, gateway)
+			dialers[cluster.Name] = dial
+		}
+		mu.Unlock()
+
+		return dial(ctx, network, address)
+	}
+}
+
+// clusterOf resolves the cluster an exposed hostname belongs to by the cluster
+// ID its second label carries.
+func (e *Env) clusterOf(host string) (*Cluster, error) {
+	labels := strings.Split(host, ".")
+	if len(labels) < 2 {
+		return nil, fmt.Errorf("no cluster ID in hostname %q", host)
+	}
+	id := labels[1]
+
+	for _, c := range append([]*Cluster{e.Config}, e.Workloads...) {
+		if c.NodeIP == id {
+			return c, nil
+		}
+	}
+	return nil, fmt.Errorf("no engaged cluster with ID %q (hostname %q)", id, host)
 }
