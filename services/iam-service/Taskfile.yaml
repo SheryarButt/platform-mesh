@@ -31,12 +31,12 @@ tasks:
     desc: "Generate minimal Keycloak client from OpenAPI spec"
     deps: [tools:oapi-codegen]
     cmds:
-      - "{{.BIN}}/oapi-codegen -config oapi-codegen.yaml keycloak-minimal.json"
+      - "{{.OAPI_CODEGEN}} -config oapi-codegen.yaml keycloak-minimal.json"
       - echo "Generated minimal Keycloak client in pkg/keycloak/client/client.go"
   mockery:
     deps: [tools:mockery]
     cmds:
-      - "{{.BIN}}/mockery"
+      - "{{.MOCKERY}}"
   fmt:
     cmds:
       - go fmt ./...
@@ -57,10 +57,10 @@ tasks:
       - go test -coverprofile=cover.out ./...
   cover:
     deps:
-      - task: setup:go-test-coverage
+      - task: tools:go-test-coverage
       - task: test
     cmds:
-        - "{{.BIN}}/go-test-coverage --profile cover.out --config ./.testcoverage.yml"
+        - "{{.GO_TEST_COVERAGE}} --profile cover.out --config ./.testcoverage.yml"
   test:
     deps:
       - task: unittest

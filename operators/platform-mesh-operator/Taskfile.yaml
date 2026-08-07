@@ -33,7 +33,7 @@ tasks:
   mockery:
     deps: [tools:mockery]
     cmds:
-      - "{{.BIN}}/mockery"
+      - "{{.MOCKERY}}"
 
   kindtest:
     deps: [tools:mkcert, tools:kind]
@@ -136,7 +136,7 @@ tasks:
                 cp "${manifest}" {{.CRD_DIRECTORY}}/apigen/crds
             done
 
-            {{.BIN}}/apigen \
+            {{.APIGEN}} \
                 --input-dir {{.CRD_DIRECTORY}}/apigen/crds \
                 --output-dir {{.CRD_DIRECTORY}}/apigen/out
 
@@ -211,7 +211,7 @@ tasks:
         vars:
           ADDITIONAL_COMMAND_ARGS: -coverprofile=./cover.out -covermode=atomic -coverpkg=./...
     cmds:
-        - "{{.BIN}}/go-test-coverage --threshold-file 30 --threshold-package 60 --threshold-total 45 --profile cover.out --config ./.testcoverage.yml"
+        - "{{.GO_TEST_COVERAGE}} --threshold-file 30 --threshold-package 60 --threshold-total 45 --profile cover.out --config ./.testcoverage.yml"
   helm-unittest:
     cmds:
       - helm unittest chart
