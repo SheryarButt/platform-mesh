@@ -47,7 +47,9 @@ type RootShardTemplate struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec operatorv1alpha1.RootShardTemplateSpec `json:"spec,omitempty"`
+	// external and cache are overwritten from the engaged clusters, but the
+	// shared spec type requires them; any placeholder does.
+	Spec operatorv1alpha1.RootShardSpec `json:"spec,omitempty"`
 }
 
 // RootShardTemplateList contains a list of RootShardTemplate.
@@ -66,7 +68,9 @@ type ShardTemplate struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec operatorv1alpha1.ShardTemplateSpec `json:"spec,omitempty"`
+	// rootShard is overwritten with the RootShard rendered for the engaged
+	// cluster, but the shared spec type requires it; any placeholder does.
+	Spec operatorv1alpha1.ShardSpec `json:"spec,omitempty"`
 }
 
 // ShardTemplateList contains a list of ShardTemplate.
@@ -85,7 +89,9 @@ type FrontProxyTemplate struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec operatorv1alpha1.FrontProxyTemplateSpec `json:"spec,omitempty"`
+	// rootShard is overwritten with the RootShard rendered for the engaged
+	// cluster, but the shared spec type requires it; any placeholder does.
+	Spec operatorv1alpha1.FrontProxySpec `json:"spec,omitempty"`
 }
 
 // FrontProxyTemplateList contains a list of FrontProxyTemplate.
@@ -104,7 +110,7 @@ type CacheServerTemplate struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec operatorv1alpha1.CacheServerTemplateSpec `json:"spec,omitempty"`
+	Spec operatorv1alpha1.CacheServerSpec `json:"spec,omitempty"`
 }
 
 // CacheServerTemplateList contains a list of CacheServerTemplate.
@@ -123,7 +129,9 @@ type VirtualWorkspaceTemplate struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec operatorv1alpha1.VirtualWorkspaceTemplateSpec `json:"spec,omitempty"`
+	// external and target are overwritten from the engaged clusters, but the
+	// shared spec type requires them; any placeholder does.
+	Spec operatorv1alpha1.VirtualWorkspaceSpec `json:"spec,omitempty"`
 }
 
 // VirtualWorkspaceTemplateList contains a list of VirtualWorkspaceTemplate.
