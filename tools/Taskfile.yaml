@@ -36,6 +36,10 @@ vars:
   BIN: '{{.TOPLEVEL}}/bin'
   HACK: '{{.TOPLEVEL}}/hack'
 
+  # To update any of these versions, first change them here and then run any
+  # command that uses the tool, but with UGET_UPDATE=true set, for example for
+  # bumping golangci-lint, run `UGET_UPDATE=true task lint`.
+
   # also used for kcp's apigen
   APIGEN: '{{.BIN}}/apigen-{{.KCP_VERSION}}'
 
