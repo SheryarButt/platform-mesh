@@ -46,8 +46,8 @@ func createPlatformMesh(t *testing.T, c ctrlruntimeclient.Client, etcdEndpoint s
 }
 
 func platformMesh(etcdEndpoint string) (*pmdeployv1alpha1.PlatformMesh, []ctrlruntimeclient.Object) {
-	etcd := func(prefix string) *operatorv1alpha1.EtcdConfig {
-		return &operatorv1alpha1.EtcdConfig{
+	etcd := func(prefix string) operatorv1alpha1.EtcdConfig {
+		return operatorv1alpha1.EtcdConfig{
 			Endpoints: []string{strconv.Quote(etcdEndpoint)},
 			TLSConfig: &operatorv1alpha1.EtcdTLSConfig{
 				SecretRef: corev1.LocalObjectReference{
@@ -57,7 +57,7 @@ func platformMesh(etcdEndpoint string) (*pmdeployv1alpha1.PlatformMesh, []ctrlru
 			Prefix: prefix,
 		}
 	}
-	certs := &operatorv1alpha1.Certificates{
+	certs := operatorv1alpha1.Certificates{
 		IssuerRef: &operatorv1alpha1.ObjectReference{
 			Name:  "kcp",
 			Kind:  "ClusterIssuer",
@@ -75,8 +75,8 @@ func platformMesh(etcdEndpoint string) (*pmdeployv1alpha1.PlatformMesh, []ctrlru
 	templates := []ctrlruntimeclient.Object{
 		&pmdeployv1alpha1.RootShardTemplate{
 			ObjectMeta: metav1.ObjectMeta{Name: "root", Namespace: suite.ProviderNamespace},
-			Spec: operatorv1alpha1.RootShardTemplateSpec{
-				CommonShardSpecTemplate: operatorv1alpha1.CommonShardSpecTemplate{
+			Spec: operatorv1alpha1.RootShardSpec{
+				CommonShardSpec: operatorv1alpha1.CommonShardSpec{
 					Etcd: etcd(`"/" + platformMesh + "/root"`),
 				},
 				Certificates: certs,
@@ -84,8 +84,8 @@ func platformMesh(etcdEndpoint string) (*pmdeployv1alpha1.PlatformMesh, []ctrlru
 		},
 		&pmdeployv1alpha1.ShardTemplate{
 			ObjectMeta: metav1.ObjectMeta{Name: "default", Namespace: suite.ProviderNamespace},
-			Spec: operatorv1alpha1.ShardTemplateSpec{
-				CommonShardSpecTemplate: operatorv1alpha1.CommonShardSpecTemplate{
+			Spec: operatorv1alpha1.ShardSpec{
+				CommonShardSpec: operatorv1alpha1.CommonShardSpec{
 					Etcd: etcd(`"/" + platformMesh + "/" + component + "/" + cluster`),
 				},
 			},

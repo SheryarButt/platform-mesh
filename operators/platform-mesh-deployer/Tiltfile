@@ -417,12 +417,20 @@ kubectl -n "$NS" create secret generic "$SECRET" \\
     # endpoints and the etcd prefix are CEL EXPRESSIONS, so a literal string has
     # to appear as a quoted string inside the YAML string. `platformMesh`,
     # `component` and `cluster` are the variables the deployer binds per shard.
+    #
+    # `external`, `cache` and `rootShard` are placeholders. A template carries the
+    # same spec type as the object it is merged onto, so the schema requires them,
+    # but the deployer overwrites all three from the clusters it engaged.
     k8s_yaml(blob('''apiVersion: deploy.platform-mesh.io/v1alpha1
 kind: RootShardTemplate
 metadata:
   name: root
   namespace: {ns}
 spec:
+  external:
+    hostname: overwritten
+    port: 1
+  cache: {{}}
   etcd:
     endpoints:
       - '"https://etcd.{cluster}.sslip.io:{port}"'
@@ -443,6 +451,9 @@ metadata:
   name: default
   namespace: {ns}
 spec:
+  rootShard:
+    reference:
+      name: overwritten
   etcd:
     endpoints:
       - '"https://etcd.{cluster}.sslip.io:{port}"'

@@ -64,9 +64,9 @@ func platformMesh() *pmdeployv1alpha1.PlatformMesh {
 func rootShardTemplate() *pmdeployv1alpha1.RootShardTemplate {
 	return &pmdeployv1alpha1.RootShardTemplate{
 		ObjectMeta: metav1.ObjectMeta{Name: "root", Namespace: "pm"},
-		Spec: operatorv1alpha1.RootShardTemplateSpec{
-			CommonShardSpecTemplate: operatorv1alpha1.CommonShardSpecTemplate{
-				Etcd: &operatorv1alpha1.EtcdConfig{
+		Spec: operatorv1alpha1.RootShardSpec{
+			CommonShardSpec: operatorv1alpha1.CommonShardSpec{
+				Etcd: operatorv1alpha1.EtcdConfig{
 					Endpoints: []string{`"https://etcd-" + platformMesh + ".pm:2379"`},
 					Prefix:    `"/" + platformMesh + "/" + cluster`,
 				},
@@ -78,9 +78,9 @@ func rootShardTemplate() *pmdeployv1alpha1.RootShardTemplate {
 func shardTemplate() *pmdeployv1alpha1.ShardTemplate {
 	return &pmdeployv1alpha1.ShardTemplate{
 		ObjectMeta: metav1.ObjectMeta{Name: "eu", Namespace: "pm"},
-		Spec: operatorv1alpha1.ShardTemplateSpec{
-			CommonShardSpecTemplate: operatorv1alpha1.CommonShardSpecTemplate{
-				Etcd: &operatorv1alpha1.EtcdConfig{
+		Spec: operatorv1alpha1.ShardSpec{
+			CommonShardSpec: operatorv1alpha1.CommonShardSpec{
+				Etcd: operatorv1alpha1.EtcdConfig{
 					Endpoints: []string{`"https://etcd-" + platformMesh + ".pm:2379"`},
 					Prefix:    `"/" + platformMesh + "/" + shardGroup + "/" + cluster`,
 				},
@@ -246,7 +246,7 @@ func TestReconcileCacheServer(t *testing.T) {
 	}
 	cacheTemplate := &pmdeployv1alpha1.CacheServerTemplate{
 		ObjectMeta: metav1.ObjectMeta{Name: "global", Namespace: "pm"},
-		Spec: operatorv1alpha1.CacheServerTemplateSpec{
+		Spec: operatorv1alpha1.CacheServerSpec{
 			Etcd: &operatorv1alpha1.EtcdConfig{
 				Endpoints: []string{`"https://cache-etcd-" + platformMesh + ".pm:2379"`},
 				Prefix:    `"/" + platformMesh + "/cache"`,
