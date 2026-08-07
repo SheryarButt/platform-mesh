@@ -28,3 +28,18 @@ services/kubernetes-graphql-gateway/sdk/schemahandler_grpc.pb.go
 # checker only recognises the `#` form for YAML, which here would mean stamping
 # the licence into real cluster objects.
 operators/tenancy-operator/deploy/helm/tenancy-operator/templates
+
+# Tilt chart/download cache (gitignored, but the checker walks the filesystem)
+contrib/tilt/.cache
+
+# Derived from the kcp project, keeps the upstream copyright
+operators/platform-mesh-operator/hack/download-tool.sh
+
+# Vendored upstream install manifests and CRDs (flux, kro, ocm, gardener etcd-druid, kcp)
+operators/platform-mesh-operator/test/e2e/kind/yaml/flux2-v2.6.4
+operators/platform-mesh-operator/test/e2e/kind/kustomize/base/kro/kro.yaml
+operators/platform-mesh-operator/test/e2e/kind/yaml/ocm-controller/ocm-controller.yaml
+operators/platform-mesh-operator/test/e2e/kind/kustomize/base/crds/druid.gardener.cloud_etcds.yaml
+operators/platform-mesh-operator/test/e2e/kind/kustomize/base/crds/druid.gardener.cloud_etcdcopybackupstasks.yaml
+operators/platform-mesh-operator/manifests/kcp/01-platform-mesh-system/crds-inittargets.initialization.kcp.io.yaml
+operators/platform-mesh-operator/manifests/kcp/01-platform-mesh-system/crds-inittemplates.initialization.kcp.io.yaml
