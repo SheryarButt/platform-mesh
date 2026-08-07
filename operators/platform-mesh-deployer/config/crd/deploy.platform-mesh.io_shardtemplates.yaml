@@ -55,9 +55,8 @@ spec:
             type: object
           spec:
             description: |-
-              Spec is a ShardSpec, so the schema requires rootShard even though the
-              deployer overwrites it with the RootShard it renders for the engaged
-              cluster. Set it to any placeholder.
+              rootShard is overwritten with the RootShard rendered for the engaged
+              cluster, but the shared spec type requires it; any placeholder does.
             properties:
               audit:
                 properties:

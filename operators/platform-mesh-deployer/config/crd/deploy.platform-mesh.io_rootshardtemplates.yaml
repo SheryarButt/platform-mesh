@@ -55,10 +55,8 @@ spec:
             type: object
           spec:
             description: |-
-              Spec is a RootShardSpec, so the schema requires external and cache even
-              though the deployer overwrites both: external is the front proxy's
-              exposure and cache the CacheServer it renders, neither of which is known
-              before the clusters are engaged. Set them to any placeholder.
+              external and cache are overwritten from the engaged clusters, but the
+              shared spec type requires them; any placeholder does.
             properties:
               audit:
                 properties:

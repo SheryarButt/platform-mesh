@@ -55,9 +55,8 @@ spec:
             type: object
           spec:
             description: |-
-              Spec is a VirtualWorkspaceSpec, so the schema requires external and target
-              even though the deployer overwrites both from the engaged clusters. Set
-              them to any placeholder.
+              external and target are overwritten from the engaged clusters, but the
+              shared spec type requires them; any placeholder does.
             properties:
               caBundleSecretRef:
                 description: |-
