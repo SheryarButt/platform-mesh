@@ -1,6 +1,6 @@
 module go.platform-mesh.io/platform-mesh-operator
 
-go 1.26.1
+go 1.26.3
 
 require (
 	github.com/cert-manager/cert-manager v1.20.3
@@ -9,7 +9,7 @@ require (
 	github.com/fluxcd/source-controller/api v1.8.5
 	github.com/go-logr/logr v1.4.4
 	github.com/kcp-dev/kcp/sdk v0.28.3
-	github.com/kcp-dev/multicluster-provider v0.7.1
+	github.com/kcp-dev/multicluster-provider v0.8.1-0.20260714141811-833f063357f8
 	github.com/kcp-dev/sdk v0.32.3
 	github.com/mandelsoft/goutils v0.0.0-20260507153918-c39bb4bb4b7b
 	github.com/mitchellh/copystructure v1.2.0
@@ -19,7 +19,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
 	go.platform-mesh.io/apis v0.0.4-0.20260806091301-7f3c23b2110d
 	go.platform-mesh.io/golang-commons v0.18.1
 	go.platform-mesh.io/subroutines v0.6.1
@@ -43,9 +43,8 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
-	github.com/evanphx/json-patch v5.9.11+incompatible // indirect
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
-	github.com/felixge/httpsnoop v1.0.4 // indirect
+	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fluxcd/pkg/apis/acl v0.9.0 // indirect
 	github.com/fluxcd/pkg/apis/kustomize v1.15.1 // indirect
 	github.com/fluxcd/pkg/apis/meta v1.25.1 // indirect
@@ -78,7 +77,6 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kcp-dev/apimachinery/v2 v2.32.3 // indirect
 	github.com/kcp-dev/logicalcluster/v3 v3.0.5 // indirect
-	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.21 // indirect
@@ -102,7 +100,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.44.0 // indirect
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.44.0 // indirect
 	go.opentelemetry.io/otel/metric v1.45.0 // indirect
-	go.opentelemetry.io/otel/sdk v1.44.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.45.0 // indirect
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
@@ -123,8 +121,18 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260618221249-bc653b64f974 // indirect
-	sigs.k8s.io/gateway-api v1.5.0 // indirect
+	sigs.k8s.io/gateway-api v1.6.1 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.0 // indirect
 )
+
+replace github.com/kcp-dev/multicluster-provider/client => github.com/kcp-dev/multicluster-provider/client v0.8.1-0.20260714141811-833f063357f8
+
+replace github.com/kcp-dev/kcp-operator/sdk => github.com/ntnn/kcp-operator/sdk v0.8.1-0.20260726154422-be62fa798885
+
+replace go.platform-mesh.io/apis => ../../apis
+
+replace go.platform-mesh.io/golang-commons => ../../golang-commons
+
+replace go.platform-mesh.io/subroutines => ../../subroutines
