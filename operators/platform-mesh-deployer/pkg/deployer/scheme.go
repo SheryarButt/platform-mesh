@@ -17,6 +17,8 @@ limitations under the License.
 package deployer
 
 import (
+	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+
 	pmdeployv1alpha1 "go.platform-mesh.io/apis/deploy/v1alpha1"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -27,9 +29,9 @@ import (
 
 	deployv1alpha1 "github.com/kcp-dev/kcp-operator/sdk/apis/deploy/v1alpha1"
 	operatorv1alpha1 "github.com/kcp-dev/kcp-operator/sdk/apis/operator/v1alpha1"
-	kcpapisv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
-	kcpcorev1alpha1 "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
-	kcptenancyv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
+	kcpcorev1alpha1 "github.com/kcp-dev/sdk/apis/core/v1alpha1"
+	kcptenancyv1alpha1 "github.com/kcp-dev/sdk/apis/tenancy/v1alpha1"
 )
 
 // NewScheme returns a scheme with alle the schemes needed for the Deployer.
@@ -41,7 +43,10 @@ func NewScheme() *runtime.Scheme {
 	utilruntime.Must(deployv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(gwapiv1.Install(scheme))
 	utilruntime.Must(gwapiv1alpha2.Install(scheme))
-	// kcp types, used by the provisioner controllers against kcp itself.
+	// cert-manager, for the kcp-operator config controllers that mint the kcp CAs.
+	utilruntime.Must(certmanagerv1.AddToScheme(scheme))
+	// kcp types, used by the provisioner controllers against kcp itself and by
+	// the kcp-operator shard controller, which deregisters a shard from the root.
 	utilruntime.Must(kcptenancyv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(kcpcorev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(kcpapisv1alpha1.AddToScheme(scheme))

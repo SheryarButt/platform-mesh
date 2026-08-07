@@ -22,6 +22,8 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"go.platform-mesh.io/platform-mesh-deployer/pkg/deployer"
 )
 
 func TestNewOperatorConfig(t *testing.T) {
@@ -30,6 +32,10 @@ func TestNewOperatorConfig(t *testing.T) {
 	assert.Equal(t, "platform-mesh-system", cfg.Provider.Namespace)
 	assert.Equal(t, "kubeconfig", cfg.Provider.KubeconfigSecretKey)
 	assert.Equal(t, DefaultShardLabel, cfg.Provider.ShardGroups["default"])
+	// The kcp-operator groups run in this process; leaving them off by default
+	// would deploy a PlatformMesh that never compiles into anything.
+	assert.Contains(t, cfg.EnabledControllers, deployer.ControllerKcpConfig)
+	assert.Contains(t, cfg.EnabledControllers, deployer.ControllerKcpWorkload)
 }
 
 func TestAddFlags(t *testing.T) {
