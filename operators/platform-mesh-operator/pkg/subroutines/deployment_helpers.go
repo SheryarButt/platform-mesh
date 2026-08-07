@@ -29,10 +29,11 @@ import (
 
 	"go.platform-mesh.io/golang-commons/errors"
 	"go.platform-mesh.io/golang-commons/logger"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 )
 
@@ -67,8 +68,8 @@ func updateObjectMetadata(existing, desired *unstructured.Unstructured) {
 func (r *DeploymentSubroutine) renderAndApplyTemplates(
 	ctx context.Context,
 	dir string,
-	tmplVars map[string]interface{},
-	k8sClient client.Client,
+	tmplVars map[string]any,
+	k8sClient ctrlruntimeclient.Client,
 	log *logger.Logger,
 	templateType string,
 	skipFile func(fileName string) bool,
@@ -104,7 +105,7 @@ func (r *DeploymentSubroutine) renderAndApplyTemplates(
 			}
 
 			// Apply the rendered manifest
-			if err := k8sClient.Patch(ctx, obj, client.Apply, client.FieldOwner(fieldManagerDeployment), client.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
+			if err := k8sClient.Patch(ctx, obj, ctrlruntimeclient.Apply, ctrlruntimeclient.FieldOwner(fieldManagerDeployment), ctrlruntimeclient.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
 				return errors.Wrap(err, "Failed to apply rendered manifest from template: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 			}
 		}
@@ -125,7 +126,7 @@ func (r *DeploymentSubroutine) renderAndApplyTemplates(
 func (r *DeploymentSubroutine) renderAndApplyTemplatesWithRouter(
 	ctx context.Context,
 	dir string,
-	tmplVars map[string]interface{},
+	tmplVars map[string]any,
 	log *logger.Logger,
 	templateType string,
 	skipFile func(fileName string) bool,
@@ -169,7 +170,7 @@ func (r *DeploymentSubroutine) renderAndApplyTemplatesWithRouter(
 // renderTemplateFile reads a template file, renders it, and returns all unstructured objects.
 // Supports multi-document YAML (documents separated by "---").
 // Returns an empty slice if the template renders empty.
-func (r *DeploymentSubroutine) renderTemplateFile(path string, tmplVars map[string]interface{}, log *logger.Logger) ([]*unstructured.Unstructured, error) {
+func (r *DeploymentSubroutine) renderTemplateFile(path string, tmplVars map[string]any, log *logger.Logger) ([]*unstructured.Unstructured, error) {
 	templateBytes, err := os.ReadFile(path)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to read template file")
@@ -202,7 +203,7 @@ func (r *DeploymentSubroutine) renderTemplateFile(path string, tmplVars map[stri
 		if doc == "" {
 			continue
 		}
-		var objMap map[string]interface{}
+		var objMap map[string]any
 		if err := yaml.Unmarshal([]byte(doc), &objMap); err != nil {
 			return nil, errors.Wrap(err, "Failed to unmarshal rendered YAML from template %s (size: %d bytes)", path, len(doc))
 		}
@@ -212,7 +213,7 @@ func (r *DeploymentSubroutine) renderTemplateFile(path string, tmplVars map[stri
 }
 
 // helper: functions for Helm-like templates in components gotemplates
-func isZeroValue(v interface{}) bool {
+func isZeroValue(v any) bool {
 	if v == nil {
 		return true
 	}
@@ -228,13 +229,13 @@ func isZeroValue(v interface{}) bool {
 
 func templateFuncMap() template.FuncMap {
 	return template.FuncMap{
-		"default": func(d, v interface{}) interface{} {
+		"default": func(d, v any) any {
 			if isZeroValue(v) {
 				return d
 			}
 			return v
 		},
-		"toYaml": func(v interface{}) (string, error) {
+		"toYaml": func(v any) (string, error) {
 			b, err := yaml.Marshal(v)
 			return string(b), err
 		},
@@ -269,16 +270,16 @@ func templateFuncMap() template.FuncMap {
 			}
 			return result
 		},
-		"or": func(a, b interface{}) interface{} {
+		"or": func(a, b any) any {
 			if !isZeroValue(a) {
 				return a
 			}
 			return b
 		},
-		"and": func(a, b interface{}) bool {
+		"and": func(a, b any) bool {
 			return !isZeroValue(a) && !isZeroValue(b)
 		},
-		"not": func(v interface{}) bool {
+		"not": func(v any) bool {
 			return isZeroValue(v)
 		},
 	}
@@ -289,15 +290,15 @@ func templateFuncMap() template.FuncMap {
 // This prevents DeploymentSubroutine from overwriting values managed by ResourceSubroutine.
 func (r *DeploymentSubroutine) preserveExistingArgoSourceFields(
 	ctx context.Context,
-	objMap map[string]interface{},
+	objMap map[string]any,
 	name, namespace string,
 	log *logger.Logger,
 ) {
 	existingApp := &unstructured.Unstructured{}
 	existingApp.SetGroupVersionKind(argoApplicationGVK)
 
-	if err := r.clientInfra.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, existingApp); err != nil {
-		if !kerrors.IsNotFound(err) {
+	if err := r.clientInfra.Get(ctx, ctrlruntimeclient.ObjectKey{Name: name, Namespace: namespace}, existingApp); err != nil {
+		if !apierrors.IsNotFound(err) {
 			log.Warn().Err(err).Str("app", name).Msg("Failed to get existing ArgoCD Application, skipping field preservation")
 		}
 		// Application doesn't exist yet (or transient error) — nothing to preserve
@@ -310,8 +311,8 @@ func (r *DeploymentSubroutine) preserveExistingArgoSourceFields(
 
 	// Check if the new object has repoURL/targetRevision before trying to preserve
 	var newRepoURL, newTargetRevision string
-	if spec, ok := objMap["spec"].(map[string]interface{}); ok {
-		if source, ok := spec["source"].(map[string]interface{}); ok {
+	if spec, ok := objMap["spec"].(map[string]any); ok {
+		if source, ok := spec["source"].(map[string]any); ok {
 			if url, ok := source["repoURL"].(string); ok {
 				newRepoURL = url
 			}
@@ -324,8 +325,8 @@ func (r *DeploymentSubroutine) preserveExistingArgoSourceFields(
 	// Remove placeholder values from the patch — they must never be applied to the cluster.
 	// ResourceSubroutine is responsible for setting the real values.
 	// Also preserve any real value that ResourceSubroutine has already written.
-	if spec, ok := objMap["spec"].(map[string]interface{}); ok {
-		if source, ok := spec["source"].(map[string]interface{}); ok {
+	if spec, ok := objMap["spec"].(map[string]any); ok {
+		if source, ok := spec["source"].(map[string]any); ok {
 			if newRepoURL == argoPlaceholderRepoURL {
 				// Never apply the placeholder — always strip it so ResourceSubroutine owns the field.
 				source["repoURL"] = existingRepoURL

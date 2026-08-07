@@ -20,25 +20,25 @@ import (
 	"context"
 	"fmt"
 
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
 	pmconfig "go.platform-mesh.io/golang-commons/config"
 	"go.platform-mesh.io/golang-commons/controller/filter"
 	"go.platform-mesh.io/golang-commons/controller/lifecycle/ratelimiter"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	pmsubroutines "go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
+	pmsubs "go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/providers"
 	"go.platform-mesh.io/subroutines"
 	"go.platform-mesh.io/subroutines/conditions"
 	"go.platform-mesh.io/subroutines/lifecycle"
+
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
-
-	providersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
-	"go.platform-mesh.io/platform-mesh-operator/internal/config"
-	pmsubroutines "go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
-	pmsubs "go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/providers"
 )
 
 const ManagedProviderControllerName = "ManagedProviderReconciler"
@@ -67,7 +67,7 @@ func (r *ManagedProviderReconciler) SetupWithManager(mgr mcmanager.Manager, cfg 
 	predicates := append([]predicate.Predicate{filter.DebugResourcesBehaviourPredicate(cfg.DebugLabelValue)}, eventPredicates...)
 	return mcbuilder.ControllerManagedBy(mgr).
 		Named(ManagedProviderControllerName).
-		For(&providersv1alpha1.ManagedProvider{}, mcbuilder.WithEngageWithLocalCluster(true), mcbuilder.WithEngageWithProviderClusters(false)).
+		For(&pmprovidersv1alpha1.ManagedProvider{}, mcbuilder.WithEngageWithLocalCluster(true), mcbuilder.WithEngageWithProviderClusters(false)).
 		WithOptions(opts).
 		WithEventFilter(predicate.And(predicates...)).
 		Complete(r)
@@ -112,8 +112,8 @@ func NewManagedProviderReconciler(mgr mcmanager.Manager, operatorCfg *config.Ope
 		return nil, fmt.Errorf("error creating rate limiter: %w", err)
 	}
 
-	lc := lifecycle.New(mgr, ManagedProviderControllerName, func() client.Object {
-		return &providersv1alpha1.ManagedProvider{}
+	lc := lifecycle.New(mgr, ManagedProviderControllerName, func() ctrlruntimeclient.Object {
+		return &pmprovidersv1alpha1.ManagedProvider{}
 	}, subs...).WithConditions(conditions.NewManager())
 
 	return &ManagedProviderReconciler{

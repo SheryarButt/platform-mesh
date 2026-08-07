@@ -23,17 +23,19 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	corev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
 	"go.platform-mesh.io/golang-commons/context/keys"
 	"go.platform-mesh.io/golang-commons/logger"
 	"go.platform-mesh.io/platform-mesh-operator/internal/config"
 	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/mocks"
 	"go.platform-mesh.io/subroutines"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type WaitTestSuite struct {
@@ -93,7 +95,7 @@ users:
 `)
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "kcp-admin-secret", Namespace: "platform-mesh-system"}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				"kubeconfig": fakeKubeconfig,
@@ -107,7 +109,7 @@ users:
 
 	s.kcpClientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "orgs-authentication"}, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			wac := obj.(*unstructured.Unstructured)
 			wac.Object = map[string]any{
 				"spec": map[string]any{
@@ -127,19 +129,19 @@ users:
 func (s *WaitTestSuite) TestProcess_NoResourcesExist() {
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 
-	instance := &corev1alpha1.PlatformMesh{
+	instance := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-mesh",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.PlatformMeshSpec{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
 			Wait: nil,
 		},
 	}
 
 	s.clientMock.EXPECT().
 		List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
-		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+		RunAndReturn(func(ctx context.Context, list ctrlruntimeclient.ObjectList, opts ...ctrlruntimeclient.ListOption) error {
 			return nil
 		}).Twice()
 
@@ -154,19 +156,19 @@ func (s *WaitTestSuite) TestProcess_NoResourcesExist() {
 func (s *WaitTestSuite) TestProcess_AllResourcesReady() {
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 
-	instance := &corev1alpha1.PlatformMesh{
+	instance := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-mesh",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.PlatformMeshSpec{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
 			Wait: nil,
 		},
 	}
 
 	s.clientMock.EXPECT().
 		List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
-		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+		RunAndReturn(func(ctx context.Context, list ctrlruntimeclient.ObjectList, opts ...ctrlruntimeclient.ListOption) error {
 			unstructuredList := list.(*unstructured.UnstructuredList)
 			unstructuredList.Items = []unstructured.Unstructured{{
 				Object: map[string]any{
@@ -197,12 +199,12 @@ func (s *WaitTestSuite) TestProcess_AllResourcesReady() {
 func (s *WaitTestSuite) TestProcess_ResourceNotReady() {
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 
-	instance := &corev1alpha1.PlatformMesh{
+	instance := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-mesh",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.PlatformMeshSpec{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
 			Wait: nil,
 		},
 	}
@@ -210,22 +212,22 @@ func (s *WaitTestSuite) TestProcess_ResourceNotReady() {
 	// Mock List call returning not ready resource
 	s.clientMock.EXPECT().
 		List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
-		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+		RunAndReturn(func(ctx context.Context, list ctrlruntimeclient.ObjectList, opts ...ctrlruntimeclient.ListOption) error {
 			unstructuredList := list.(*unstructured.UnstructuredList)
 			notReadyResource := unstructured.Unstructured{
-				Object: map[string]interface{}{
+				Object: map[string]any{
 					"apiVersion": "helm.toolkit.fluxcd.io/v2",
 					"kind":       "HelmRelease",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name":      "test-helmrelease",
 						"namespace": "default",
-						"labels": map[string]interface{}{
+						"labels": map[string]any{
 							"helm.toolkit.fluxcd.io/name": "platform-mesh-operator-components",
 						},
 					},
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{
+					"status": map[string]any{
+						"conditions": []any{
+							map[string]any{
 								"type":   "Ready",
 								"status": "False",
 							},
@@ -247,12 +249,12 @@ func (s *WaitTestSuite) TestProcess_ResourceNotReady() {
 func (s *WaitTestSuite) TestProcess_ListError() {
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 
-	instance := &corev1alpha1.PlatformMesh{
+	instance := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-mesh",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.PlatformMeshSpec{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
 			Wait: nil,
 		},
 	}
@@ -273,19 +275,19 @@ func (s *WaitTestSuite) TestProcess_ListError() {
 func (s *WaitTestSuite) TestProcess_MultipleResourceTypes() {
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 
-	instance := &corev1alpha1.PlatformMesh{
+	instance := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-mesh",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.PlatformMeshSpec{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
 			Wait: nil,
 		},
 	}
 
 	s.clientMock.EXPECT().
 		List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
-		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+		RunAndReturn(func(ctx context.Context, list ctrlruntimeclient.ObjectList, opts ...ctrlruntimeclient.ListOption) error {
 			unstructuredList := list.(*unstructured.UnstructuredList)
 			unstructuredList.Items = []unstructured.Unstructured{{
 				Object: map[string]any{
@@ -318,14 +320,14 @@ func (s *WaitTestSuite) TestGetName() {
 func (s *WaitTestSuite) TestProcess_CustomResourceType_Kustomization() {
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 
-	instance := &corev1alpha1.PlatformMesh{
+	instance := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-mesh",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			Wait: &corev1alpha1.WaitConfig{
-				ResourceTypes: []corev1alpha1.ResourceType{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			Wait: &pmcorev1alpha1.WaitConfig{
+				ResourceTypes: []pmcorev1alpha1.ResourceType{
 					{
 						GroupVersionKind: metav1.GroupVersionKind{
 							Group:   "kustomize.toolkit.fluxcd.io",
@@ -344,7 +346,7 @@ func (s *WaitTestSuite) TestProcess_CustomResourceType_Kustomization() {
 
 	s.clientMock.EXPECT().
 		List(mock.Anything, mock.AnythingOfType("*unstructured.UnstructuredList"), mock.Anything).
-		RunAndReturn(func(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+		RunAndReturn(func(ctx context.Context, list ctrlruntimeclient.ObjectList, opts ...ctrlruntimeclient.ListOption) error {
 			unstructuredList := list.(*unstructured.UnstructuredList)
 			unstructuredList.Items = []unstructured.Unstructured{{
 				Object: map[string]any{
@@ -368,7 +370,7 @@ func (s *WaitTestSuite) TestProcess_CustomResourceType_Kustomization() {
 func (s *WaitTestSuite) TestFinalize() {
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 
-	instance := &corev1alpha1.PlatformMesh{
+	instance := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-mesh",
 			Namespace: "default",
@@ -384,14 +386,14 @@ func (s *WaitTestSuite) TestFinalize() {
 func (s *WaitTestSuite) TestProcess_ResourceByName_Ready() {
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 
-	instance := &corev1alpha1.PlatformMesh{
+	instance := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-mesh",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			Wait: &corev1alpha1.WaitConfig{
-				ResourceTypes: []corev1alpha1.ResourceType{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			Wait: &pmcorev1alpha1.WaitConfig{
+				ResourceTypes: []pmcorev1alpha1.ResourceType{
 					{
 						GroupVersionKind: metav1.GroupVersionKind{
 							Group:   "helm.toolkit.fluxcd.io",
@@ -410,7 +412,7 @@ func (s *WaitTestSuite) TestProcess_ResourceByName_Ready() {
 
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Namespace: "default", Name: "platform-mesh-operator-components"}, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			unstructuredObj := obj.(*unstructured.Unstructured)
 			unstructuredObj.Object = map[string]any{
 				"apiVersion": "helm.toolkit.fluxcd.io/v2",

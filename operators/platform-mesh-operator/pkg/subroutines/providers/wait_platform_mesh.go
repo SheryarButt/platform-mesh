@@ -20,16 +20,16 @@ import (
 	"context"
 	"time"
 
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
 	gcerrors "go.platform-mesh.io/golang-commons/errors"
 	"go.platform-mesh.io/golang-commons/logger"
 	"go.platform-mesh.io/subroutines"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	corev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
-	providersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -40,10 +40,10 @@ const (
 // WaitPlatformMeshSubroutine polls the PlatformMesh referenced by
 // spec.platformMeshRef until its Ready condition is True.
 type WaitPlatformMeshSubroutine struct {
-	client client.Client
+	client ctrlruntimeclient.Client
 }
 
-func NewWaitPlatformMeshSubroutine(cl client.Client) *WaitPlatformMeshSubroutine {
+func NewWaitPlatformMeshSubroutine(cl ctrlruntimeclient.Client) *WaitPlatformMeshSubroutine {
 	return &WaitPlatformMeshSubroutine{client: cl}
 }
 
@@ -51,20 +51,20 @@ func (r *WaitPlatformMeshSubroutine) GetName() string {
 	return WaitPlatformMeshSubroutineName
 }
 
-func (r *WaitPlatformMeshSubroutine) Process(ctx context.Context, obj client.Object) (subroutines.Result, error) {
+func (r *WaitPlatformMeshSubroutine) Process(ctx context.Context, obj ctrlruntimeclient.Object) (subroutines.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
-	inst := obj.(*providersv1alpha1.ManagedProvider)
+	inst := obj.(*pmprovidersv1alpha1.ManagedProvider)
 
 	if inst.Status.Phase == "" {
-		inst.Status.Phase = providersv1alpha1.ManagedProviderPhasePending
+		inst.Status.Phase = pmprovidersv1alpha1.ManagedProviderPhasePending
 	}
 
 	pmName := inst.Spec.PlatformMeshReference.Name
-	pm := &corev1alpha1.PlatformMesh{}
+	pm := &pmcorev1alpha1.PlatformMesh{}
 	if err := r.client.Get(ctx, types.NamespacedName{Name: pmName, Namespace: inst.Namespace}, pm); err != nil {
-		if kerrors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			log.Info().Str("platformmesh", pmName).Msg("PlatformMesh not found yet, requeuing")
-			inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseWaitingForPlatformMesh
+			inst.Status.Phase = pmprovidersv1alpha1.ManagedProviderPhaseWaitingForPlatformMesh
 			return subroutines.StopWithRequeue(waitPlatformMeshRequeueDuration, "PlatformMesh not found yet"), nil
 		}
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to get PlatformMesh %s", pmName)
@@ -72,7 +72,7 @@ func (r *WaitPlatformMeshSubroutine) Process(ctx context.Context, obj client.Obj
 
 	if !apimeta.IsStatusConditionTrue(pm.Status.Conditions, "Ready") {
 		log.Info().Str("platformmesh", pmName).Msg("PlatformMesh not Ready yet, requeuing")
-		inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseWaitingForPlatformMesh
+		inst.Status.Phase = pmprovidersv1alpha1.ManagedProviderPhaseWaitingForPlatformMesh
 		return subroutines.StopWithRequeue(waitPlatformMeshRequeueDuration, "waiting for PlatformMesh to become Ready"), nil
 	}
 
@@ -80,10 +80,10 @@ func (r *WaitPlatformMeshSubroutine) Process(ctx context.Context, obj client.Obj
 	return subroutines.OK(), nil
 }
 
-func (r *WaitPlatformMeshSubroutine) Finalize(_ context.Context, _ client.Object) (subroutines.Result, error) {
+func (r *WaitPlatformMeshSubroutine) Finalize(_ context.Context, _ ctrlruntimeclient.Object) (subroutines.Result, error) {
 	return subroutines.OK(), nil
 }
 
-func (r *WaitPlatformMeshSubroutine) Finalizers(_ client.Object) []string {
+func (r *WaitPlatformMeshSubroutine) Finalizers(_ ctrlruntimeclient.Object) []string {
 	return []string{}
 }

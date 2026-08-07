@@ -21,22 +21,24 @@ import (
 	"time"
 
 	"github.com/creasty/defaults"
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
-	mcapiexportprovider "github.com/kcp-dev/multicluster-provider/apiexport"
-	pmconfig "go.platform-mesh.io/golang-commons/config"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/rest"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	mcmultiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
 
-	providersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
+	pmconfig "go.platform-mesh.io/golang-commons/config"
 	"go.platform-mesh.io/platform-mesh-operator/internal/config"
 	providerscontroller "go.platform-mesh.io/platform-mesh-operator/internal/controller/providers"
 	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
+
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/rest"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+	mcmultiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
+
+	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	mcapiexportprovider "github.com/kcp-dev/multicluster-provider/apiexport"
 )
 
 func (s *KindTestSuite) TestManagedProvider01Bootstrap() {
@@ -62,13 +64,13 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 		providerWsPath := "root:providers:" + providerWsName
 
 		// First variant, with cleanupOnDelete=false. Only runtime resources are expected to be deleted on ManagedProvider deletion.
-		waitForManagedProviderAndValidate(ctx, s, func(mp *providersv1alpha1.ManagedProvider) {
+		waitForManagedProviderAndValidate(ctx, s, func(mp *pmprovidersv1alpha1.ManagedProvider) {
 			mp.Spec.CleanupOnDelete = false
 		})
 		// Deleting ManagedProvider should NOT delete its artifacts on kcp side since spec.cleanupOnDelete=false.
 		// The Deployment should be deleted though.
 		s.logger.Info().Msgf("Deleting ManagedProvider with cleanupOnDelete=false")
-		managedProvider := providersv1alpha1.ManagedProvider{
+		managedProvider := pmprovidersv1alpha1.ManagedProvider{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: "platform-mesh-system", // ManagedProvider is always co-located with PlatformMesh object namespace.
 				Name:      "my-managed-provider",
@@ -81,10 +83,10 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 				Namespace: "platform-mesh-system",
 				Name:      "my-managed-provider",
 			}, &managedProvider)
-			return kerrors.IsNotFound(err)
+			return apierrors.IsNotFound(err)
 		}, 240*time.Second, 5*time.Second, "waiting for ManagedProvider to be deleted, but has err=%q", err)
 
-		var provider providersv1alpha1.Provider
+		var provider pmprovidersv1alpha1.Provider
 		systemProviderWsClient := s.kcpClientForWorkspaceWithScheme(ctx, s.scheme, "root:providers:system")
 		err = systemProviderWsClient.Get(ctx, types.NamespacedName{
 			Name: "my-managed-provider",
@@ -96,11 +98,11 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 		// Second variant, with cleanupOnDelete=true. Everything is expected to be gone once ManagedProvider is deleted.
 
 		s.logger.Info().Msgf("Re-creating ManagedProvider with cleanupOnDelete=true")
-		waitForManagedProviderAndValidate(ctx, s, func(mp *providersv1alpha1.ManagedProvider) {
+		waitForManagedProviderAndValidate(ctx, s, func(mp *pmprovidersv1alpha1.ManagedProvider) {
 			mp.Spec.CleanupOnDelete = true
 		})
 		s.logger.Info().Msgf("Deleting ManagedProvider with cleanupOnDelete=true")
-		err = s.client.Delete(ctx, &providersv1alpha1.ManagedProvider{
+		err = s.client.Delete(ctx, &pmprovidersv1alpha1.ManagedProvider{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: "platform-mesh-system",
 				Name:      "my-managed-provider",
@@ -114,15 +116,15 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 			err = allProvidersScopedAdminClient.Get(ctx, types.NamespacedName{
 				Name: providerWsName,
 			}, &ws)
-			return kerrors.IsNotFound(err)
+			return apierrors.IsNotFound(err)
 		}, 6*time.Minute, 5*time.Second, "waiting for workspace to be deleted, but has err=%v, Workspace=%#v", err, ws) // This may take a long time...
 
 		s.logger.Info().Msgf("Waiting until Provider my-managed-provider in root:providers:system is deleted")
 		s.Require().Eventually(func() bool {
 			err = systemProviderWsClient.Get(ctx, types.NamespacedName{
 				Name: "my-managed-provider",
-			}, &providersv1alpha1.Provider{})
-			return kerrors.IsNotFound(err)
+			}, &pmprovidersv1alpha1.Provider{})
+			return apierrors.IsNotFound(err)
 		}, 240*time.Second, 5*time.Second, "waiting for Provider to be deleted, but has err=%v", err)
 
 		s.logger.Info().Msgf("Waiting until Deployment example-httpbin-operator is deleted (type=oci component)")
@@ -132,7 +134,7 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 				Namespace: "platform-mesh-system",
 				Name:      "example-httpbin-operator",
 			}, &deployment)
-			return kerrors.IsNotFound(err)
+			return apierrors.IsNotFound(err)
 		}, 240*time.Second, 5*time.Second, "waiting for Deployment to be deleted, but has err=%v, Deployment=%#v", err, deployment)
 
 		s.logger.Info().Msgf("Waiting until Deployment podinfo is deleted (type=helm component)")
@@ -142,7 +144,7 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 				Namespace: "platform-mesh-system",
 				Name:      "podinfo",
 			}, &podinfoDeployment)
-			return kerrors.IsNotFound(err)
+			return apierrors.IsNotFound(err)
 		}, 240*time.Second, 5*time.Second, "waiting for podinfo Deployment to be deleted, but has err=%v, Deployment=%#v", err, podinfoDeployment)
 
 		s.logger.Info().Msgf("Waiting until ManagedProvider my-managed-provider is deleted")
@@ -151,26 +153,26 @@ func (s *KindTestSuite) TestManagedProvider02Lifecycle() {
 				Namespace: "platform-mesh-system",
 				Name:      "my-managed-provider",
 			}, &managedProvider)
-			return kerrors.IsNotFound(err)
+			return apierrors.IsNotFound(err)
 		}, 240*time.Second, 5*time.Second, "waiting for ManagedProvider to be deleted, but has err=%v, ManagedProvider=%#v", err, managedProvider)
 	})
 }
 
-func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, patchManagedProviderCreate func(*providersv1alpha1.ManagedProvider)) {
+func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, patchManagedProviderCreate func(*pmprovidersv1alpha1.ManagedProvider)) {
 	managedProviderName := types.NamespacedName{
 		Namespace: "platform-mesh-system",
 		Name:      "my-managed-provider",
 	}
-	managedProvider := providersv1alpha1.ManagedProvider{
+	managedProvider := pmprovidersv1alpha1.ManagedProvider{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      managedProviderName.Name,
 			Namespace: managedProviderName.Namespace,
 		},
-		Spec: providersv1alpha1.ManagedProviderSpec{
-			RuntimeDeployments: []providersv1alpha1.ProviderComponentSpec{
+		Spec: pmprovidersv1alpha1.ManagedProviderSpec{
+			RuntimeDeployments: []pmprovidersv1alpha1.ProviderComponentSpec{
 				{
 					// type=oci (default): chart packaged as an OCI artifact → Flux OCIRepository.
-					Flux: &providersv1alpha1.FluxComponentSpec{
+					Flux: &pmprovidersv1alpha1.FluxComponentSpec{
 						Chart:    "example-httpbin-operator",
 						Registry: "ghcr.io/platform-mesh/helm-charts",
 						Version:  "0.5.14",
@@ -178,22 +180,22 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pa
 				},
 				{
 					// type=helm: chart from a classic HTTP Helm repository → Flux HelmRepository.
-					Flux: &providersv1alpha1.FluxComponentSpec{
-						Type:     providersv1alpha1.FluxSourceTypeHelm,
+					Flux: &pmprovidersv1alpha1.FluxComponentSpec{
+						Type:     pmprovidersv1alpha1.FluxSourceTypeHelm,
 						Chart:    "podinfo",
 						Registry: "https://stefanprodan.github.io/podinfo",
 						Version:  "6.7.1",
 					},
 				},
 			},
-			PlatformMeshReference: providersv1alpha1.PlatformMeshReferenceSpec{
+			PlatformMeshReference: pmprovidersv1alpha1.PlatformMeshReferenceSpec{
 				Name: "platform-mesh",
 			},
 		},
 	}
 	patchManagedProviderCreate(&managedProvider)
 
-	createProviderClientFromSecretRefAndListConfigMaps := func(cl client.Client, secretName types.NamespacedName, who string) {
+	createProviderClientFromSecretRefAndListConfigMaps := func(cl ctrlruntimeclient.Client, secretName types.NamespacedName, who string) {
 		s.logger.Info().Msgf("Getting provider kubeconfig secret on %s side", who)
 		var kubeconfigSecret corev1.Secret
 		err := cl.Get(ctx, secretName, &kubeconfigSecret)
@@ -206,7 +208,7 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pa
 		s.Require().NoError(err, "creating client from provider kubeconfig from %s side should succeed", who)
 		s.logger.Info().Msgf("Listing ConfigMaps in provider workspace using kubeconfig from %s side", who)
 		cmList := &corev1.ConfigMapList{}
-		err = providerClient.List(ctx, cmList, client.InNamespace("default"))
+		err = providerClient.List(ctx, cmList, ctrlruntimeclient.InNamespace("default"))
 		s.Require().NoError(err, "listing ConfigMaps in provider workspace using scoped kubeconfig from %s side should succeed", who)
 		s.Require().Greater(len(cmList.Items), 0,
 			"listing ConfigMap in provider workspace using scoped kubeconfig from %s side should return non-zero items", who) // Should contain kube-root-ca.crt CM at least.
@@ -233,7 +235,7 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pa
 	s.Require().Eventually(func() bool {
 		err = systemProviderWsClient.Get(ctx, types.NamespacedName{
 			Name: managedProvider.Name,
-		}, &providersv1alpha1.Provider{})
+		}, &pmprovidersv1alpha1.Provider{})
 		return err == nil
 	}, 240*time.Second, 5*time.Second, "waiting for Provider in :root:providers:system to be created, but has err=%v", err)
 
@@ -250,7 +252,7 @@ func waitForManagedProviderAndValidate(ctx context.Context, s *KindTestSuite, pa
 	}, 240*time.Second, 5*time.Second, "waiting for provider's workspace %s to be created, but has err=%v", providerWsPath, err)
 
 	s.logger.Info().Msgf("Waiting until Provider in %s reaches Phase=Ready", providerWsPath)
-	var provider providersv1alpha1.Provider
+	var provider pmprovidersv1alpha1.Provider
 	s.Require().Eventually(func() bool {
 		err = systemProviderWsClient.Get(ctx, types.NamespacedName{
 			Name: "my-managed-provider",
@@ -339,7 +341,7 @@ func (s *KindTestSuite) runProviderOperator() {
 		IsLocal: true,
 	}
 
-	runtimeClient, err := client.New(s.config, client.Options{})
+	runtimeClient, err := ctrlruntimeclient.New(s.config, ctrlruntimeclient.Options{})
 	s.Require().NoError(err, "failed to create kube client for runtime cluster")
 
 	var kcpAdminCfg *rest.Config

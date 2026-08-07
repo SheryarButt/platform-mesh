@@ -21,20 +21,20 @@ import (
 	"fmt"
 	"time"
 
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
 	gcerrors "go.platform-mesh.io/golang-commons/errors"
 	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	pmsubs "go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
 	"go.platform-mesh.io/subroutines"
+
 	corev1 "k8s.io/api/core/v1"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
 	controllerruntime "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	providersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
-	"go.platform-mesh.io/platform-mesh-operator/internal/config"
-	pmsubs "go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -47,13 +47,13 @@ const (
 // Provider controller from the kcp provider workspace into the runtime
 // namespace, and records its name in status.providerKubeconfigSecretRef.
 type KubeconfigCopySubroutine struct {
-	client      client.Client
+	client      ctrlruntimeclient.Client
 	kcpHelper   pmsubs.KcpHelper
 	operatorCfg *config.OperatorConfig
 	kcpUrl      string
 }
 
-func NewKubeconfigCopySubroutine(cl client.Client, kcpHelper pmsubs.KcpHelper, operatorCfg *config.OperatorConfig, kcpUrl string) *KubeconfigCopySubroutine {
+func NewKubeconfigCopySubroutine(cl ctrlruntimeclient.Client, kcpHelper pmsubs.KcpHelper, operatorCfg *config.OperatorConfig, kcpUrl string) *KubeconfigCopySubroutine {
 	return &KubeconfigCopySubroutine{
 		client:      cl,
 		kcpHelper:   kcpHelper,
@@ -66,7 +66,7 @@ func (r *KubeconfigCopySubroutine) GetName() string {
 	return KubeconfigCopySubroutineName
 }
 
-func (r *KubeconfigCopySubroutine) newRuntimeClusterClient(ctx context.Context, managedProvider *providersv1alpha1.ManagedProvider) (client.Client, error) {
+func (r *KubeconfigCopySubroutine) newRuntimeClusterClient(ctx context.Context, managedProvider *pmprovidersv1alpha1.ManagedProvider) (ctrlruntimeclient.Client, error) {
 	if managedProvider.Spec.RuntimeKubeconfigSecretName == "" {
 		return r.client, nil
 	}
@@ -93,7 +93,7 @@ func (r *KubeconfigCopySubroutine) newRuntimeClusterClient(ctx context.Context, 
 	}
 
 	// And finally create the client.
-	cl, err := client.New(config, client.Options{
+	cl, err := ctrlruntimeclient.New(config, ctrlruntimeclient.Options{
 		Scheme: r.client.Scheme(),
 	})
 	if err != nil {
@@ -103,9 +103,9 @@ func (r *KubeconfigCopySubroutine) newRuntimeClusterClient(ctx context.Context, 
 	return cl, nil
 }
 
-func (r *KubeconfigCopySubroutine) Process(ctx context.Context, obj client.Object) (subroutines.Result, error) {
+func (r *KubeconfigCopySubroutine) Process(ctx context.Context, obj ctrlruntimeclient.Object) (subroutines.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
-	inst := obj.(*providersv1alpha1.ManagedProvider)
+	inst := obj.(*pmprovidersv1alpha1.ManagedProvider)
 
 	wsPath := providerRefPath(inst)
 	provName := providerRefName(inst)
@@ -127,13 +127,13 @@ func (r *KubeconfigCopySubroutine) Process(ctx context.Context, obj client.Objec
 	}
 
 	// Fetch the Provider to find the kubeconfig Secret name set by the Provider controller.
-	provider := &providersv1alpha1.Provider{}
+	provider := &pmprovidersv1alpha1.Provider{}
 	if err := scopedClient.Get(ctx, types.NamespacedName{Name: provName}, provider); err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "failed to get Provider %s from workspace %s", provName, wsPath)
 	}
 	if provider.Status.ProviderKubeconfigSecretRef == nil {
 		log.Info().Str("workspace", wsPath).Str("provider", provider.Name).Msg("Provider providerKubeconfigSecretRef not set yet, requeuing")
-		inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseCopyingKubeconfig
+		inst.Status.Phase = pmprovidersv1alpha1.ManagedProviderPhaseCopyingKubeconfig
 		return subroutines.StopWithRequeue(kubeconfigCopyRequeueDuration, "waiting for Provider to set providerKubeconfigSecretRef"), nil
 	}
 
@@ -141,7 +141,7 @@ func (r *KubeconfigCopySubroutine) Process(ctx context.Context, obj client.Objec
 	// It's a user error if these two are different. We'll let the user resolve.
 	if provider.Spec.ProviderKubeconfigSecret == nil || *provider.Spec.ProviderKubeconfigSecret != managedProviderKubeconfigSecretSpec {
 		log.Info().Str("workspace", wsPath).Str("provider", provider.Name).Msg("Provider providerKubeconfigSecretRef not set yet, requeuing")
-		inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseCopyingKubeconfigFailed
+		inst.Status.Phase = pmprovidersv1alpha1.ManagedProviderPhaseCopyingKubeconfigFailed
 		return subroutines.StopWithRequeue(kubeconfigCopyRequeueDuration, fmt.Sprintf("providerKubeconfigSecretRef set on Provider %s:%s differs from the one set on ManagedProvider %s/%s", wsPath, provName, inst.Namespace, inst.Name)), nil
 	}
 
@@ -160,13 +160,13 @@ func (r *KubeconfigCopySubroutine) Process(ctx context.Context, obj client.Objec
 	}
 
 	if len(kcpKubeconfig) == 0 {
-		inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseCopyingKubeconfig
+		inst.Status.Phase = pmprovidersv1alpha1.ManagedProviderPhaseCopyingKubeconfig
 		return subroutines.StopWithRequeue(kubeconfigCopyRequeueDuration, "waiting for Provider to set kubeconfig in secret"), nil
 	}
 
 	// Ensure namespace for the Secret we're about to create exists.
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: managedProviderKubeconfigSecretSpec.Namespace}}
-	if err := runtimeClusterClient.Create(ctx, ns); err != nil && !kerrors.IsAlreadyExists(err) {
+	if err := runtimeClusterClient.Create(ctx, ns); err != nil && !apierrors.IsAlreadyExists(err) {
 		return subroutines.OK(), gcerrors.Wrap(err, "ensure namespace %s in runtime cluster", managedProviderKubeconfigSecretSpec.Namespace)
 	}
 
@@ -195,13 +195,13 @@ func (r *KubeconfigCopySubroutine) Process(ctx context.Context, obj client.Objec
 	return subroutines.OK(), nil
 }
 
-func (r *KubeconfigCopySubroutine) Finalize(ctx context.Context, obj client.Object) (subroutines.Result, error) {
-	inst := obj.(*providersv1alpha1.ManagedProvider)
+func (r *KubeconfigCopySubroutine) Finalize(ctx context.Context, obj ctrlruntimeclient.Object) (subroutines.Result, error) {
+	inst := obj.(*pmprovidersv1alpha1.ManagedProvider)
 	if inst.Status.ProviderKubeconfigSecretRef == nil {
 		return subroutines.OK(), nil
 	}
 
-	inst.Status.Phase = providersv1alpha1.ManagedProviderPhaseDeleting
+	inst.Status.Phase = pmprovidersv1alpha1.ManagedProviderPhaseDeleting
 
 	secret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -209,13 +209,13 @@ func (r *KubeconfigCopySubroutine) Finalize(ctx context.Context, obj client.Obje
 			Namespace: inst.Namespace,
 		},
 	}
-	if err := client.IgnoreNotFound(r.client.Delete(ctx, &secret)); err != nil {
+	if err := ctrlruntimeclient.IgnoreNotFound(r.client.Delete(ctx, &secret)); err != nil {
 		return subroutines.OK(), gcerrors.Wrap(err, "delete %T %s", secret, secret.GetName())
 	}
 
 	return subroutines.OK(), nil
 }
 
-func (r *KubeconfigCopySubroutine) Finalizers(_ client.Object) []string {
+func (r *KubeconfigCopySubroutine) Finalizers(_ ctrlruntimeclient.Object) []string {
 	return []string{kubeconfigCopyFinalizer}
 }

@@ -24,19 +24,20 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
 	"go.platform-mesh.io/golang-commons/context/keys"
 	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/mocks"
+
 	corev1 "k8s.io/api/core/v1"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	providersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
-	"go.platform-mesh.io/platform-mesh-operator/internal/config"
-	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/mocks"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var secretKubeconfigData, _ = os.ReadFile("../test/kubeconfig.yaml")
@@ -89,8 +90,8 @@ func (s *KubeconfigCopyTestSuite) newCtx() context.Context {
 	return context.WithValue(ctx, keys.ConfigCtxKey, s.operatorCfg)
 }
 
-func (s *KubeconfigCopyTestSuite) newManagedProvider() *providersv1alpha1.ManagedProvider {
-	return &providersv1alpha1.ManagedProvider{
+func (s *KubeconfigCopyTestSuite) newManagedProvider() *pmprovidersv1alpha1.ManagedProvider {
+	return &pmprovidersv1alpha1.ManagedProvider{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "cowboys",
 			Namespace: "providers-wildwest-ns",
@@ -101,7 +102,7 @@ func (s *KubeconfigCopyTestSuite) newManagedProvider() *providersv1alpha1.Manage
 func (s *KubeconfigCopyTestSuite) mockAdminSecret() {
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "kcp-admin", Namespace: "platform-mesh-system"}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Name = "kcp-admin"
 			secret.Namespace = "platform-mesh-system"
@@ -118,14 +119,14 @@ func (s *KubeconfigCopyTestSuite) mockProviderWithSecretRef() {
 	// Default providerRefName = "cowboys" (inst.Name), providerRefPath = "root:providers:system"
 	s.kcpClientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "cowboys"}, mock.AnythingOfType("*v1alpha1.Provider")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
-			provider := obj.(*providersv1alpha1.Provider)
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
+			provider := obj.(*pmprovidersv1alpha1.Provider)
 			provider.Status.ProviderKubeconfigSecretRef = &corev1.SecretReference{
 				Name:      "cowboys-kubeconfig",
 				Namespace: "kcp-side-ns",
 			}
 			// Must match providerKubeconfigSecretSpec("cowboys", "providers-wildwest-ns", nil)
-			provider.Spec.ProviderKubeconfigSecret = &providersv1alpha1.KubeconfigSecretSpec{
+			provider.Spec.ProviderKubeconfigSecret = &pmprovidersv1alpha1.KubeconfigSecretSpec{
 				Name:      "cowboys-provider-kubeconfig",
 				Namespace: "providers-wildwest-ns",
 				Key:       "kubeconfig",
@@ -182,7 +183,7 @@ func (s *KubeconfigCopyTestSuite) TestProcess_KubeconfigSecretRefNotSetYet() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseCopyingKubeconfig, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhaseCopyingKubeconfig, inst.Status.Phase)
 }
 
 func (s *KubeconfigCopyTestSuite) TestProcess_KubeconfigSecretGetFails() {
@@ -215,7 +216,7 @@ func (s *KubeconfigCopyTestSuite) TestProcess_HappyPath() {
 	s.mockProviderWithSecretRef()
 	s.kcpClientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "cowboys-kubeconfig", Namespace: "kcp-side-ns"}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{"kubeconfig": secretKubeconfigData}
 			return nil
@@ -227,7 +228,7 @@ func (s *KubeconfigCopyTestSuite) TestProcess_HappyPath() {
 	// Default copy destination: Name = providerKubeconfigSecretName(inst.Name), Namespace = inst.Namespace
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "cowboys-provider-kubeconfig", Namespace: "providers-wildwest-ns"}, mock.AnythingOfType("*v1.Secret")).
-		Return(kerrors.NewNotFound(schema.GroupResource{Resource: "secrets"}, "cowboys-provider-kubeconfig"))
+		Return(apierrors.NewNotFound(schema.GroupResource{Resource: "secrets"}, "cowboys-provider-kubeconfig"))
 	s.clientMock.EXPECT().
 		Create(mock.Anything, mock.AnythingOfType("*v1.Secret"), mock.Anything).
 		Return(nil)
@@ -244,7 +245,7 @@ func (s *KubeconfigCopyTestSuite) TestProcess_HappyPath() {
 func (s *KubeconfigCopyTestSuite) TestProcess_CustomProviderReference() {
 	ctx := s.newCtx()
 	inst := s.newManagedProvider()
-	inst.Spec.ProviderReference = &providersv1alpha1.ProviderReferenceSpec{
+	inst.Spec.ProviderReference = &pmprovidersv1alpha1.ProviderReferenceSpec{
 		Path: "root:custom:path",
 		Name: "my-provider",
 	}
@@ -298,7 +299,7 @@ func (s *KubeconfigCopyTestSuite) TestFinalize_SecretNotFound() {
 
 	s.clientMock.EXPECT().
 		Delete(mock.Anything, mock.AnythingOfType("*v1.Secret"), mock.Anything).
-		Return(kerrors.NewNotFound(schema.GroupResource{Resource: "secrets"}, "cowboys-provider-kubeconfig"))
+		Return(apierrors.NewNotFound(schema.GroupResource{Resource: "secrets"}, "cowboys-provider-kubeconfig"))
 
 	result, err := s.testObj.Finalize(ctx, inst)
 

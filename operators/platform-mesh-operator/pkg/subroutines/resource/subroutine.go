@@ -23,21 +23,22 @@ import (
 	"strings"
 	"time"
 
-	"go.platform-mesh.io/golang-commons/logger"
-	subroutineslib "go.platform-mesh.io/subroutines"
 	"gopkg.in/yaml.v3"
+
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/internal/metrics"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/ocm"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
+	subroutineslib "go.platform-mesh.io/subroutines"
+
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"go.platform-mesh.io/apis/core/v1alpha1"
-	"go.platform-mesh.io/platform-mesh-operator/internal/config"
-	"go.platform-mesh.io/platform-mesh-operator/internal/metrics"
-	"go.platform-mesh.io/platform-mesh-operator/pkg/ocm"
-	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -80,19 +81,19 @@ var argocdApplicationGvk = schema.GroupVersionKind{
 var resourceFieldManager = "platform-mesh-resource"
 
 type ResourceSubroutine struct {
-	client            client.Client // infra client for creating FluxCD resources
-	clientRuntime     client.Client // runtime client for reading profile ConfigMaps
+	client            ctrlruntimeclient.Client // infra client for creating FluxCD resources
+	clientRuntime     ctrlruntimeclient.Client // runtime client for reading profile ConfigMaps
 	cfg               *config.OperatorConfig
 	imageVersionStore *subroutines.ImageVersionStore
 }
 
-func NewResourceSubroutine(client client.Client, cfg *config.OperatorConfig, imageVersionStore *subroutines.ImageVersionStore) *ResourceSubroutine {
+func NewResourceSubroutine(client ctrlruntimeclient.Client, cfg *config.OperatorConfig, imageVersionStore *subroutines.ImageVersionStore) *ResourceSubroutine {
 	return &ResourceSubroutine{client: client, clientRuntime: client, cfg: cfg, imageVersionStore: imageVersionStore}
 }
 
 // SetRuntimeClient sets the runtime client for reading profile ConfigMaps
 // This should be called after creation if a different client is needed for the runtime cluster
-func (r *ResourceSubroutine) SetRuntimeClient(clientRuntime client.Client) {
+func (r *ResourceSubroutine) SetRuntimeClient(clientRuntime ctrlruntimeclient.Client) {
 	r.clientRuntime = clientRuntime
 }
 
@@ -100,11 +101,11 @@ func (r *ResourceSubroutine) GetName() string {
 	return "ResourceSubroutine"
 }
 
-func (r *ResourceSubroutine) Finalize(_ context.Context, _ client.Object) (subroutineslib.Result, error) {
+func (r *ResourceSubroutine) Finalize(_ context.Context, _ ctrlruntimeclient.Object) (subroutineslib.Result, error) {
 	return subroutineslib.OK(), nil
 }
 
-func (r *ResourceSubroutine) Finalizers(_ client.Object) []string { // coverage-ignore
+func (r *ResourceSubroutine) Finalizers(_ ctrlruntimeclient.Object) []string { // coverage-ignore
 	return []string{}
 }
 
@@ -131,7 +132,7 @@ func getMetadataValue(obj *unstructured.Unstructured, key string) string {
 	return ""
 }
 
-func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj client.Object) (res subroutineslib.Result, err error) {
+func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj ctrlruntimeclient.Object) (res subroutineslib.Result, err error) {
 	start := time.Now()
 	defer func() {
 		labelResult := "success"
@@ -160,19 +161,20 @@ func (r *ResourceSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 
 	if deploymentTech == "argocd" {
 		// argocd logic
-		if artifact == "chart" {
+		switch artifact {
+		case "chart":
 			log.Debug().Msg("Update ArgoCD Application targetRevision and repoURL for chart artifact")
 			result, err := r.updateArgoCDApplication(ctx, inst, log)
 			if err != nil {
 				return result, err
 			}
-		} else if artifact == "image" {
+		case "image":
 			log.Debug().Msg("Update ArgoCD Application Helm values (image.tag) for image artifact")
 			result, err := r.updateArgoCDApplicationHelmValues(ctx, inst, log)
 			if err != nil {
 				return result, err
 			}
-		} else {
+		default:
 			log.Warn().Str("artifact", artifact).Msg("ArgoCD is enabled but artifact is not 'chart' or 'image', skipping")
 		}
 		return subroutineslib.OK(), nil
@@ -289,7 +291,7 @@ func (r *ResourceSubroutine) updateHelmReleaseImage(ctx context.Context, inst *u
 	// but we only want to update a nested values field without replacing the whole object.
 	existing := &unstructured.Unstructured{}
 	existing.SetGroupVersionKind(helmReleaseGvk)
-	if err := r.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, existing); err != nil {
+	if err := r.client.Get(ctx, ctrlruntimeclient.ObjectKey{Name: name, Namespace: namespace}, existing); err != nil {
 		return subroutineslib.OK(), fmt.Errorf("HelmRelease %s/%s not found: %w", namespace, name, err)
 	}
 
@@ -351,7 +353,7 @@ func (r *ResourceSubroutine) updateArgoCDApplication(ctx context.Context, inst *
 	appName := trimPMSuffixes(inst.GetName())
 	existingApp := &unstructured.Unstructured{}
 	existingApp.SetGroupVersionKind(argocdApplicationGvk)
-	if err := r.client.Get(ctx, client.ObjectKey{Name: appName, Namespace: appNamespace}, existingApp); err != nil {
+	if err := r.client.Get(ctx, ctrlruntimeclient.ObjectKey{Name: appName, Namespace: appNamespace}, existingApp); err != nil {
 		log.Info().Err(err).Str("namespace", appNamespace).Msg("Application not found, waiting for DeploymentSubroutine to create it")
 		return subroutineslib.OK(), fmt.Errorf("application %s/%s not found", appNamespace, appName)
 	}
@@ -374,7 +376,7 @@ func (r *ResourceSubroutine) updateArgoCDApplication(ctx context.Context, inst *
 	}
 
 	fieldManager := fmt.Sprintf("%s-%s", resourceFieldManager, inst.GetName())
-	if err := r.client.Patch(ctx, patchObj, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
+	if err := r.client.Patch(ctx, patchObj, ctrlruntimeclient.Apply, ctrlruntimeclient.FieldOwner(fieldManager), ctrlruntimeclient.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
 		log.Error().Err(err).Msg("Failed to update ArgoCD Application")
 		return subroutineslib.OK(), err
 	}
@@ -473,7 +475,7 @@ func (r *ResourceSubroutine) updateArgoCDApplicationHelmValues(ctx context.Conte
 
 	existingApp := &unstructured.Unstructured{}
 	existingApp.SetGroupVersionKind(argocdApplicationGvk)
-	if err := r.client.Get(ctx, client.ObjectKey{Name: appName, Namespace: appNamespace}, existingApp); err != nil {
+	if err := r.client.Get(ctx, ctrlruntimeclient.ObjectKey{Name: appName, Namespace: appNamespace}, existingApp); err != nil {
 		log.Info().Err(err).Str("application", appName).Msg("Application not found, waiting for creation")
 		return subroutineslib.OK(), fmt.Errorf("application %s/%s not found", appNamespace, appName)
 	}
@@ -499,7 +501,7 @@ func (r *ResourceSubroutine) updateArgoCDApplicationHelmValues(ctx context.Conte
 	}
 
 	fieldManager := fmt.Sprintf("%s-%s", resourceFieldManager, inst.GetName())
-	if err := r.client.Patch(ctx, patchObj, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
+	if err := r.client.Patch(ctx, patchObj, ctrlruntimeclient.Apply, ctrlruntimeclient.FieldOwner(fieldManager), ctrlruntimeclient.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
 		return subroutineslib.OK(), err
 	}
 
@@ -562,7 +564,7 @@ func getValueFromYAML(yamlStr string, path []string) string {
 	if yamlStr == "" {
 		return ""
 	}
-	var m map[string]interface{}
+	var m map[string]any
 	if err := yaml.Unmarshal([]byte(yamlStr), &m); err != nil {
 		return ""
 	}
@@ -571,7 +573,7 @@ func getValueFromYAML(yamlStr string, path []string) string {
 }
 
 // getNestedString retrieves a nested string value from a map using a path
-func getNestedString(m map[string]interface{}, path ...string) (string, bool) {
+func getNestedString(m map[string]any, path ...string) (string, bool) {
 	if len(path) == 0 {
 		return "", false
 	}
@@ -581,7 +583,7 @@ func getNestedString(m map[string]interface{}, path ...string) (string, bool) {
 		if !ok {
 			return "", false
 		}
-		if valMap, ok := val.(map[string]interface{}); ok {
+		if valMap, ok := val.(map[string]any); ok {
 			current = valMap
 		} else {
 			return "", false
@@ -614,7 +616,7 @@ func (r *ResourceSubroutine) updateHelmRelease(ctx context.Context, inst *unstru
 	// which would require a full valid spec (chart.spec.chart, chart.spec.sourceRef, etc.).
 	existing := &unstructured.Unstructured{}
 	existing.SetGroupVersionKind(helmReleaseGvk)
-	if err := r.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, existing); err != nil {
+	if err := r.client.Get(ctx, ctrlruntimeclient.ObjectKey{Name: name, Namespace: namespace}, existing); err != nil {
 		return subroutineslib.OK(), fmt.Errorf("HelmRelease %s/%s not found: %w", namespace, name, err)
 	}
 
@@ -652,7 +654,7 @@ func (r *ResourceSubroutine) updateHelmRepository(ctx context.Context, inst *uns
 	_ = unstructured.SetNestedField(obj.Object, "generic", "spec", "provider")
 	_ = unstructured.SetNestedField(obj.Object, "5m", "spec", "interval")
 
-	if err := r.client.Patch(ctx, obj, client.Apply, client.FieldOwner(resourceFieldManager), client.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
+	if err := r.client.Patch(ctx, obj, ctrlruntimeclient.Apply, ctrlruntimeclient.FieldOwner(resourceFieldManager), ctrlruntimeclient.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
 		log.Error().Err(err).Msg("Failed to apply HelmRepository")
 		return subroutineslib.OK(), err
 	}
@@ -714,7 +716,7 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	if err := unstructured.SetNestedField(obj.Object, "1m0s", "spec", "interval"); err != nil {
 		return subroutineslib.OK(), err
 	}
-	if err := unstructured.SetNestedMap(obj.Object, map[string]interface{}{
+	if err := unstructured.SetNestedMap(obj.Object, map[string]any{
 		"mediaType": "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
 		"operation": "copy",
 	}, "spec", "layerSelector"); err != nil {
@@ -722,7 +724,7 @@ func (r *ResourceSubroutine) updateOciRepo(ctx context.Context, inst *unstructur
 	}
 
 	// Apply using SSA (creates if not exists, updates if exists)
-	if err := r.client.Patch(ctx, obj, client.Apply, client.FieldOwner(resourceFieldManager), client.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
+	if err := r.client.Patch(ctx, obj, ctrlruntimeclient.Apply, ctrlruntimeclient.FieldOwner(resourceFieldManager), ctrlruntimeclient.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
 		log.Error().Err(err).Msg("Failed to apply OCIRepository")
 		return subroutineslib.OK(), err
 	}
@@ -772,7 +774,7 @@ func (r *ResourceSubroutine) updateGitRepo(ctx context.Context, inst *unstructur
 	}
 
 	// Apply using SSA (creates if not exists, updates if exists)
-	if err := r.client.Patch(ctx, obj, client.Apply, client.FieldOwner(resourceFieldManager), client.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
+	if err := r.client.Patch(ctx, obj, ctrlruntimeclient.Apply, ctrlruntimeclient.FieldOwner(resourceFieldManager), ctrlruntimeclient.ForceOwnership); err != nil { //nolint:staticcheck // Apply via Patch is required for unstructured objects
 		log.Error().Err(err).Msg("Failed to apply GitRepository")
 		return subroutineslib.OK(), err
 	}
@@ -799,19 +801,19 @@ func (r *ResourceSubroutine) getAppNamespaceFromProfile(ctx context.Context, res
 			continue
 		}
 
-		var profile map[string]interface{}
+		var profile map[string]any
 		if err := yaml.Unmarshal([]byte(profileYAML), &profile); err != nil {
 			continue
 		}
 
-		if infra, ok := profile["infra"].(map[string]interface{}); ok {
+		if infra, ok := profile["infra"].(map[string]any); ok {
 			if ns, ok := infra["deploymentNamespace"].(string); ok && ns != "" {
 				log.Debug().Str("appNamespace", ns).Str("source", "infra.deploymentNamespace").Msg("Resolved app namespace from profile")
 				return ns, nil
 			}
 		}
 
-		if components, ok := profile["components"].(map[string]interface{}); ok {
+		if components, ok := profile["components"].(map[string]any); ok {
 			if ns, ok := components["deploymentNamespace"].(string); ok && ns != "" {
 				log.Debug().Str("appNamespace", ns).Str("source", "components.deploymentNamespace").Msg("Resolved app namespace from profile")
 				return ns, nil
@@ -823,8 +825,8 @@ func (r *ResourceSubroutine) getAppNamespaceFromProfile(ctx context.Context, res
 }
 
 func (r *ResourceSubroutine) getDeploymentTechnologyFromProfile(ctx context.Context, namespace string, log *logger.Logger) (string, error) {
-	platformMeshList := &v1alpha1.PlatformMeshList{}
-	if err := r.clientRuntime.List(ctx, platformMeshList, client.InNamespace(namespace)); err != nil {
+	platformMeshList := &pmcorev1alpha1.PlatformMeshList{}
+	if err := r.clientRuntime.List(ctx, platformMeshList, ctrlruntimeclient.InNamespace(namespace)); err != nil {
 		log.Warn().Err(err).Str("namespace", namespace).Msg("Failed to list PlatformMesh instances, trying direct ConfigMap lookup")
 		return r.getDeploymentTechnologyFromConfigMapDirect(ctx, namespace, log)
 	}
@@ -875,13 +877,13 @@ func (r *ResourceSubroutine) getDeploymentTechnologyFromConfigMapDirect(ctx cont
 			continue
 		}
 
-		var profile map[string]interface{}
+		var profile map[string]any
 		if err := yaml.Unmarshal([]byte(profileYAML), &profile); err != nil {
 			return "", fmt.Errorf("failed to parse profile YAML from ConfigMap %s/%s: %w", namespace, cmName, err)
 		}
 
 		// Check infra section first
-		if infra, ok := profile["infra"].(map[string]interface{}); ok {
+		if infra, ok := profile["infra"].(map[string]any); ok {
 			if dt, ok := infra["deploymentTechnology"].(string); ok && dt != "" {
 				log.Info().Str("deploymentTechnology", strings.ToLower(dt)).Str("configMap", cmName).Str("section", "infra").Msg("Read deploymentTechnology from profile ConfigMap (direct lookup)")
 				return strings.ToLower(dt), nil
@@ -889,7 +891,7 @@ func (r *ResourceSubroutine) getDeploymentTechnologyFromConfigMapDirect(ctx cont
 		}
 
 		// Check components section
-		if components, ok := profile["components"].(map[string]interface{}); ok {
+		if components, ok := profile["components"].(map[string]any); ok {
 			if dt, ok := components["deploymentTechnology"].(string); ok && dt != "" {
 				log.Info().Str("deploymentTechnology", strings.ToLower(dt)).Str("configMap", cmName).Str("section", "components").Msg("Read deploymentTechnology from profile ConfigMap (direct lookup)")
 				return strings.ToLower(dt), nil

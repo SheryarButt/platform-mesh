@@ -20,25 +20,25 @@ import (
 	"context"
 	"fmt"
 
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
 	pmconfig "go.platform-mesh.io/golang-commons/config"
 	"go.platform-mesh.io/golang-commons/controller/filter"
 	"go.platform-mesh.io/golang-commons/controller/lifecycle/ratelimiter"
 	"go.platform-mesh.io/platform-mesh-operator/internal/config"
 	pmsubroutines "go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
+	pmsubs "go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/providers"
 	"go.platform-mesh.io/subroutines"
 	"go.platform-mesh.io/subroutines/conditions"
 	"go.platform-mesh.io/subroutines/lifecycle"
+
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
-
-	providersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
-	pmsubs "go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/providers"
 )
 
 const ProviderControllerName = "ProviderReconciler"
@@ -65,13 +65,13 @@ func (r *ProviderReconciler) SetupWithManager(mgr mcmanager.Manager, cfg *pmconf
 	predicates := append([]predicate.Predicate{filter.DebugResourcesBehaviourPredicate(cfg.DebugLabelValue)}, eventPredicates...)
 	return mcbuilder.ControllerManagedBy(mgr).
 		Named(ProviderControllerName).
-		For(&providersv1alpha1.Provider{}, mcbuilder.WithEngageWithProviderClusters(true)).
+		For(&pmprovidersv1alpha1.Provider{}, mcbuilder.WithEngageWithProviderClusters(true)).
 		WithOptions(opts).
 		WithEventFilter(predicate.And(predicates...)).
 		Complete(r)
 }
 
-func NewProviderReconciler(mgr mcmanager.Manager, operatorCfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, localClient client.Client) (*ProviderReconciler, error) {
+func NewProviderReconciler(mgr mcmanager.Manager, operatorCfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, localClient ctrlruntimeclient.Client) (*ProviderReconciler, error) {
 	kcpUrl := operatorCfg.KCP.Url
 	if kcpUrl == "" {
 		kcpUrl = fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
@@ -100,7 +100,7 @@ func NewProviderReconciler(mgr mcmanager.Manager, operatorCfg *config.OperatorCo
 			kcpHelper,
 			operatorCfg.KCP,
 			kcpUrl,
-			func(ctx context.Context) (client.Client, error) {
+			func(ctx context.Context) (ctrlruntimeclient.Client, error) {
 				cluster, err := mgr.ClusterFromContext(ctx)
 				if err != nil {
 					return nil, err
@@ -110,8 +110,8 @@ func NewProviderReconciler(mgr mcmanager.Manager, operatorCfg *config.OperatorCo
 		))
 	}
 
-	lc := lifecycle.New(mgr, ProviderControllerName, func() client.Object {
-		return &providersv1alpha1.Provider{}
+	lc := lifecycle.New(mgr, ProviderControllerName, func() ctrlruntimeclient.Object {
+		return &pmprovidersv1alpha1.Provider{}
 	}, subs...).WithConditions(conditions.NewManager())
 
 	return &ProviderReconciler{

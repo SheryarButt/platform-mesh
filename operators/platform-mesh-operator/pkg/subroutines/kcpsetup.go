@@ -23,28 +23,28 @@ import (
 	"strings"
 	"time"
 
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
 	pmconfig "go.platform-mesh.io/golang-commons/config"
 	gcerrors "go.platform-mesh.io/golang-commons/errors"
 	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/internal/metrics"
 	"go.platform-mesh.io/subroutines"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	corev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
-	"go.platform-mesh.io/platform-mesh-operator/internal/config"
-	"go.platform-mesh.io/platform-mesh-operator/internal/metrics"
+	"k8s.io/client-go/rest"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
-	"k8s.io/client-go/rest"
 )
 
 type KcpsetupSubroutine struct {
-	client       client.Client
+	client       ctrlruntimeclient.Client
 	kcpHelper    KcpHelper
 	helm         HelmGetter
 	kcpDirectory string
@@ -60,7 +60,7 @@ const (
 	fieldManagerKcpSetup        = "platform-mesh-kcp-setup"
 )
 
-func NewKcpsetupSubroutine(client client.Client, helper KcpHelper, cfg *config.OperatorConfig, kcpdir string, kcpUrl string) *KcpsetupSubroutine {
+func NewKcpsetupSubroutine(client ctrlruntimeclient.Client, helper KcpHelper, cfg *config.OperatorConfig, kcpdir string, kcpUrl string) *KcpsetupSubroutine {
 	return &KcpsetupSubroutine{
 		client:        client,
 		kcpDirectory:  kcpdir,
@@ -77,16 +77,16 @@ func (r *KcpsetupSubroutine) GetName() string {
 }
 
 func (r *KcpsetupSubroutine) Finalize(
-	_ context.Context, _ client.Object,
+	_ context.Context, _ ctrlruntimeclient.Object,
 ) (subroutines.Result, error) {
 	return subroutines.OK(), nil
 }
 
-func (r *KcpsetupSubroutine) Finalizers(_ client.Object) []string { // coverage-ignore
+func (r *KcpsetupSubroutine) Finalizers(_ ctrlruntimeclient.Object) []string { // coverage-ignore
 	return []string{KcpsetupSubroutineFinalizer}
 }
 
-func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Object) (res subroutines.Result, err error) {
+func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj ctrlruntimeclient.Object) (res subroutines.Result, err error) {
 	start := time.Now()
 	defer func() {
 		labelResult := "success"
@@ -99,7 +99,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
-	inst := runtimeObj.(*corev1alpha1.PlatformMesh)
+	inst := runtimeObj.(*pmcorev1alpha1.PlatformMesh)
 	log.Debug().Str("subroutine", r.GetName()).Str("name", inst.Name).Msg("Processing Platform Mesh resource")
 
 	rootShard := &unstructured.Unstructured{}
@@ -142,7 +142,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 	}
 
 	// update workspace status
-	inst.Status.KcpWorkspaces = []corev1alpha1.KcpWorkspace{
+	inst.Status.KcpWorkspaces = []pmcorev1alpha1.KcpWorkspace{
 		{
 			Name:  "root:platform-mesh-system",
 			Phase: "Ready",
@@ -158,7 +158,7 @@ func (r *KcpsetupSubroutine) Process(ctx context.Context, runtimeObj client.Obje
 	return subroutines.OK(), nil
 }
 
-func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *rest.Config, dir string, inst *corev1alpha1.PlatformMesh) error {
+func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *rest.Config, dir string, inst *pmcorev1alpha1.PlatformMesh) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	// Get API export hashes
 	apiExportHashes, err := r.getAPIExportHashInventory(ctx, config)
@@ -291,9 +291,9 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 	validatingB64Data := base64.StdEncoding.EncodeToString(validatingCaData)
 	caBundles[validatingKey] = validatingB64Data
 
-	domainCA, err := r.getCaBundle(ctx, &corev1alpha1.WebhookConfiguration{
+	domainCA, err := r.getCaBundle(ctx, &pmcorev1alpha1.WebhookConfiguration{
 		SecretData: r.cfg.Subroutines.KcpSetup.DomainCertificateCASecretKey,
-		SecretRef: corev1alpha1.SecretReference{
+		SecretRef: pmcorev1alpha1.SecretReference{
 			Name:      r.cfg.Subroutines.KcpSetup.DomainCertificateCASecretName,
 			Namespace: "platform-mesh-system",
 		},
@@ -314,7 +314,7 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 
 func (r *KcpsetupSubroutine) getCaBundle(
 	ctx context.Context,
-	webhookConfig *corev1alpha1.WebhookConfiguration,
+	webhookConfig *pmcorev1alpha1.WebhookConfiguration,
 ) ([]byte, error) {
 	log := logger.LoadLoggerFromContext(ctx)
 
@@ -372,7 +372,7 @@ func (r *KcpsetupSubroutine) getAPIExportHashInventory(ctx context.Context, conf
 	return inventory, nil
 }
 
-func (r *KcpsetupSubroutine) applyExtraWorkspaces(ctx context.Context, config *rest.Config, inst *corev1alpha1.PlatformMesh) error {
+func (r *KcpsetupSubroutine) applyExtraWorkspaces(ctx context.Context, config *rest.Config, inst *pmcorev1alpha1.PlatformMesh) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	if inst.Spec.Kcp.ExtraWorkspaces == nil {
@@ -410,21 +410,20 @@ func (r *KcpsetupSubroutine) applyExtraWorkspaces(ctx context.Context, config *r
 		}
 		obj := unstructured.Unstructured{Object: unstructuredWs}
 
-		err = k8sClient.Patch(ctx, &obj, client.Apply, client.FieldOwner(fieldManagerKcpSetup)) //nolint:staticcheck // Apply via Patch is required for unstructured objects
+		err = k8sClient.Patch(ctx, &obj, ctrlruntimeclient.Apply, ctrlruntimeclient.FieldOwner(fieldManagerKcpSetup)) //nolint:staticcheck // Apply via Patch is required for unstructured objects
 		if err != nil {
 			return gcerrors.Wrap(err, "Failed to apply extra workspace: %s", obj.GetName())
 		}
 		log.Info().Str("workspace", wsDecl.Path).Msg("Applied extra workspace")
-
 	}
 	return nil
 }
 
-func getExtraDefaultApiBindings(obj unstructured.Unstructured, workspacePath string, inst *corev1alpha1.PlatformMesh) []corev1alpha1.DefaultAPIBindingConfiguration {
+func getExtraDefaultApiBindings(obj unstructured.Unstructured, workspacePath string, inst *pmcorev1alpha1.PlatformMesh) []pmcorev1alpha1.DefaultAPIBindingConfiguration {
 	if inst.Spec.Kcp.ExtraDefaultAPIBindings == nil {
 		return nil
 	}
-	res := []corev1alpha1.DefaultAPIBindingConfiguration{}
+	res := []pmcorev1alpha1.DefaultAPIBindingConfiguration{}
 	for _, binding := range inst.Spec.Kcp.ExtraDefaultAPIBindings {
 		workspaceTypePath := fmt.Sprintf("%s:%s", workspacePath, obj.GetName())
 		if binding.WorkspaceTypePath == workspaceTypePath {
@@ -436,7 +435,7 @@ func getExtraDefaultApiBindings(obj unstructured.Unstructured, workspacePath str
 	return res
 }
 
-func HasFeatureToggle(inst *corev1alpha1.PlatformMesh, name string) string {
+func HasFeatureToggle(inst *pmcorev1alpha1.PlatformMesh, name string) string {
 	for _, ft := range inst.Spec.FeatureToggles {
 		if ft.Name == name {
 			return "true"

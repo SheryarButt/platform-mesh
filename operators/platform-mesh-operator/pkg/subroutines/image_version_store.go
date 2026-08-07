@@ -133,31 +133,31 @@ func SplitPath(path string) []string {
 // at their respective paths, and returns the updated YAML string.
 // This is the shared logic used by both ResourceSubroutine and DeploymentSubroutine.
 func SetHelmValues(valuesYAML string, updates []ImageVersion) (string, error) {
-	var helmValues map[string]interface{}
+	var helmValues map[string]any
 	if valuesYAML != "" {
 		if err := yaml.Unmarshal([]byte(valuesYAML), &helmValues); err != nil {
 			return "", err
 		}
 	}
 	if helmValues == nil {
-		helmValues = make(map[string]interface{})
+		helmValues = make(map[string]any)
 	}
 
 	for _, iv := range updates {
 		path := SplitPath(iv.Path)
 		current := helmValues
-		for i := 0; i < len(path)-1; i++ {
+		for i := range len(path) - 1 {
 			key := path[i]
 			if val, exists := current[key]; exists {
-				if valMap, ok := val.(map[string]interface{}); ok {
+				if valMap, ok := val.(map[string]any); ok {
 					current = valMap
 				} else {
-					newMap := make(map[string]interface{})
+					newMap := make(map[string]any)
 					current[key] = newMap
 					current = newMap
 				}
 			} else {
-				newMap := make(map[string]interface{})
+				newMap := make(map[string]any)
 				current[key] = newMap
 				current = newMap
 			}

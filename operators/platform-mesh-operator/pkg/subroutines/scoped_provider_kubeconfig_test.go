@@ -29,13 +29,14 @@ import (
 	"testing"
 	"time"
 
-	kcpapiv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/utils/ptr"
 
-	corev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
-	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	kcpapiv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 )
 
 func TestVirtualWorkspacePathFromSlice(t *testing.T) {
@@ -482,9 +483,9 @@ func TestRewriteScopedVirtualWorkspaceURLToFrontProxy(t *testing.T) {
 	t.Parallel()
 
 	operatorCfg := config.NewOperatorConfig()
-	instance := &corev1alpha1.PlatformMesh{
-		Spec: corev1alpha1.PlatformMeshSpec{
-			Exposure: &corev1alpha1.ExposureConfig{
+	instance := &pmcorev1alpha1.PlatformMesh{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			Exposure: &pmcorev1alpha1.ExposureConfig{
 				BaseDomain: "example.com",
 				Port:       8443,
 			},
@@ -522,7 +523,7 @@ func TestRewriteScopedVirtualWorkspaceURLToFrontProxy(t *testing.T) {
 		_, err := rewriteScopedVirtualWorkspaceURLToFrontProxy(
 			"https://root.kcp.localhost:8443/services/apiexport/abc/core.platform-mesh.io",
 			operatorCfg,
-			&corev1alpha1.PlatformMesh{},
+			&pmcorev1alpha1.PlatformMesh{},
 			true,
 		)
 		if err == nil || !strings.Contains(err.Error(), "requires spec.exposure") {
@@ -535,9 +536,9 @@ func TestCreateScopedKubeconfigURLForAPIExportName(t *testing.T) {
 	t.Parallel()
 
 	operatorCfg := config.NewOperatorConfig()
-	instance := &corev1alpha1.PlatformMesh{
-		Spec: corev1alpha1.PlatformMeshSpec{
-			Exposure: &corev1alpha1.ExposureConfig{
+	instance := &pmcorev1alpha1.PlatformMesh{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			Exposure: &pmcorev1alpha1.ExposureConfig{
 				BaseDomain: "localhost",
 				Port:       8443,
 			},
@@ -571,7 +572,7 @@ func TestParseScopedKubeconfigExportSource(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name        string
-		pc          corev1alpha1.ProviderConnection
+		pc          pmcorev1alpha1.ProviderConnection
 		wantSlice   string
 		wantExports []string
 		wantErr     bool
@@ -579,34 +580,34 @@ func TestParseScopedKubeconfigExportSource(t *testing.T) {
 	}{
 		{
 			name: "apiExportNames single",
-			pc: corev1alpha1.ProviderConnection{
+			pc: pmcorev1alpha1.ProviderConnection{
 				APIExportNames: []string{"core.platform-mesh.io"},
 			},
 			wantExports: []string{"core.platform-mesh.io"},
 		},
 		{
 			name: "apiExportNames multiple",
-			pc: corev1alpha1.ProviderConnection{
+			pc: pmcorev1alpha1.ProviderConnection{
 				APIExportNames: []string{"core.platform-mesh.io", "extensions.platform-mesh.io"},
 			},
 			wantExports: []string{"core.platform-mesh.io", "extensions.platform-mesh.io"},
 		},
 		{
 			name: "endpointSliceName only",
-			pc: corev1alpha1.ProviderConnection{
+			pc: pmcorev1alpha1.ProviderConnection{
 				EndpointSliceName: ptr.To("core.platform-mesh.io"),
 			},
 			wantSlice: "core.platform-mesh.io",
 		},
 		{
 			name:        "both set",
-			pc:          corev1alpha1.ProviderConnection{EndpointSliceName: ptr.To("a"), APIExportNames: []string{"b"}},
+			pc:          pmcorev1alpha1.ProviderConnection{EndpointSliceName: ptr.To("a"), APIExportNames: []string{"b"}},
 			wantErr:     true,
 			errContains: "only one",
 		},
 		{
 			name:        "neither set",
-			pc:          corev1alpha1.ProviderConnection{},
+			pc:          pmcorev1alpha1.ProviderConnection{},
 			wantErr:     true,
 			errContains: "requires endpointSliceName or apiExportNames",
 		},

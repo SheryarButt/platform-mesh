@@ -23,19 +23,20 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
 	"go.platform-mesh.io/golang-commons/context/keys"
 	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/mocks"
+
 	corev1 "k8s.io/api/core/v1"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	providersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
-	"go.platform-mesh.io/platform-mesh-operator/internal/config"
-	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/mocks"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type ProviderResourceTestSuite struct {
@@ -86,8 +87,8 @@ func (s *ProviderResourceTestSuite) newCtx() context.Context {
 	return context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 }
 
-func (s *ProviderResourceTestSuite) newManagedProvider() *providersv1alpha1.ManagedProvider {
-	return &providersv1alpha1.ManagedProvider{
+func (s *ProviderResourceTestSuite) newManagedProvider() *pmprovidersv1alpha1.ManagedProvider {
+	return &pmprovidersv1alpha1.ManagedProvider{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "cowboys",
 			Namespace: "providers-wildwest-ns",
@@ -98,7 +99,7 @@ func (s *ProviderResourceTestSuite) newManagedProvider() *providersv1alpha1.Mana
 func (s *ProviderResourceTestSuite) mockAdminSecret() {
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "kcp-admin", Namespace: "platform-mesh-system"}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				"ca.crt":  []byte("fake-ca"),
@@ -160,7 +161,7 @@ func (s *ProviderResourceTestSuite) TestProcess_ApplyFails() {
 	// CreateOrUpdate: Get → NotFound → Create fails
 	s.kcpClientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "cowboys"}, mock.AnythingOfType("*v1alpha1.Provider")).
-		Return(kerrors.NewNotFound(schema.GroupResource{Resource: "providers"}, "cowboys"))
+		Return(apierrors.NewNotFound(schema.GroupResource{Resource: "providers"}, "cowboys"))
 	s.kcpClientMock.EXPECT().
 		Create(mock.Anything, mock.AnythingOfType("*v1alpha1.Provider"), mock.Anything).
 		Return(errors.New("apply failed"))
@@ -183,7 +184,7 @@ func (s *ProviderResourceTestSuite) TestProcess_HappyPath() {
 	// CreateOrUpdate: Get → NotFound → Create succeeds
 	s.kcpClientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "cowboys"}, mock.AnythingOfType("*v1alpha1.Provider")).
-		Return(kerrors.NewNotFound(schema.GroupResource{Resource: "providers"}, "cowboys"))
+		Return(apierrors.NewNotFound(schema.GroupResource{Resource: "providers"}, "cowboys"))
 	s.kcpClientMock.EXPECT().
 		Create(mock.Anything, mock.AnythingOfType("*v1alpha1.Provider"), mock.Anything).
 		Return(nil)
@@ -197,7 +198,7 @@ func (s *ProviderResourceTestSuite) TestProcess_HappyPath() {
 func (s *ProviderResourceTestSuite) TestProcess_CustomProviderReference() {
 	ctx := s.newCtx()
 	inst := s.newManagedProvider()
-	inst.Spec.ProviderReference = &providersv1alpha1.ProviderReferenceSpec{
+	inst.Spec.ProviderReference = &pmprovidersv1alpha1.ProviderReferenceSpec{
 		Path: "root:custom:path",
 		Name: "my-provider",
 	}
@@ -209,7 +210,7 @@ func (s *ProviderResourceTestSuite) TestProcess_CustomProviderReference() {
 	// CreateOrUpdate: Get → NotFound → Create succeeds
 	s.kcpClientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "my-provider"}, mock.AnythingOfType("*v1alpha1.Provider")).
-		Return(kerrors.NewNotFound(schema.GroupResource{Resource: "providers"}, "my-provider"))
+		Return(apierrors.NewNotFound(schema.GroupResource{Resource: "providers"}, "my-provider"))
 	s.kcpClientMock.EXPECT().
 		Create(mock.Anything, mock.AnythingOfType("*v1alpha1.Provider"), mock.Anything).
 		Return(nil)

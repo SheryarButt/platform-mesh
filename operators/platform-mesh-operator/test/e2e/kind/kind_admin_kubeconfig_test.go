@@ -24,13 +24,14 @@ import (
 	"strings"
 	"time"
 
-	corev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/utils/ptr"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -74,8 +75,8 @@ func (s *KindTestSuite) runAdminKubeconfigSelfContainedE2E(ctx context.Context) 
 }
 
 func (s *KindTestSuite) adminE2EPatchExtraProviderConnectionForAdminKubeconfig(ctx context.Context) {
-	pm := &corev1alpha1.PlatformMesh{}
-	err := s.client.Get(ctx, client.ObjectKey{
+	pm := &pmcorev1alpha1.PlatformMesh{}
+	err := s.client.Get(ctx, ctrlruntimeclient.ObjectKey{
 		Name:      e2ePlatformMeshName,
 		Namespace: e2ePlatformMeshNamespace,
 	}, pm)
@@ -83,7 +84,7 @@ func (s *KindTestSuite) adminE2EPatchExtraProviderConnectionForAdminKubeconfig(c
 
 	// ExtraProviderConnections is the supported way to add a one-off AdminAuth provider secret without
 	// changing the chart defaults; the operator reconciles it like other admin kubeconfigs.
-	desired := corev1alpha1.ProviderConnection{
+	desired := pmcorev1alpha1.ProviderConnection{
 		Path:              kindE2EAdminProviderWorkspacePath,
 		Secret:            kindE2EAdminProviderKubeconfigSecretName,
 		EndpointSliceName: ptr.To("core.platform-mesh.io"),
@@ -113,7 +114,7 @@ func (s *KindTestSuite) adminE2EWaitAdminProviderKubeconfigSecret(ctx context.Co
 	name := kindE2EAdminProviderKubeconfigSecretName
 	s.Eventually(func() bool {
 		sec := &corev1.Secret{}
-		if err := s.client.Get(ctx, client.ObjectKey{Name: name, Namespace: e2ePlatformMeshNamespace}, sec); err != nil {
+		if err := s.client.Get(ctx, ctrlruntimeclient.ObjectKey{Name: name, Namespace: e2ePlatformMeshNamespace}, sec); err != nil {
 			s.logger.Info().Str("secret", name).Msg("admin e2e: operator provider secret not yet present")
 			return false
 		}
@@ -127,7 +128,7 @@ func (s *KindTestSuite) adminE2EWaitAdminProviderKubeconfigSecret(ctx context.Co
 
 func (s *KindTestSuite) adminE2ERequireAdminProviderSecret(ctx context.Context) *corev1.Secret {
 	sec := &corev1.Secret{}
-	err := s.client.Get(ctx, client.ObjectKey{
+	err := s.client.Get(ctx, ctrlruntimeclient.ObjectKey{
 		Name:      kindE2EAdminProviderKubeconfigSecretName,
 		Namespace: e2ePlatformMeshNamespace,
 	}, sec)

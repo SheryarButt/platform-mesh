@@ -22,23 +22,24 @@ import (
 	"os"
 	"testing"
 
-	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
 	"go.platform-mesh.io/golang-commons/context/keys"
 	"go.platform-mesh.io/golang-commons/logger"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/rest"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
-	corev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
 	"go.platform-mesh.io/platform-mesh-operator/internal/config"
 	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/mocks"
 	"go.platform-mesh.io/subroutines"
+
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/rest"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+
+	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
+	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 )
 
 var ManifestStructureTest = "../../manifests/kcp"
@@ -109,10 +110,10 @@ func (s *KcpsetupTestSuite) Test_applyDirStructure() {
 
 	// Mock unstructured object lookups (for general manifest objects - flexible count)
 	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			unstructuredObj := obj.(*unstructured.Unstructured)
-			unstructuredObj.Object = map[string]interface{}{
-				"status": map[string]interface{}{
+			unstructuredObj.Object = map[string]any{
+				"status": map[string]any{
 					"phase": "Ready",
 				},
 			}
@@ -121,7 +122,7 @@ func (s *KcpsetupTestSuite) Test_applyDirStructure() {
 
 	// Mock workspace lookups for waitForWorkspace calls (multiple calls for polling)
 	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			ws := obj.(*kcptenancyv1alpha.Workspace)
 			ws.Status.Phase = "Ready"
 			return nil
@@ -129,13 +130,13 @@ func (s *KcpsetupTestSuite) Test_applyDirStructure() {
 
 	// Mock APIExport lookups
 	kcpClientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.APIExport")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			export := obj.(*kcpapiv1alpha.APIExport)
 			export.Status.IdentityHash = "test-hash"
 			return nil
 		})
 
-	err := ApplyDirStructure(ctx, "../../manifests/kcp", "root", &rest.Config{}, inventory, &corev1alpha1.PlatformMesh{}, s.helperMock)
+	err := ApplyDirStructure(ctx, "../../manifests/kcp", "root", &rest.Config{}, inventory, &pmcorev1alpha1.PlatformMesh{}, s.helperMock)
 
 	s.Assert().Nil(err)
 }
@@ -151,7 +152,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 			Name:      DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Name,
 			Namespace: DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				DEFAULT_WEBHOOK_CONFIGURATION.SecretData: expectedCaData,
@@ -166,7 +167,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 			Name:      DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
 			Namespace: DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: expectedCaData,
@@ -181,7 +182,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 			Name:      DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
 			Namespace: DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: expectedCaData,
@@ -195,7 +196,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 			Name:      "domain-certificate",
 			Namespace: "platform-mesh-system",
 		}, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				"ca.crt":  []byte("test-ca-data"),
@@ -277,7 +278,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory_CustomSecretNameAndKey() {
 			Name:      DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Name,
 			Namespace: DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				DEFAULT_WEBHOOK_CONFIGURATION.SecretData: []byte("test-ca-data"),
@@ -291,7 +292,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory_CustomSecretNameAndKey() {
 			Name:      DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
 			Namespace: DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: []byte("test-ca-data"),
@@ -305,7 +306,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory_CustomSecretNameAndKey() {
 			Name:      DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
 			Namespace: DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: []byte("test-ca-data"),
@@ -319,7 +320,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory_CustomSecretNameAndKey() {
 			Name:      customSecretName,
 			Namespace: "platform-mesh-system",
 		}, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				customSecretKey: []byte("custom-ca-data"),
@@ -339,8 +340,8 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory_CustomSecretNameAndKey() {
 
 func (s *KcpsetupTestSuite) Test_GetCaBundle() {
 	ctx := context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
-	webhookConfig := &corev1alpha1.WebhookConfiguration{
-		SecretRef: corev1alpha1.SecretReference{
+	webhookConfig := &pmcorev1alpha1.WebhookConfiguration{
+		SecretRef: pmcorev1alpha1.SecretReference{
 			Name:      "ca-secret",
 			Namespace: "default",
 		},
@@ -350,7 +351,7 @@ func (s *KcpsetupTestSuite) Test_GetCaBundle() {
 
 	// Test case 1: Successful retrieval
 	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "ca-secret", Namespace: "default"}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				"ca.crt": expectedCaData,
@@ -375,7 +376,7 @@ func (s *KcpsetupTestSuite) Test_GetCaBundle() {
 
 	// Test case 3: Secret data key not found
 	s.clientMock.EXPECT().Get(mock.Anything, types.NamespacedName{Name: "ca-secret", Namespace: "default"}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				"wrong-key": []byte("some data"),
@@ -405,12 +406,12 @@ func (s *KcpsetupTestSuite) TestProcess() {
 	// Mock the Helm release lookup
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "kcp", Namespace: "default"}, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			release := obj.(*unstructured.Unstructured)
-			release.Object = map[string]interface{}{
-				"status": map[string]interface{}{
-					"conditions": []interface{}{
-						map[string]interface{}{
+			release.Object = map[string]any{
+				"status": map[string]any{
+					"conditions": []any{
+						map[string]any{
 							"type":   "Available",
 							"status": "True",
 						},
@@ -421,12 +422,12 @@ func (s *KcpsetupTestSuite) TestProcess() {
 		})
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "kcp-front-proxy", Namespace: "default"}, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			release := obj.(*unstructured.Unstructured)
-			release.Object = map[string]interface{}{
-				"status": map[string]interface{}{
-					"conditions": []interface{}{
-						map[string]interface{}{
+			release.Object = map[string]any{
+				"status": map[string]any{
+					"conditions": []any{
+						map[string]any{
 							"type":   "Available",
 							"status": "True",
 						},
@@ -442,7 +443,7 @@ func (s *KcpsetupTestSuite) TestProcess() {
 			Name:      "kcp-cluster-admin-client-cert",
 			Namespace: "platform-mesh-system",
 		}, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				"ca.crt":  []byte("test-ca-data"),
@@ -473,7 +474,7 @@ users:
 			Name:      "kcp-cluster-admin",
 			Namespace: "default",
 		}, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				"kubeconfig": fakeKubeconfig,
@@ -485,7 +486,7 @@ users:
 			Name:      "domain-certificate",
 			Namespace: "platform-mesh-system",
 		}, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				"ca.crt":  []byte("test-ca-data"),
@@ -501,7 +502,7 @@ users:
 			Name:      DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Name,
 			Namespace: DEFAULT_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				DEFAULT_WEBHOOK_CONFIGURATION.SecretData: []byte("test-ca-data"),
@@ -515,7 +516,7 @@ users:
 			Name:      DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Name,
 			Namespace: DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretRef.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION.SecretData: []byte("test-ca-data"),
@@ -529,7 +530,7 @@ users:
 			Name:      "account-operator-webhook-server-cert",
 			Namespace: "platform-mesh-system",
 		}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				"ca.crt": []byte("test-ca-data"),
@@ -573,7 +574,7 @@ users:
 	// Mock all APIExport lookups
 	mockKcpClient.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "tenancy.kcp.io"}, mock.AnythingOfType("*v1alpha1.APIExport")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			export := obj.(*kcpapiv1alpha.APIExport)
 			export.Status = apiexport.Status
 			return nil
@@ -581,7 +582,7 @@ users:
 
 	mockKcpClient.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "shards.core.kcp.io"}, mock.AnythingOfType("*v1alpha1.APIExport")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			export := obj.(*kcpapiv1alpha.APIExport)
 			export.Status = apiexport.Status
 			return nil
@@ -589,7 +590,7 @@ users:
 
 	mockKcpClient.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "topology.kcp.io"}, mock.AnythingOfType("*v1alpha1.APIExport")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			export := obj.(*kcpapiv1alpha.APIExport)
 			export.Status = apiexport.Status
 			return nil
@@ -597,7 +598,7 @@ users:
 
 	mockKcpClient.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "system.platform-mesh.io"}, mock.AnythingOfType("*v1alpha1.APIExport")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			export := obj.(*kcpapiv1alpha.APIExport)
 			export.Status = apiexport.Status
 			return nil
@@ -606,7 +607,7 @@ users:
 	// Mock workspace lookups and patch calls
 	mockKcpClient.EXPECT().
 		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			ws := obj.(*kcptenancyv1alpha.Workspace)
 			ws.Status.Phase = "Ready"
 			return nil
@@ -614,7 +615,7 @@ users:
 
 	mockKcpClient.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "orgs"}, mock.AnythingOfType("*v1alpha1.Workspace")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			ws := obj.(*kcptenancyv1alpha.Workspace)
 			ws.Status.Phase = "Ready"
 			return nil
@@ -623,10 +624,10 @@ users:
 	// Mock unstructured object lookups for manifest files (flexible count)
 	mockKcpClient.EXPECT().
 		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			unstructuredObj := obj.(*unstructured.Unstructured)
-			unstructuredObj.Object = map[string]interface{}{
-				"status": map[string]interface{}{
+			unstructuredObj.Object = map[string]any{
+				"status": map[string]any{
 					"phase": "Ready",
 				},
 			}
@@ -639,7 +640,7 @@ users:
 		Return(nil)
 
 	// Call Process
-	result, err := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{})
+	result, err := s.testObj.Process(ctx, &pmcorev1alpha1.PlatformMesh{})
 
 	// Assertions
 	s.Assert().Nil(err)
@@ -663,13 +664,13 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 	}
 	mockKcpClient.EXPECT().Get(
 		mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*kcpapiv1alpha.APIExport) = *apiexport
 			return nil
 		}).Times(2)
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*kcpapiv1alpha.APIExport) = *apiexport
 			return errors.New("error")
@@ -684,13 +685,13 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 
 	// test error 2
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*kcpapiv1alpha.APIExport) = *apiexport
 			return nil
 		}).Once()
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*kcpapiv1alpha.APIExport) = *apiexport
 			return errors.New("error")
@@ -704,7 +705,7 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 
 	// test error 3
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*kcpapiv1alpha.APIExport) = *apiexport
 			return errors.New("error")
@@ -723,7 +724,7 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 }
 
 func (s *KcpsetupTestSuite) TestFinalizers() {
-	res := s.testObj.Finalizers(&corev1alpha1.PlatformMesh{})
+	res := s.testObj.Finalizers(&pmcorev1alpha1.PlatformMesh{})
 	s.Assert().Equal(res, []string{KcpsetupSubroutineFinalizer})
 }
 
@@ -733,7 +734,7 @@ func (s *KcpsetupTestSuite) TestGetName() {
 }
 
 func (s *KcpsetupTestSuite) TestFinalize() {
-	res, err := s.testObj.Finalize(context.Background(), &corev1alpha1.PlatformMesh{})
+	res, err := s.testObj.Finalize(context.Background(), &pmcorev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 	s.Assert().Equal(subroutines.OK(), res)
 }
@@ -744,7 +745,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(nil, errors.New("failed to create client"))
 	s.testObj = NewKcpsetupSubroutine(s.clientMock, mockedKcpHelper, defaultTestOperatorConfig(), ManifestStructureTest, "")
 
-	err := s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.PlatformMesh{})
+	err := s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &pmcorev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 	s.Assert().Contains(err.Error(), "Failed to get APIExport hash inventory")
 
@@ -765,7 +766,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		Name:      webhookConfig.SecretRef.Name,
 		Namespace: webhookConfig.SecretRef.Namespace,
 	}, mock.AnythingOfType("*v1.Secret")).
-		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
+		Run(func(ctx context.Context, key types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) {
 			sec := obj.(*corev1.Secret)
 			sec.Data = map[string][]byte{
 				webhookConfig.SecretData: []byte("dummy-ca-data"),
@@ -779,7 +780,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		Name:      "domain-certificate",
 		Namespace: webhookConfig.SecretRef.Namespace,
 	}, mock.AnythingOfType("*v1.Secret")).
-		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
+		Run(func(ctx context.Context, key types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) {
 			sec := obj.(*corev1.Secret)
 			sec.Data = map[string][]byte{
 				"ca.crt":  []byte("test-ca-data"),
@@ -794,7 +795,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		Name:      ipdValidatingWebhookConfig.SecretRef.Name,
 		Namespace: ipdValidatingWebhookConfig.SecretRef.Namespace,
 	}, mock.AnythingOfType("*v1.Secret")).
-		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
+		Run(func(ctx context.Context, key types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) {
 			sec := obj.(*corev1.Secret)
 			sec.Data = map[string][]byte{
 				ipdValidatingWebhookConfig.SecretData: []byte("dummy-ca-data"),
@@ -808,7 +809,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		Name:      validatingWebhookConfig.SecretRef.Name,
 		Namespace: validatingWebhookConfig.SecretRef.Namespace,
 	}, mock.AnythingOfType("*v1.Secret")).
-		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
+		Run(func(ctx context.Context, key types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) {
 			sec := obj.(*corev1.Secret)
 			sec.Data = map[string][]byte{
 				validatingWebhookConfig.SecretData: []byte("dummy-ca-data"),
@@ -829,24 +830,24 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 	}
 	// Mock APIExport lookups
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.APIExport")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			*o.(*kcpapiv1alpha.APIExport) = *apiexport
 			return nil
 		})
 
 	// Mock workspace lookups (flexible count for polling)
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			*o.(*kcptenancyv1alpha.Workspace) = *workspace
 			return nil
 		}).Maybe()
 
 	// Mock unstructured object lookups for manifest files (flexible count)
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			unstructuredObj := o.(*unstructured.Unstructured)
-			unstructuredObj.Object = map[string]interface{}{
-				"status": map[string]interface{}{
+			unstructuredObj.Object = map[string]any{
+				"status": map[string]any{
 					"phase": "Ready",
 				},
 			}
@@ -855,7 +856,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 
 	// Mock apply calls for applying manifests (flexible count)
 	mockKcpClient.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.PlatformMesh{})
+	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &pmcorev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
 	// test err2 - expect error when Apply fails
@@ -870,7 +871,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		Name:      webhookConfig.SecretRef.Name,
 		Namespace: webhookConfig.SecretRef.Namespace,
 	}, mock.AnythingOfType("*v1.Secret")).
-		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
+		Run(func(ctx context.Context, key types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) {
 			sec := obj.(*corev1.Secret)
 			sec.Data = map[string][]byte{
 				webhookConfig.SecretData: []byte("dummy-ca-data"),
@@ -884,7 +885,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		Name:      "domain-certificate-ca",
 		Namespace: webhookConfig.SecretRef.Namespace,
 	}, mock.AnythingOfType("*v1.Secret")).
-		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
+		Run(func(ctx context.Context, key types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) {
 			sec := obj.(*corev1.Secret)
 			sec.Data = map[string][]byte{
 				"ca.crt":  []byte("test-ca-data"),
@@ -899,7 +900,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		Name:      ipdValidatingWebhookConfig.SecretRef.Name,
 		Namespace: ipdValidatingWebhookConfig.SecretRef.Namespace,
 	}, mock.AnythingOfType("*v1.Secret")).
-		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
+		Run(func(ctx context.Context, key types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) {
 			sec := obj.(*corev1.Secret)
 			sec.Data = map[string][]byte{
 				ipdValidatingWebhookConfig.SecretData: []byte("dummy-ca-data"),
@@ -912,7 +913,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 		Name:      validatingWebhookConfig.SecretRef.Name,
 		Namespace: validatingWebhookConfig.SecretRef.Namespace,
 	}, mock.AnythingOfType("*v1.Secret")).
-		Run(func(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) {
+		Run(func(ctx context.Context, key types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) {
 			sec := obj.(*corev1.Secret)
 			sec.Data = map[string][]byte{
 				validatingWebhookConfig.SecretData: []byte("dummy-ca-data"),
@@ -923,24 +924,24 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 
 	// Mock APIExport lookups
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.APIExport")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			*o.(*kcpapiv1alpha.APIExport) = *apiexport
 			return nil
 		})
 
 	// Mock workspace lookups (2 calls for platform-mesh-system and orgs workspaces)
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			*o.(*kcptenancyv1alpha.Workspace) = *workspace
 			return nil
 		}).Times(2)
 
 	// Mock unstructured object lookups for manifest files (flexible count)
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			unstructuredObj := o.(*unstructured.Unstructured)
-			unstructuredObj.Object = map[string]interface{}{
-				"status": map[string]interface{}{
+			unstructuredObj.Object = map[string]any{
+				"status": map[string]any{
 					"phase": "Ready",
 				},
 			}
@@ -949,7 +950,7 @@ func (s *KcpsetupTestSuite) TestCreateWorkspaces() {
 
 	// Mock apply calls for applying manifests (flexible count) - but they should fail
 	mockKcpClient.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("apply failed"))
-	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &corev1alpha1.PlatformMesh{})
+	err = s.testObj.CreateKcpResources(context.Background(), &rest.Config{}, ManifestStructureTest, &pmcorev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 	s.Assert().Contains(err.Error(), "Failed to apply")
 }
@@ -1050,16 +1051,16 @@ type extraWsDef struct {
 	TypePath string
 }
 
-func (s *KcpsetupTestSuite) newPlatformMeshWithExtraWorkspaces(defs []extraWsDef) *corev1alpha1.PlatformMesh {
-	pm := &corev1alpha1.PlatformMesh{}
+func (s *KcpsetupTestSuite) newPlatformMeshWithExtraWorkspaces(defs []extraWsDef) *pmcorev1alpha1.PlatformMesh {
+	pm := &pmcorev1alpha1.PlatformMesh{}
 	// Ensure nested structs exist
-	pm.Spec.Kcp = corev1alpha1.Kcp{}
+	pm.Spec.Kcp = pmcorev1alpha1.Kcp{}
 
 	// Attempt to populate using likely field names; ignore if they differ (tests will need adjustment).
 	for _, d := range defs {
-		pm.Spec.Kcp.ExtraWorkspaces = append(pm.Spec.Kcp.ExtraWorkspaces, corev1alpha1.WorkspaceDeclaration{
+		pm.Spec.Kcp.ExtraWorkspaces = append(pm.Spec.Kcp.ExtraWorkspaces, pmcorev1alpha1.WorkspaceDeclaration{
 			Path: d.Path,
-			Type: corev1alpha1.WorkspaceTypeReference{
+			Type: pmcorev1alpha1.WorkspaceTypeReference{
 				Name: d.TypeName,
 			},
 		})
@@ -1070,19 +1071,19 @@ func (s *KcpsetupTestSuite) newPlatformMeshWithExtraWorkspaces(defs []extraWsDef
 func (s *KcpsetupTestSuite) Test_HasFeatureToggle() {
 	tests := []struct {
 		name           string
-		featureToggles []corev1alpha1.FeatureToggle
+		featureToggles []pmcorev1alpha1.FeatureToggle
 		toggleName     string
 		expected       string
 	}{
 		{
 			name:           "returns true when feature toggle exists",
-			featureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-disable-email-verification"}},
+			featureToggles: []pmcorev1alpha1.FeatureToggle{{Name: "feature-disable-email-verification"}},
 			toggleName:     "feature-disable-email-verification",
 			expected:       "true",
 		},
 		{
 			name:           "returns false when feature toggle does not exist",
-			featureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-enable-getting-started"}},
+			featureToggles: []pmcorev1alpha1.FeatureToggle{{Name: "feature-enable-getting-started"}},
 			toggleName:     "feature-disable-email-verification",
 			expected:       "false",
 		},
@@ -1094,7 +1095,7 @@ func (s *KcpsetupTestSuite) Test_HasFeatureToggle() {
 		},
 		{
 			name: "returns true when toggle is among multiple toggles",
-			featureToggles: []corev1alpha1.FeatureToggle{
+			featureToggles: []pmcorev1alpha1.FeatureToggle{
 				{Name: "feature-enable-getting-started"},
 				{Name: "feature-disable-email-verification"},
 			},
@@ -1103,7 +1104,7 @@ func (s *KcpsetupTestSuite) Test_HasFeatureToggle() {
 		},
 		{
 			name:           "returns true for feature-disable-contentconfigurations",
-			featureToggles: []corev1alpha1.FeatureToggle{{Name: "feature-disable-contentconfigurations"}},
+			featureToggles: []pmcorev1alpha1.FeatureToggle{{Name: "feature-disable-contentconfigurations"}},
 			toggleName:     "feature-disable-contentconfigurations",
 			expected:       "true",
 		},
@@ -1111,8 +1112,8 @@ func (s *KcpsetupTestSuite) Test_HasFeatureToggle() {
 
 	for _, tc := range tests {
 		s.Run(tc.name, func() {
-			inst := &corev1alpha1.PlatformMesh{
-				Spec: corev1alpha1.PlatformMeshSpec{
+			inst := &pmcorev1alpha1.PlatformMesh{
+				Spec: pmcorev1alpha1.PlatformMeshSpec{
 					FeatureToggles: tc.featureToggles,
 				},
 			}
@@ -1213,14 +1214,14 @@ func (s *KcpsetupTestSuite) Test_ApplyManifestFromFile_SkipsContentConfiguration
 			path := "../../manifests/kcp/01-platform-mesh-system/contentconfiguration-main-home.yaml"
 
 			if tc.expectSkipped {
-				err := ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+				err := ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root:platform-mesh-system", &pmcorev1alpha1.PlatformMesh{})
 				s.Assert().NoError(err)
 				kcpClientMock.AssertNotCalled(s.T(), "Get", mock.Anything, mock.Anything, mock.Anything)
 				kcpClientMock.AssertNotCalled(s.T(), "Apply", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 			} else {
 				kcpClientMock.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
-				err := ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+				err := ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root:platform-mesh-system", &pmcorev1alpha1.PlatformMesh{})
 				s.Assert().NoError(err)
 			}
 		})
@@ -1242,6 +1243,6 @@ func (s *KcpsetupTestSuite) Test_ApplyManifestFromFile_DoesNotSkipNonContentConf
 	// Even with toggle enabled, non-ContentConfiguration files should be applied
 	kcpClientMock.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
-	err := ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root", &corev1alpha1.PlatformMesh{})
+	err := ApplyManifestFromFile(ctx, path, kcpClientMock, templateData, "root", &pmcorev1alpha1.PlatformMesh{})
 	s.Assert().NoError(err)
 }

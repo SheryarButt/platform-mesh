@@ -25,16 +25,17 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-	admissionv1 "k8s.io/api/admissionregistration/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 
-	corev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
 	"go.platform-mesh.io/golang-commons/context/keys"
 	"go.platform-mesh.io/golang-commons/errors"
 	"go.platform-mesh.io/platform-mesh-operator/internal/config"
 	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/mocks"
+
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 type HelperTestSuite struct {
@@ -198,21 +199,21 @@ func (s *HelperTestSuite) TestIsWorkspace() {
 
 func (s *HelperTestSuite) TestConvertToUnstructured() {
 	// Create a simple MutatingWebhookConfiguration
-	webhook := admissionv1.MutatingWebhookConfiguration{}
+	webhook := admissionregistrationv1.MutatingWebhookConfiguration{}
 	webhook.Name = "test-webhook"
 	webhook.Namespace = "test-namespace"
 
 	// Add a webhook to the configuration
-	webhook.Webhooks = []admissionv1.MutatingWebhook{
+	webhook.Webhooks = []admissionregistrationv1.MutatingWebhook{
 		{
 			Name: "test.webhook.example.com",
-			ClientConfig: admissionv1.WebhookClientConfig{
-				URL: strPtr("https://example.com/webhook"),
+			ClientConfig: admissionregistrationv1.WebhookClientConfig{
+				URL: new("https://example.com/webhook"),
 			},
-			Rules: []admissionv1.RuleWithOperations{
+			Rules: []admissionregistrationv1.RuleWithOperations{
 				{
-					Operations: []admissionv1.OperationType{admissionv1.Create},
-					Rule: admissionv1.Rule{
+					Operations: []admissionregistrationv1.OperationType{admissionregistrationv1.Create},
+					Rule: admissionregistrationv1.Rule{
 						APIGroups:   []string{"apps"},
 						APIVersions: []string{"v1"},
 						Resources:   []string{"deployments"},
@@ -245,17 +246,12 @@ func (s *HelperTestSuite) TestConvertToUnstructured() {
 	s.Assert().True(found)
 	s.Assert().Len(webhooks, 1)
 
-	webhookMap, ok := webhooks[0].(map[string]interface{})
+	webhookMap, ok := webhooks[0].(map[string]any)
 	s.Assert().True(ok)
 	name, found, err := unstructured.NestedString(webhookMap, "name")
 	s.Assert().NoError(err)
 	s.Assert().True(found)
 	s.Assert().Equal("test.webhook.example.com", name)
-}
-
-// Helper function to create string pointers
-func strPtr(s string) *string {
-	return &s
 }
 
 func (s *HelperTestSuite) TestReplaceTemplate_ParseError() {
@@ -290,7 +286,6 @@ func (s *HelperTestSuite) TestReplaceTemplate_ExecuteError() {
 	resultMissingKey, errMissingKey := ReplaceTemplate(templateData, templateBytesMissingKey)
 	s.Assert().NoError(errMissingKey)
 	s.Assert().Equal(expectedMissingKey, resultMissingKey)
-
 }
 
 func (s *HelperTestSuite) TestReplaceTemplate_EmptyData() {
@@ -328,8 +323,8 @@ func (s *HelperTestSuite) TestReplaceTemplate_Success() {
 	s.Assert().Equal(expected, result)
 }
 
-func (suite *HelperTestSuite) SetupTest() {
-	suite.KcpHelper = &Helper{}
+func (s *HelperTestSuite) SetupTest() {
+	s.KcpHelper = &Helper{}
 }
 
 func (s *HelperTestSuite) TestConstructorError() {
@@ -347,25 +342,24 @@ func (s *HelperTestSuite) TestConstructorOK() {
 }
 
 func (s *HelperTestSuite) TestApplyManifestFromFile() {
-
 	cl := new(mocks.Client)
 	// Server-side apply (no Get needed)
 	cl.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err := ApplyManifestFromFile(s.T().Context(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err := ApplyManifestFromFile(s.T().Context(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &pmcorev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
-	err = ApplyManifestFromFile(s.T().Context(), "invalid", nil, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = ApplyManifestFromFile(s.T().Context(), "invalid", nil, make(map[string]any), "root:platform-mesh-system", &pmcorev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
-	err = ApplyManifestFromFile(s.T().Context(), "./kcpsetup.go", nil, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = ApplyManifestFromFile(s.T().Context(), "./kcpsetup.go", nil, make(map[string]any), "root:platform-mesh-system", &pmcorev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
 	cl.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
-	err = ApplyManifestFromFile(s.T().Context(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = ApplyManifestFromFile(s.T().Context(), "../../manifests/kcp/workspace-platform-mesh-system.yaml", cl, make(map[string]any), "root:platform-mesh-system", &pmcorev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 
 	cl.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-	err = ApplyManifestFromFile(s.T().Context(), "../../manifests/kcp/02-root/workspace-orgs.yaml", cl, make(map[string]any), "root:orgs", &corev1alpha1.PlatformMesh{})
+	err = ApplyManifestFromFile(s.T().Context(), "../../manifests/kcp/02-root/workspace-orgs.yaml", cl, make(map[string]any), "root:orgs", &pmcorev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 
 	cl.EXPECT().Apply(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
@@ -377,6 +371,6 @@ func (s *HelperTestSuite) TestApplyManifestFromFile() {
 		KCP: config.OperatorConfig{}.KCP,
 	}
 	ctx := context.WithValue(s.T().Context(), keys.ConfigCtxKey, operatorCfg)
-	err = ApplyManifestFromFile(ctx, "../../manifests/kcp/04-platform-mesh-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData, "root:platform-mesh-system", &corev1alpha1.PlatformMesh{})
+	err = ApplyManifestFromFile(ctx, "../../manifests/kcp/04-platform-mesh-system/mutatingwebhookconfiguration-admissionregistration.k8s.io.yaml", cl, templateData, "root:platform-mesh-system", &pmcorev1alpha1.PlatformMesh{})
 	s.Assert().Nil(err)
 }

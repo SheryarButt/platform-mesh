@@ -22,39 +22,39 @@ import (
 	"path/filepath"
 	"time"
 
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
 	pmconfig "go.platform-mesh.io/golang-commons/config"
 	gcerrors "go.platform-mesh.io/golang-commons/errors"
 	"go.platform-mesh.io/golang-commons/logger"
-	"go.platform-mesh.io/subroutines"
-	"k8s.io/client-go/rest"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	corev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
 	"go.platform-mesh.io/platform-mesh-operator/internal/config"
 	"go.platform-mesh.io/platform-mesh-operator/internal/metrics"
+	"go.platform-mesh.io/subroutines"
+
+	"k8s.io/client-go/rest"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const FeatureToggleSubroutineName = "FeatureToggleSubroutine"
 
 type KubeconfigBuilder interface {
-	Build(ctx context.Context, client client.Client, kcpUrl string) (*rest.Config, error)
+	Build(ctx context.Context, client ctrlruntimeclient.Client, kcpUrl string) (*rest.Config, error)
 }
 
 type defaultKubeconfigBuilder struct{}
 
-func (defaultKubeconfigBuilder) Build(ctx context.Context, client client.Client, kcpUrl string) (*rest.Config, error) {
+func (defaultKubeconfigBuilder) Build(ctx context.Context, client ctrlruntimeclient.Client, kcpUrl string) (*rest.Config, error) {
 	return buildKubeconfig(ctx, client, kcpUrl)
 }
 
 type FeatureToggleSubroutine struct {
-	client             client.Client
+	client             ctrlruntimeclient.Client
 	workspaceDirectory string
 	kcpUrl             string
 	kubeconfigBuilder  KubeconfigBuilder
 	kcpHelper          KcpHelper
 }
 
-func NewFeatureToggleSubroutine(client client.Client, helper KcpHelper, operatorCfg *config.OperatorConfig, kcpUrl string) *FeatureToggleSubroutine {
+func NewFeatureToggleSubroutine(client ctrlruntimeclient.Client, helper KcpHelper, operatorCfg *config.OperatorConfig, kcpUrl string) *FeatureToggleSubroutine {
 	return &FeatureToggleSubroutine{
 		client:             client,
 		workspaceDirectory: filepath.Join(operatorCfg.WorkspaceDir, "/manifests/features/"),
@@ -68,15 +68,15 @@ func (r *FeatureToggleSubroutine) GetName() string {
 	return FeatureToggleSubroutineName
 }
 
-func (r *FeatureToggleSubroutine) Finalize(_ context.Context, _ client.Object) (subroutines.Result, error) {
+func (r *FeatureToggleSubroutine) Finalize(_ context.Context, _ ctrlruntimeclient.Object) (subroutines.Result, error) {
 	return subroutines.OK(), nil
 }
 
-func (r *FeatureToggleSubroutine) Finalizers(instance client.Object) []string { // coverage-ignore
+func (r *FeatureToggleSubroutine) Finalizers(instance ctrlruntimeclient.Object) []string { // coverage-ignore
 	return []string{}
 }
 
-func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj client.Object) (res subroutines.Result, err error) {
+func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj ctrlruntimeclient.Object) (res subroutines.Result, err error) {
 	start := time.Now()
 	defer func() {
 		labelResult := "success"
@@ -89,7 +89,7 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj client
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 
-	inst := runtimeObj.(*corev1alpha1.PlatformMesh)
+	inst := runtimeObj.(*pmcorev1alpha1.PlatformMesh)
 	for _, ft := range inst.Spec.FeatureToggles {
 		switch ft.Name {
 		case "feature-enable-getting-started":
@@ -156,7 +156,7 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj client
 
 func (r *FeatureToggleSubroutine) applyKcpManifests(
 	ctx context.Context,
-	inst *corev1alpha1.PlatformMesh,
+	inst *pmcorev1alpha1.PlatformMesh,
 	operatorCfg config.OperatorConfig,
 	kcpDir string,
 ) (subroutines.Result, error) {

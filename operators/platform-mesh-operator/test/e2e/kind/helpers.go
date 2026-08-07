@@ -27,10 +27,11 @@ import (
 
 	"go.platform-mesh.io/golang-commons/errors"
 	"go.platform-mesh.io/golang-commons/logger"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/clientcmd"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 )
 
@@ -45,7 +46,7 @@ func dynamicClientForKubeconfig(kubeconfigBytes []byte) (dynamic.Interface, erro
 
 func ApplyManifestFromFile(
 	ctx context.Context,
-	path string, k8sClient client.Client, templateData map[string]string,
+	path string, k8sClient ctrlruntimeclient.Client, templateData map[string]string,
 ) error {
 	log := logger.LoadLoggerFromContext(ctx)
 
@@ -54,13 +55,13 @@ func ApplyManifestFromFile(
 		return err
 	}
 
-	var errRet error = nil
+	var errRet error
 	for _, obj := range objs {
 		if obj.Object == nil {
 			continue
 		}
-		err = k8sClient.Apply(ctx, client.ApplyConfigurationFromUnstructured(&obj),
-			client.FieldOwner("platform-mesh-operator"))
+		err = k8sClient.Apply(ctx, ctrlruntimeclient.ApplyConfigurationFromUnstructured(&obj),
+			ctrlruntimeclient.FieldOwner("platform-mesh-operator"))
 		if err != nil {
 			errRet = errors.Wrap(errRet, "Failed to apply manifest file: %s (%s/%s)", path, obj.GetKind(), obj.GetName())
 		}
@@ -84,7 +85,7 @@ func unstructuredsFromFile(path string, templateData map[string]string, log *log
 	objects := strings.Split(string(res), "---\n")
 	var unstructuredObjs []unstructured.Unstructured
 	for _, obj := range objects {
-		var objMap map[string]interface{}
+		var objMap map[string]any
 		if err := yaml.Unmarshal([]byte(obj), &objMap); err != nil {
 			return []unstructured.Unstructured{}, errors.Wrap(err, "Failed to unmarshal YAML from template %s. Output:\n%s", path, string(res))
 		}

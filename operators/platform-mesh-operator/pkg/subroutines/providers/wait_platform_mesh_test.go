@@ -22,18 +22,19 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
 	"go.platform-mesh.io/golang-commons/context/keys"
 	"go.platform-mesh.io/golang-commons/logger"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/mocks"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	corev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
-	providersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
-	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/mocks"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type WaitPlatformMeshTestSuite struct {
@@ -69,14 +70,14 @@ func (s *WaitPlatformMeshTestSuite) newCtx() context.Context {
 	return context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 }
 
-func (s *WaitPlatformMeshTestSuite) newManagedProvider() *providersv1alpha1.ManagedProvider {
-	return &providersv1alpha1.ManagedProvider{
+func (s *WaitPlatformMeshTestSuite) newManagedProvider() *pmprovidersv1alpha1.ManagedProvider {
+	return &pmprovidersv1alpha1.ManagedProvider{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-provider",
 			Namespace: "my-namespace",
 		},
-		Spec: providersv1alpha1.ManagedProviderSpec{
-			PlatformMeshReference: providersv1alpha1.PlatformMeshReferenceSpec{
+		Spec: pmprovidersv1alpha1.ManagedProviderSpec{
+			PlatformMeshReference: pmprovidersv1alpha1.PlatformMeshReferenceSpec{
 				Name: "my-platform-mesh",
 			},
 		},
@@ -91,13 +92,13 @@ func (s *WaitPlatformMeshTestSuite) TestProcess_PlatformMeshNotFound() {
 
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "my-platform-mesh", Namespace: "my-namespace"}, mock.AnythingOfType("*v1alpha1.PlatformMesh")).
-		Return(kerrors.NewNotFound(schema.GroupResource{Resource: "platformmeshes"}, "my-platform-mesh"))
+		Return(apierrors.NewNotFound(schema.GroupResource{Resource: "platformmeshes"}, "my-platform-mesh"))
 
 	result, err := s.testObj.Process(ctx, inst)
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseWaitingForPlatformMesh, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhaseWaitingForPlatformMesh, inst.Status.Phase)
 }
 
 func (s *WaitPlatformMeshTestSuite) TestProcess_PlatformMeshNotReady() {
@@ -106,8 +107,8 @@ func (s *WaitPlatformMeshTestSuite) TestProcess_PlatformMeshNotReady() {
 
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "my-platform-mesh", Namespace: "my-namespace"}, mock.AnythingOfType("*v1alpha1.PlatformMesh")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			obj.(*corev1alpha1.PlatformMesh).Status.Conditions = []metav1.Condition{
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
+			obj.(*pmcorev1alpha1.PlatformMesh).Status.Conditions = []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse},
 			}
 			return nil
@@ -117,7 +118,7 @@ func (s *WaitPlatformMeshTestSuite) TestProcess_PlatformMeshNotReady() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseWaitingForPlatformMesh, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhaseWaitingForPlatformMesh, inst.Status.Phase)
 }
 
 func (s *WaitPlatformMeshTestSuite) TestProcess_PlatformMeshNoConditions() {
@@ -126,7 +127,7 @@ func (s *WaitPlatformMeshTestSuite) TestProcess_PlatformMeshNoConditions() {
 
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "my-platform-mesh", Namespace: "my-namespace"}, mock.AnythingOfType("*v1alpha1.PlatformMesh")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			// no conditions set
 			return nil
 		})
@@ -135,7 +136,7 @@ func (s *WaitPlatformMeshTestSuite) TestProcess_PlatformMeshNoConditions() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseWaitingForPlatformMesh, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhaseWaitingForPlatformMesh, inst.Status.Phase)
 }
 
 func (s *WaitPlatformMeshTestSuite) TestProcess_PlatformMeshReady() {
@@ -144,8 +145,8 @@ func (s *WaitPlatformMeshTestSuite) TestProcess_PlatformMeshReady() {
 
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "my-platform-mesh", Namespace: "my-namespace"}, mock.AnythingOfType("*v1alpha1.PlatformMesh")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			obj.(*corev1alpha1.PlatformMesh).Status.Conditions = []metav1.Condition{
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
+			obj.(*pmcorev1alpha1.PlatformMesh).Status.Conditions = []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionTrue},
 			}
 			return nil
@@ -155,5 +156,5 @@ func (s *WaitPlatformMeshTestSuite) TestProcess_PlatformMeshReady() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsContinue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhasePending, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhasePending, inst.Status.Phase)
 }

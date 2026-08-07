@@ -23,23 +23,23 @@ import (
 	pmconfig "go.platform-mesh.io/golang-commons/config"
 	"go.platform-mesh.io/golang-commons/controller/filter"
 	"go.platform-mesh.io/golang-commons/controller/lifecycle/ratelimiter"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/internal/metrics"
+	pmsubs "go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/resource"
 	"go.platform-mesh.io/subroutines"
 	"go.platform-mesh.io/subroutines/lifecycle"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
-
-	"go.platform-mesh.io/platform-mesh-operator/internal/config"
-	"go.platform-mesh.io/platform-mesh-operator/internal/metrics"
-	pmsubs "go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
-	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/resource"
 )
 
 var (
@@ -71,7 +71,6 @@ func (r *ResourceReconciler) Reconcile(ctx context.Context, req mcreconcile.Requ
 // SetupWithManager sets up the controller with the Manager.
 func (r *ResourceReconciler) SetupWithManager(mgr mcmanager.Manager, cfg *pmconfig.CommonServiceConfig,
 	eventPredicates ...predicate.Predicate) error {
-
 	localMgr := mgr.GetLocalManager()
 	u := &unstructured.Unstructured{}
 	u.SetGroupVersionKind(gvk)
@@ -93,7 +92,7 @@ func (r *ResourceReconciler) SetupWithManager(mgr mcmanager.Manager, cfg *pmconf
 }
 
 // NewResourceReconciler wires the read-only Resource subroutine lifecycle.
-func NewResourceReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig, clientInfra client.Client, imageVersionStore *pmsubs.ImageVersionStore) (*ResourceReconciler, error) {
+func NewResourceReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig, clientInfra ctrlruntimeclient.Client, imageVersionStore *pmsubs.ImageVersionStore) (*ResourceReconciler, error) {
 	localCl := mgr.GetLocalManager().GetClient()
 
 	// If no dedicated infra client is provided, default to the local client.
@@ -112,7 +111,7 @@ func NewResourceReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig, cl
 		return nil, fmt.Errorf("creating rate limiter: %w", err)
 	}
 
-	lc := lifecycle.New(mgr, resourceReconcilerName, func() client.Object {
+	lc := lifecycle.New(mgr, resourceReconcilerName, func() ctrlruntimeclient.Object {
 		u := &unstructured.Unstructured{}
 		u.SetGroupVersionKind(gvk)
 		return u

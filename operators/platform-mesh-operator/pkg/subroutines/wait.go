@@ -21,22 +21,22 @@ import (
 	"fmt"
 	"time"
 
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
 	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/internal/metrics"
 	"go.platform-mesh.io/subroutines"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	corev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
-	"go.platform-mesh.io/platform-mesh-operator/internal/config"
-	"go.platform-mesh.io/platform-mesh-operator/internal/metrics"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func NewWaitSubroutine(
-	client client.Client,
-	clientRuntime client.Client,
+	client ctrlruntimeclient.Client,
+	clientRuntime ctrlruntimeclient.Client,
 	cfg *config.OperatorConfig,
 	helper KcpHelper,
 	kcpUrl string,
@@ -51,8 +51,8 @@ func NewWaitSubroutine(
 }
 
 type WaitSubroutine struct {
-	client        client.Client // infra cluster — resource readiness checks
-	clientRuntime client.Client // runtime cluster — KCP secret access
+	client        ctrlruntimeclient.Client // infra cluster — resource readiness checks
+	clientRuntime ctrlruntimeclient.Client // runtime cluster — KCP secret access
 	cfg           *config.OperatorConfig
 	kcpHelper     KcpHelper
 	kcpUrl        string
@@ -63,13 +63,13 @@ const (
 )
 
 func (r *WaitSubroutine) Finalize(
-	_ context.Context, _ client.Object,
+	_ context.Context, _ ctrlruntimeclient.Object,
 ) (subroutines.Result, error) {
 	return subroutines.OK(), nil
 }
 
 func (r *WaitSubroutine) Process(
-	ctx context.Context, runtimeObj client.Object,
+	ctx context.Context, runtimeObj ctrlruntimeclient.Object,
 ) (res subroutines.Result, err error) {
 	start := time.Now()
 	defer func() {
@@ -80,7 +80,7 @@ func (r *WaitSubroutine) Process(
 		metrics.SubroutineTotal.WithLabelValues(r.GetName(), labelResult).Inc()
 		metrics.SubroutineDuration.WithLabelValues(r.GetName()).Observe(time.Since(start).Seconds())
 	}()
-	instance := runtimeObj.(*corev1alpha1.PlatformMesh)
+	instance := runtimeObj.(*pmcorev1alpha1.PlatformMesh)
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
 	waitConfig := DEFAULT_WAIT_CONFIG
@@ -101,7 +101,7 @@ func (r *WaitSubroutine) Process(
 				Version: resourceType.Version,
 				Kind:    resourceType.Kind,
 			})
-			err := r.client.Get(ctx, client.ObjectKey{
+			err := r.client.Get(ctx, ctrlruntimeclient.ObjectKey{
 				Namespace: resourceType.Namespace,
 				Name:      resourceType.Name,
 			}, res)
@@ -123,12 +123,12 @@ func (r *WaitSubroutine) Process(
 			Version: resourceType.Version,
 			Kind:    resourceType.Kind,
 		})
-		ls, err := v1.LabelSelectorAsSelector(&resourceType.LabelSelector)
+		ls, err := metav1.LabelSelectorAsSelector(&resourceType.LabelSelector)
 		if err != nil {
 			log.Info().Msgf("Error converting label selector: %v", err)
 			return subroutines.StopWithRequeue(DefaultRequeueInterval, "label selector"), nil
 		}
-		if err := r.client.List(ctx, waitList, &client.ListOptions{
+		if err := r.client.List(ctx, waitList, &ctrlruntimeclient.ListOptions{
 			Namespace:     resourceType.Namespace,
 			LabelSelector: ls,
 		}); err != nil {
@@ -153,7 +153,7 @@ func (r *WaitSubroutine) Process(
 	return subroutines.OK(), nil
 }
 
-func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, log *logger.Logger, inst *corev1alpha1.PlatformMesh) error {
+func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, log *logger.Logger, inst *pmcorev1alpha1.PlatformMesh) error {
 	kubeCfg, err := BuildKubeconfigFromConfig(r.clientRuntime, &r.cfg.KCP, getExternalKcpHost(inst, r.cfg))
 	if err != nil {
 		log.Debug().Err(err).Msg("Failed to build kubeconfig, skipping WorkspaceAuthenticationConfiguration check")
@@ -180,7 +180,7 @@ func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, l
 
 	jwtConfigs, found, err := unstructured.NestedSlice(wac.Object, "spec", "jwt")
 	if err != nil || !found || len(jwtConfigs) == 0 {
-		return nil
+		return nil //nolint:nilerr
 	}
 	jwt, ok := jwtConfigs[0].(map[string]any)
 	if !ok {
@@ -209,7 +209,7 @@ func (r *WaitSubroutine) checkWorkspaceAuthConfigAudience(ctx context.Context, l
 	return nil
 }
 
-func (r *WaitSubroutine) Finalizers(_ client.Object) []string { // coverage-ignore
+func (r *WaitSubroutine) Finalizers(_ ctrlruntimeclient.Object) []string { // coverage-ignore
 	return []string{}
 }
 

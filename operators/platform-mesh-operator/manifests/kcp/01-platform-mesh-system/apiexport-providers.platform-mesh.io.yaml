@@ -57,7 +57,7 @@ spec:
   resources:
   - group: providers.platform-mesh.io
     name: providers
-    schema: v260806-14e0663c.providers.providers.platform-mesh.io
+    schema: v260807-fce30ff4.providers.providers.platform-mesh.io
     storage:
       crd: {}
 status: {}

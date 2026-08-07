@@ -29,17 +29,14 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
-
 	"sigs.k8s.io/kustomize/api/krusty"
 	"sigs.k8s.io/kustomize/api/resmap"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
-
 	"sigs.k8s.io/yaml"
 )
 
@@ -168,7 +165,7 @@ func applyKindsFirst(ctx context.Context, rm resmap.ResMap, c Clients, o *Option
 }
 
 func applyOne(ctx context.Context, yamlDoc string, c Clients, o *Options) error {
-	var obj map[string]interface{}
+	var obj map[string]any
 	if err := yaml.Unmarshal([]byte(yamlDoc), &obj); err != nil {
 		return fmt.Errorf("yaml unmarshal: %w", err)
 	}

@@ -19,8 +19,13 @@ package cmd
 import (
 	"github.com/go-logr/logr"
 	"github.com/spf13/cobra"
+
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
 	pmconfig "go.platform-mesh.io/golang-commons/config"
 	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -29,9 +34,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
-	corev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
-	providers1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
-	"go.platform-mesh.io/platform-mesh-operator/internal/config"
 )
 
 var (
@@ -50,12 +52,12 @@ var rootCmd = &cobra.Command{
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(corev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(pmcorev1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 
 	utilruntime.Must(corev1.AddToScheme(scheme))
 	utilruntime.Must(rbacv1.AddToScheme(scheme))
-	utilruntime.Must(providers1alpha1.AddToScheme(scheme))
+	utilruntime.Must(pmprovidersv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(kcpapisv1alpha1.AddToScheme(scheme))
 
 	rootCmd.AddCommand(operatorCmd)

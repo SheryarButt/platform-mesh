@@ -173,7 +173,7 @@ func (s *ImageVersionStoreTestSuite) TestConcurrentAccess() {
 	numGoroutines := 100
 
 	// Concurrent writes
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
@@ -182,7 +182,7 @@ func (s *ImageVersionStoreTestSuite) TestConcurrentAccess() {
 	}
 
 	// Concurrent reads
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

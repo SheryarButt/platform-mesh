@@ -21,28 +21,28 @@ import (
 	"fmt"
 	"time"
 
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
 	pmconfig "go.platform-mesh.io/golang-commons/config"
 	"go.platform-mesh.io/golang-commons/controller/filter"
 	"go.platform-mesh.io/golang-commons/controller/lifecycle/ratelimiter"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/internal/metrics"
+	pmsubs "go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
 	"go.platform-mesh.io/subroutines"
 	"go.platform-mesh.io/subroutines/conditions"
 	"go.platform-mesh.io/subroutines/lifecycle"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
-
-	corev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
-	"go.platform-mesh.io/platform-mesh-operator/internal/config"
-	"go.platform-mesh.io/platform-mesh-operator/internal/metrics"
-	pmsubs "go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
 )
 
 var (
@@ -53,7 +53,7 @@ var (
 type PlatformMeshReconciler struct {
 	lifecycle   *lifecycle.Lifecycle
 	rateLimiter workqueue.TypedRateLimiter[mcreconcile.Request]
-	client      client.Client
+	client      ctrlruntimeclient.Client
 }
 
 // +kubebuilder:rbac:groups=core.platform-mesh.io,resources=platformmeshes,verbs=get;list;watch;create;update;patch;delete
@@ -81,7 +81,7 @@ func (r *PlatformMeshReconciler) SetupWithManager(mgr mcmanager.Manager, cfg *pm
 	predicates := append([]predicate.Predicate{filter.DebugResourcesBehaviourPredicate(cfg.DebugLabelValue)}, eventPredicates...)
 	return mcbuilder.ControllerManagedBy(mgr).
 		Named(pmReconcilerName).
-		For(&corev1alpha1.PlatformMesh{}, mcbuilder.WithEngageWithLocalCluster(true), mcbuilder.WithEngageWithProviderClusters(false)).
+		For(&pmcorev1alpha1.PlatformMesh{}, mcbuilder.WithEngageWithLocalCluster(true), mcbuilder.WithEngageWithProviderClusters(false)).
 		WithOptions(opts).
 		WithEventFilter(predicate.And(predicates...)).
 		Complete(r)
@@ -89,22 +89,22 @@ func (r *PlatformMeshReconciler) SetupWithManager(mgr mcmanager.Manager, cfg *pm
 
 // mapConfigMapToPlatformMesh finds all PlatformMesh resources that reference the given ConfigMap
 // via spec.profileConfigMap and returns reconcile requests for them.
-func (r *PlatformMeshReconciler) mapConfigMapToPlatformMesh(ctx context.Context, obj client.Object) []reconcile.Request {
+func (r *PlatformMeshReconciler) mapConfigMapToPlatformMesh(ctx context.Context, obj ctrlruntimeclient.Object) []reconcile.Request {
 	var requests []reconcile.Request
 	configMap, ok := obj.(*corev1.ConfigMap)
 	if !ok {
 		return requests
 	}
 
-	platformMeshList := &corev1alpha1.PlatformMeshList{}
+	platformMeshList := &pmcorev1alpha1.PlatformMeshList{}
 	if err := r.client.List(ctx, platformMeshList); err != nil {
 		return requests
 	}
 
 	for _, pm := range platformMeshList.Items {
-		configMapName := ""
 		configMapNamespace := pm.Namespace
 
+		var configMapName string
 		if pm.Spec.ProfileConfigMap != nil {
 			configMapName = pm.Spec.ProfileConfigMap.Name
 			if pm.Spec.ProfileConfigMap.Namespace != "" {
@@ -127,7 +127,7 @@ func (r *PlatformMeshReconciler) mapConfigMapToPlatformMesh(ctx context.Context,
 	return requests
 }
 
-func NewPlatformMeshReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string, clientInfra client.Client, imageVersionStore *pmsubs.ImageVersionStore) (*PlatformMeshReconciler, error) {
+func NewPlatformMeshReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig, commonCfg *pmconfig.CommonServiceConfig, dir string, clientInfra ctrlruntimeclient.Client, imageVersionStore *pmsubs.ImageVersionStore) (*PlatformMeshReconciler, error) {
 	kcpUrl := fmt.Sprintf("https://%s-front-proxy.%s:%s", cfg.KCP.FrontProxyName, cfg.KCP.Namespace, cfg.KCP.FrontProxyPort)
 	if cfg.KCP.Url != "" {
 		kcpUrl = cfg.KCP.Url
@@ -164,8 +164,8 @@ func NewPlatformMeshReconciler(mgr mcmanager.Manager, cfg *config.OperatorConfig
 		return nil, fmt.Errorf("creating rate limiter: %w", err)
 	}
 
-	lc := lifecycle.New(mgr, pmReconcilerName, func() client.Object {
-		return &corev1alpha1.PlatformMesh{}
+	lc := lifecycle.New(mgr, pmReconcilerName, func() ctrlruntimeclient.Object {
+		return &pmcorev1alpha1.PlatformMesh{}
 	}, subs...).WithConditions(conditions.NewManager())
 
 	return &PlatformMeshReconciler{

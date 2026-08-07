@@ -34,20 +34,22 @@ import (
 	certmanager "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	fluxcdv2 "github.com/fluxcd/helm-controller/api/v2"
 	fluxcdv1 "github.com/fluxcd/source-controller/api/v1beta2"
-	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
-	kcpapiv1alpha2 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha2"
-	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 	"github.com/rs/zerolog/log"
-	providers1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
+
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
 	pmconfig "go.platform-mesh.io/golang-commons/config"
 	"go.platform-mesh.io/golang-commons/errors"
 	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	appsv1 "k8s.io/api/apps/v1"
+	authenticationv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -55,27 +57,25 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/yaml"
-
-	admissionv1 "k8s.io/api/admissionregistration/v1"
-	authenticationv1 "k8s.io/api/authentication/v1"
-
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 
-	"go.platform-mesh.io/apis/core/v1alpha1"
-	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
+	kcpapiv1alpha2 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha2"
+	kcpcorev1alpha "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
+	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 )
 
 type KcpHelper interface {
-	NewKcpClient(config *rest.Config, workspacePath string) (client.Client, error)
+	NewKcpClient(config *rest.Config, workspacePath string) (ctrlruntimeclient.Client, error)
 }
 
 type Helper struct {
 }
 
-func (h *Helper) NewKcpClient(config *rest.Config, workspacePath string) (client.Client, error) {
+func (h *Helper) NewKcpClient(config *rest.Config, workspacePath string) (ctrlruntimeclient.Client, error) {
 	config.QPS = 1000.0
 	config.Burst = 2000.0
 	u, err := url.Parse(config.Host)
@@ -87,16 +87,16 @@ func (h *Helper) NewKcpClient(config *rest.Config, workspacePath string) (client
 	utilruntime.Must(appsv1.AddToScheme(scheme))
 	utilruntime.Must(corev1.AddToScheme(scheme))
 	utilruntime.Must(authenticationv1.AddToScheme(scheme))
-	utilruntime.Must(v1alpha1.AddToScheme(scheme))
+	utilruntime.Must(pmcorev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(kcpapiv1alpha.AddToScheme(scheme))
 	utilruntime.Must(kcpapiv1alpha2.AddToScheme(scheme))
 	utilruntime.Must(kcptenancyv1alpha.AddToScheme(scheme))
 	utilruntime.Must(kcpcorev1alpha.AddToScheme(scheme))
 	utilruntime.Must(rbacv1.AddToScheme(scheme))
-	utilruntime.Must(admissionv1.AddToScheme(scheme))
-	utilruntime.Must(providers1alpha1.AddToScheme(scheme))
+	utilruntime.Must(admissionregistrationv1.AddToScheme(scheme))
+	utilruntime.Must(pmprovidersv1alpha1.AddToScheme(scheme))
 
-	cl, err := client.New(config, client.Options{
+	cl, err := ctrlruntimeclient.New(config, ctrlruntimeclient.Options{
 		Scheme: scheme,
 	})
 	if err != nil {
@@ -105,7 +105,7 @@ func (h *Helper) NewKcpClient(config *rest.Config, workspacePath string) (client
 	return cl, nil
 }
 
-func GetSecret(client client.Client, name string, namespace string) (*corev1.Secret, error) {
+func GetSecret(client ctrlruntimeclient.Client, name string, namespace string) (*corev1.Secret, error) {
 	secret := corev1.Secret{}
 	err := client.Get(context.Background(), types.NamespacedName{
 		Name:      name,
@@ -118,7 +118,7 @@ func GetSecret(client client.Client, name string, namespace string) (*corev1.Sec
 }
 
 // AppendRootShardCAPEMIfMissing loads {RootShardName}-ca tls.crt and appends it to caData when the root cert is not already in the bundle.
-func AppendRootShardCAPEMIfMissing(ctx context.Context, k8sClient client.Client, operatorCfg *config.OperatorConfig, caData []byte) []byte {
+func AppendRootShardCAPEMIfMissing(ctx context.Context, k8sClient ctrlruntimeclient.Client, operatorCfg *config.OperatorConfig, caData []byte) []byte {
 	log := logger.LoadLoggerFromContext(ctx)
 	if len(caData) == 0 {
 		log.Debug().Msg("Skip appending root-shard CA: empty CA data")
@@ -139,7 +139,7 @@ func AppendRootShardCAPEMIfMissing(ctx context.Context, k8sClient client.Client,
 	ns := operatorCfg.KCP.Namespace
 	rootSecret, rootErr := GetSecret(k8sClient, secretName, ns)
 	if rootErr != nil {
-		if kerrors.IsNotFound(rootErr) {
+		if apierrors.IsNotFound(rootErr) {
 			log.Debug().
 				Str("secret", secretName).
 				Str("namespace", ns).
@@ -301,7 +301,7 @@ func ReplaceTemplate(templateData map[string]any, templateBytes []byte) ([]byte,
 	return result.Bytes(), nil
 }
 
-func ConvertToUnstructured(webhook admissionv1.MutatingWebhookConfiguration) (*unstructured.Unstructured, error) {
+func ConvertToUnstructured(webhook admissionregistrationv1.MutatingWebhookConfiguration) (*unstructured.Unstructured, error) {
 	// Convert the structured object to a map
 	objMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&webhook)
 	if err != nil {
@@ -369,37 +369,37 @@ func ListFiles(dir string) ([]string, error) {
 	return files, nil
 }
 
-func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON, config config.OperatorConfig) (apiextensionsv1.JSON, error) {
+func MergeValuesAndServices(inst *pmcorev1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON, config config.OperatorConfig) (apiextensionsv1.JSON, error) {
 	services := inst.Spec.Values
-	var mapValues map[string]interface{}
+	var mapValues map[string]any
 	if len(templateVars.Raw) > 0 {
 		if err := json.Unmarshal(templateVars.Raw, &mapValues); err != nil {
 			return apiextensionsv1.JSON{}, err
 		}
 	} else {
-		mapValues = map[string]interface{}{}
+		mapValues = map[string]any{}
 	}
 	// Unmarshal 'services'
-	var mapServices map[string]interface{}
+	var mapServices map[string]any
 	if len(services.Raw) > 0 {
 		if err := json.Unmarshal(services.Raw, &mapServices); err != nil {
 			return apiextensionsv1.JSON{}, err
 		}
 	} else {
-		mapServices = map[string]interface{}{}
+		mapServices = map[string]any{}
 	}
 
 	// Create 'services' key in 'values' if it doesn't exist
 	if _, ok := mapValues["services"]; !ok {
-		mapValues["services"] = map[string]interface{}{}
+		mapValues["services"] = map[string]any{}
 	}
 
 	// add 'services' to mapValues["services"]
-	if _, ok := mapValues["services"].(map[string]interface{}); !ok {
+	if _, ok := mapValues["services"].(map[string]any); !ok {
 		return apiextensionsv1.JSON{}, fmt.Errorf("services is not a map")
 	}
 	for k, v := range mapServices {
-		mapValues["services"].(map[string]interface{})[k] = v
+		mapValues["services"].(map[string]any)[k] = v
 	}
 
 	mergeOCMConfig(mapValues, inst)
@@ -416,14 +416,15 @@ func MergeValuesAndServices(inst *v1alpha1.PlatformMesh, templateVars apiextensi
 		return apiextensionsv1.JSON{}, err
 	}
 	return apiextensionsv1.JSON{Raw: mergedRaw}, nil
-
 }
 
-func baseDomainPortProtocol(inst *v1alpha1.PlatformMesh) (string, string, int, string) {
-	port := 8443
-	baseDomain := "portal.localhost"
-	protocol := "https"
-	baseDomainPort := ""
+func baseDomainPortProtocol(inst *pmcorev1alpha1.PlatformMesh) (string, string, int, string) {
+	var (
+		port           = 8443
+		baseDomain     = "portal.localhost"
+		protocol       = "https"
+		baseDomainPort string
+	)
 
 	if inst.Spec.Exposure != nil {
 		if inst.Spec.Exposure.Port != 0 {
@@ -445,10 +446,10 @@ func baseDomainPortProtocol(inst *v1alpha1.PlatformMesh) (string, string, int, s
 	return baseDomain, baseDomainPort, port, protocol
 }
 
-func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Client) (apiextensionsv1.JSON, error) {
+func TemplateVars(ctx context.Context, inst *pmcorev1alpha1.PlatformMesh, cl ctrlruntimeclient.Client) (apiextensionsv1.JSON, error) {
 	baseDomain, baseDomainPort, port, protocol := baseDomainPortProtocol(inst)
 
-	values := map[string]interface{}{
+	values := map[string]any{
 		"baseDomain":           baseDomain,
 		"protocol":             protocol,
 		"port":                 fmt.Sprintf("%d", port),
@@ -467,14 +468,14 @@ func TemplateVars(ctx context.Context, inst *v1alpha1.PlatformMesh, cl client.Cl
 	return result, nil
 }
 
-func buildKubeconfig(ctx context.Context, client client.Client, kcpUrl string) (*rest.Config, error) {
+func buildKubeconfig(ctx context.Context, client ctrlruntimeclient.Client, kcpUrl string) (*rest.Config, error) {
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
 	return BuildKubeconfigFromConfig(client, &operatorCfg.KCP, kcpUrl)
 }
 
 // BuildKubeconfigFromConfig builds a *rest.Config for the kcp admin from the cluster-admin
 // certificate Secret. It is the exported equivalent of buildKubeconfigFromConfig.
-func BuildKubeconfigFromConfig(client client.Client, kcpConfig *config.KCPConfig, kcpUrl string) (*rest.Config, error) {
+func BuildKubeconfigFromConfig(client ctrlruntimeclient.Client, kcpConfig *config.KCPConfig, kcpUrl string) (*rest.Config, error) {
 	secretName := kcpConfig.ClusterAdminSecretName
 	secret, err := GetSecret(client, secretName, kcpConfig.Namespace)
 	if err != nil {
@@ -567,7 +568,7 @@ func WaitForWorkspace(
 
 func ApplyManifestFromFile(
 	ctx context.Context,
-	path string, k8sClient client.Client, templateData map[string]any, wsPath string, inst *v1alpha1.PlatformMesh,
+	path string, k8sClient ctrlruntimeclient.Client, templateData map[string]any, wsPath string, inst *pmcorev1alpha1.PlatformMesh,
 ) error {
 	log := logger.LoadLoggerFromContext(ctx)
 
@@ -591,11 +592,11 @@ func ApplyManifestFromFile(
 		extraDefaultApiBindings := getExtraDefaultApiBindings(obj, wsPath, inst)
 		currentDefAPiBindings, found, err := unstructured.NestedSlice(obj.Object, "spec", "defaultAPIBindings")
 		if err != nil || !found {
-			currentDefAPiBindings = []interface{}{}
+			currentDefAPiBindings = []any{}
 		}
 		for _, v := range extraDefaultApiBindings {
 			newExport := kcptenancyv1alpha.APIExportReference{Path: v.Path, Export: v.Export}
-			var m map[string]interface{}
+			var m map[string]any
 			b, marshalErr := yaml.Marshal(newExport)
 			if marshalErr != nil {
 				return errors.Wrap(marshalErr, "Failed to marshal APIExportReference")
@@ -621,8 +622,8 @@ func ApplyManifestFromFile(
 		templateData["apiExportSystemPlatformMeshIoIdentityHash"] = apiExport.Status.IdentityHash
 	}
 
-	err = k8sClient.Apply(ctx, client.ApplyConfigurationFromUnstructured(&obj),
-		client.FieldOwner("platform-mesh-operator"), client.ForceOwnership)
+	err = k8sClient.Apply(ctx, ctrlruntimeclient.ApplyConfigurationFromUnstructured(&obj),
+		ctrlruntimeclient.FieldOwner("platform-mesh-operator"), ctrlruntimeclient.ForceOwnership)
 	if err != nil {
 		if obj.GetKind() == "IdentityProviderConfiguration" && obj.GetAPIVersion() == "core.platform-mesh.io/v1alpha1" {
 			log.Warn().Err(err).Str("file", path).Str("kind", obj.GetKind()).Str("name", obj.GetName()).
@@ -641,7 +642,7 @@ func ApplyDirStructure(
 	kcpPath string,
 	config *rest.Config,
 	templateData map[string]any,
-	inst *v1alpha1.PlatformMesh,
+	inst *pmcorev1alpha1.PlatformMesh,
 	kcpHelper KcpHelper,
 ) error {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", "")
@@ -656,7 +657,7 @@ func ApplyDirStructure(
 	if err != nil {
 		return errors.Wrap(err, "Failed to list files in workspace")
 	}
-	var errApplyManifests error = nil
+	var errApplyManifests error
 	for _, file := range files {
 		log.Debug().Str("file", file).Msg("Applying file")
 		path := filepath.Join(dir, file)
@@ -707,7 +708,7 @@ func matchesConditionWithStatus(resource *unstructured.Unstructured, conditionTy
 	}
 
 	for _, condition := range conditions {
-		c, ok := condition.(map[string]interface{})
+		c, ok := condition.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -730,7 +731,7 @@ func unstructuredFromFile(path string, templateData map[string]any, log *logger.
 		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to replace template with path: %s", path)
 	}
 
-	var objMap map[string]interface{}
+	var objMap map[string]any
 	if err := yaml.Unmarshal(res, &objMap); err != nil {
 		return unstructured.Unstructured{}, errors.Wrap(err, "Failed to unmarshal YAML from template %s. Output:\n%s", path, string(res))
 	}
@@ -741,14 +742,14 @@ func unstructuredFromFile(path string, templateData map[string]any, log *logger.
 	return obj, err
 }
 
-func GetClientAndRestConfig(kubeconfig string) (client.Client, *rest.Config, error) {
+func GetClientAndRestConfig(kubeconfig string) (ctrlruntimeclient.Client, *rest.Config, error) {
 	if kubeconfig == "" {
 		config, err := rest.InClusterConfig()
 		if err != nil {
 			log.Error().Err(err).Msg("unable to get in-cluster deployment kubeconfig")
 			return nil, nil, err
 		}
-		deployClient, err := client.New(config, client.Options{Scheme: GetClientScheme()})
+		deployClient, err := ctrlruntimeclient.New(config, ctrlruntimeclient.Options{Scheme: GetClientScheme()})
 		if err != nil {
 			log.Error().Err(err).Msg("unable to create in-cluster deployment client")
 			return nil, nil, err
@@ -771,17 +772,15 @@ func GetClientAndRestConfig(kubeconfig string) (client.Client, *rest.Config, err
 		log.Error().Err(err).Msg("unable to build rest config from kubeconfig")
 		return nil, nil, err
 	}
-	deployClient, err := client.New(restCfg, client.Options{Scheme: GetClientScheme()})
+	deployClient, err := ctrlruntimeclient.New(restCfg, ctrlruntimeclient.Options{Scheme: GetClientScheme()})
 	if err != nil {
 		log.Error().Err(err).Msg("unable to create client")
 		return nil, nil, err
 	}
 	return deployClient, restCfg, nil
-
 }
 
 func GetClientScheme() *runtime.Scheme {
-
 	var gvk = schema.GroupVersionKind{
 		Group:   "delivery.ocm.software",
 		Version: "v1alpha1",
@@ -789,7 +788,7 @@ func GetClientScheme() *runtime.Scheme {
 	}
 
 	scheme := runtime.NewScheme()
-	utilruntime.Must(v1alpha1.AddToScheme(scheme))
+	utilruntime.Must(pmcorev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(corev1.AddToScheme(scheme))
 	utilruntime.Must(appsv1.AddToScheme(scheme))
 	utilruntime.Must(certmanager.AddToScheme(scheme))
@@ -802,7 +801,7 @@ func GetClientScheme() *runtime.Scheme {
 	return scheme
 }
 
-func GetDeploymentTechnologyFromProfile(ctx context.Context, cl client.Client, inst *v1alpha1.PlatformMesh) (string, error) {
+func GetDeploymentTechnologyFromProfile(ctx context.Context, cl ctrlruntimeclient.Client, inst *pmcorev1alpha1.PlatformMesh) (string, error) {
 	var configMapName, configMapNamespace string
 	if inst.Spec.ProfileConfigMap != nil {
 		configMapName = inst.Spec.ProfileConfigMap.Name
@@ -825,18 +824,18 @@ func GetDeploymentTechnologyFromProfile(ctx context.Context, cl client.Client, i
 		return "", fmt.Errorf("profile ConfigMap %s/%s does not contain key %s", configMapNamespace, configMapName, profileConfigMapKey)
 	}
 
-	var profile map[string]interface{}
+	var profile map[string]any
 	if err := yaml.Unmarshal([]byte(profileYAML), &profile); err != nil {
 		return "", fmt.Errorf("failed to parse profile YAML from ConfigMap %s/%s: %w", configMapNamespace, configMapName, err)
 	}
 
-	if infra, ok := profile["infra"].(map[string]interface{}); ok {
+	if infra, ok := profile["infra"].(map[string]any); ok {
 		if dt, ok := infra["deploymentTechnology"].(string); ok && dt != "" {
 			return strings.ToLower(dt), nil
 		}
 	}
 
-	if components, ok := profile["components"].(map[string]interface{}); ok {
+	if components, ok := profile["components"].(map[string]any); ok {
 		if dt, ok := components["deploymentTechnology"].(string); ok && dt != "" {
 			return strings.ToLower(dt), nil
 		}
@@ -845,7 +844,7 @@ func GetDeploymentTechnologyFromProfile(ctx context.Context, cl client.Client, i
 	return "fluxcd", nil
 }
 
-func getExternalKcpHost(inst *v1alpha1.PlatformMesh, cfg *config.OperatorConfig) string {
+func getExternalKcpHost(inst *pmcorev1alpha1.PlatformMesh, cfg *config.OperatorConfig) string {
 	// If kcp-url is explicitly configured, use it
 	if cfg.KCP.Url != "" {
 		return cfg.KCP.Url

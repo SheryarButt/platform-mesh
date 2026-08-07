@@ -86,7 +86,7 @@ func (n *interceptNsable) Namespace(ns string) dynamic.ResourceInterface {
 
 // Patch for root-scoped resources (no namespace).
 func (n *interceptNsable) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*unstructured.Unstructured, error) {
-	var m map[string]interface{}
+	var m map[string]any
 	_ = json.Unmarshal(data, &m)
 	apiVersion, _ := m["apiVersion"].(string)
 	kind, _ := m["kind"].(string)
@@ -113,7 +113,7 @@ type interceptRI struct {
 
 func (r *interceptRI) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*unstructured.Unstructured, error) {
 	// Decode the object to capture GVK and metadata.
-	var m map[string]interface{}
+	var m map[string]any
 	_ = json.Unmarshal(data, &m)
 	apiVersion, _ := m["apiVersion"].(string)
 	kind, _ := m["kind"].(string)

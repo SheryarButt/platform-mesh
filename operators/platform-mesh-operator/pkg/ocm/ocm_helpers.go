@@ -21,6 +21,7 @@ import (
 
 	"github.com/mandelsoft/goutils/errors"
 	"github.com/opencontainers/go-digest"
+
 	"go.platform-mesh.io/platform-mesh-operator/pkg/ocm/grammar"
 )
 
