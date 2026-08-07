@@ -66,9 +66,9 @@ tasks:
       - go clean -testcache
       - go test -coverprofile=cover.out -covermode=atomic -coverpkg=./... ./...
   test-coverage:
-    deps: [tools:go-test-coverage]
     desc: Run tests with coverage and check thresholds
     deps:
+      - task: tools:go-test-coverage
       - task: cover
     cmds:
       - '{{.GO_TEST_COVERAGE}} --profile cover.out --config ./.testcoverage.yml'

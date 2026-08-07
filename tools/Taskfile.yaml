@@ -149,6 +149,8 @@ tasks:
           tool: kcp
           source: 'https://github.com/kcp-dev/kcp/releases/download/v{VERSION}/kcp_{VERSION}_{GOOS}_{GOARCH}.tar.gz'
           version: '{{ .KCP_VERSION }}'
+      # kcp's sharded envtest needs a binary called "kcp"
+      - 'ln -sf {{.KCP}} {{.BIN}}/kcp'
   envtest:
     internal: true
     cmds:
@@ -263,7 +265,7 @@ tasks:
       MY_OS: { sh: uname -s }
       MY_ARCH: { sh: uname -m }
     cmds:
-      - 'UNCOMPRESSED={{ .uncompressed }} GO_MODULE={{ .goModule }} {{.HACK}}/uget.sh {{ .source }} {{ .tool }} {{ .version }} {{ .extractArg }}'
+      - "UNCOMPRESSED={{ .uncompressed }} GO_MODULE={{ .goModule }} {{.HACK}}/uget.sh {{ .source }} {{ .tool }} {{ .version }} '{{ .extractArg }}'"
 
   lint:
     desc: Lint all Go code in the repository using golangci-lint.
