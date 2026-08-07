@@ -129,3 +129,21 @@ func platformMesh(etcdEndpoint string) (*pmdeployv1alpha1.PlatformMesh, []ctrlru
 		},
 	}, templates
 }
+
+// createInClusterPlatformMesh creates a PlatformMesh with no ingress stack and
+// no exposures, leaving every component reachable only inside the cluster.
+func createInClusterPlatformMesh(t *testing.T, c ctrlruntimeclient.Client, etcdEndpoint string) *pmdeployv1alpha1.PlatformMesh {
+	t.Helper()
+	pm, templates := platformMesh(etcdEndpoint)
+	for _, tpl := range templates {
+		require.NoError(t, c.Create(t.Context(), tpl))
+	}
+	pm.Spec.Ingress = nil
+	pm.Spec.Topology.RootShard.Exposure = nil
+	pm.Spec.Topology.FrontProxy.Exposure = nil
+	for i := range pm.Spec.Topology.ShardGroups {
+		pm.Spec.Topology.ShardGroups[i].Exposure = nil
+	}
+	require.NoError(t, c.Create(t.Context(), pm))
+	return pm
+}
