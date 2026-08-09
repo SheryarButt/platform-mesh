@@ -138,7 +138,6 @@ require (
 
 replace github.com/kcp-dev/multicluster-provider/client => github.com/kcp-dev/multicluster-provider/client v0.8.1-0.20260714141811-833f063357f8
 
-replace go.platform-mesh.io/apis => ../../apis
 
 // We use the VW SDK and that module requires a whole set of replace directives, sadly.
 replace (
@@ -173,6 +172,4 @@ replace (
 
 replace github.com/kcp-dev/kcp-operator/sdk => github.com/ntnn/kcp-operator/sdk v0.8.1-0.20260726154422-be62fa798885
 
-replace go.platform-mesh.io/golang-commons => ../../golang-commons
 
-replace go.platform-mesh.io/subroutines => ../../subroutines

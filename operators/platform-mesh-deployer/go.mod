@@ -4,11 +4,8 @@ go 1.26.4
 
 replace github.com/kcp-dev/kcp-operator/sdk => github.com/ntnn/kcp-operator/sdk v0.8.1-0.20260726154422-be62fa798885
 
-replace go.platform-mesh.io/apis => ../../apis
 
-replace go.platform-mesh.io/golang-commons => ../../golang-commons
 
-replace go.platform-mesh.io/subroutines => ../../subroutines
 
 require (
 	github.com/go-logr/logr v1.4.4
