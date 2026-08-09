@@ -412,9 +412,9 @@ tasks:
   tidy:
     desc: Tidy every module's go.mod (standalone) and re-sync the workspace.
     cmds:
+      - go work sync
       - for: {var: COMPONENTS}
         cmd: task tidy-{{.ITEM}}
-      - go work sync
       # ref: https://github.com/golang/go/issues/63901
       # TLDR: go work sync doesn't actually everything.
       # We force fill the go.work.sum by downloading all deps.
