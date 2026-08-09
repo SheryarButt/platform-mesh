@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package sync
+package transfer
 
 import (
 	"testing"
@@ -22,7 +22,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -309,34 +308,6 @@ func TestEqualObjects(t *testing.T) {
 	})
 }
 
-func TestMakeCond(t *testing.T) {
-	t.Parallel()
-
-	t.Run("creates condition with true status", func(t *testing.T) {
-		t.Parallel()
-
-		cond := makeCond(ConditionResourceCopied, true, "Success", "Resource copied successfully")
-
-		assert.Equal(t, "Copied", cond.Type)
-		assert.Equal(t, metav1.ConditionTrue, cond.Status)
-		assert.Equal(t, "Success", cond.Reason)
-		assert.Equal(t, "Resource copied successfully", cond.Message)
-		assert.False(t, cond.LastTransitionTime.IsZero())
-	})
-
-	t.Run("creates condition with false status", func(t *testing.T) {
-		t.Parallel()
-
-		cond := makeCond(ConditionStatusSynced, false, "Failed", "Status sync failed")
-
-		assert.Equal(t, "StatusSynced", cond.Type)
-		assert.Equal(t, metav1.ConditionFalse, cond.Status)
-		assert.Equal(t, "Failed", cond.Reason)
-		assert.Equal(t, "Status sync failed", cond.Message)
-		assert.False(t, cond.LastTransitionTime.IsZero())
-	})
-}
-
 var testGVK = schema.GroupVersionKind{Group: "example.io", Version: "v1", Kind: "Widget"}
 
 func testCopyScheme(t *testing.T) *runtime.Scheme {
@@ -431,7 +402,10 @@ func TestSpec(t *testing.T) {
 			}
 			targetClient := testCopyClient(t, targetObjs...)
 
-			_, err := Spec(t.Context(), testGVK, nn, nn, sourceClient, targetClient)
+			err := Spec(t.Context(), testGVK,
+				Ref{Client: sourceClient, Name: nn},
+				Ref{Client: targetClient, Name: nn},
+			)
 			require.NoError(t, err)
 
 			got := &unstructured.Unstructured{}
@@ -491,7 +465,10 @@ func TestStatus(t *testing.T) {
 			sourceClient := testCopyClient(t, tc.source)
 			targetClient := testCopyClient(t, tc.target)
 
-			_, err := Status(t.Context(), testGVK, nn, nn, sourceClient, targetClient)
+			err := Status(t.Context(), testGVK,
+				Ref{Client: targetClient, Name: nn},
+				Ref{Client: sourceClient, Name: nn},
+			)
 			require.NoError(t, err)
 
 			src := &unstructured.Unstructured{}
@@ -539,7 +516,10 @@ func TestResource(t *testing.T) {
 			}
 			targetClient := testCopyClient(t, targetObjs...)
 
-			_, err := Resource(t.Context(), testGVK, nn, nn, sourceClient, targetClient)
+			err := Resource(t.Context(), testGVK,
+				Ref{Client: sourceClient, Name: nn},
+				Ref{Client: targetClient, Name: nn},
+			)
 			require.NoError(t, err)
 
 			got := &unstructured.Unstructured{}

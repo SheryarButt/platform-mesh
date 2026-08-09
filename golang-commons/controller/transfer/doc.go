@@ -14,6 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package sync contains code related to synchronizing objects and handling
-// related resources, used by multiple controllers in the resource-broker.
-package sync
+// Package transfer copies objects between clusters.
+//
+// Every function reads from one [Ref] and writes to another, so a controller
+// mirroring an object downwards and its status back upwards spells both
+// directions out at the call site:
+//
+//	transfer.Spec(ctx, gvk, consumer, provider)   // spec travels downwards
+//	transfer.Status(ctx, gvk, provider, consumer) // status travels back up
+//
+// [Resource] combines the two.
+package transfer
