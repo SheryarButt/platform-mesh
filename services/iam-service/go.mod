@@ -32,6 +32,15 @@ require (
 	sigs.k8s.io/multicluster-runtime v0.24.2-0.20260806063852-035f642f8818
 )
 
+require (
+	github.com/Masterminds/semver/v3 v3.5.0 // indirect
+	github.com/evanphx/json-patch v5.9.0+incompatible // indirect
+	github.com/google/cel-go v0.30.0 // indirect
+	github.com/google/gofuzz v1.2.1-0.20210504230335-f78f29fc09ea // indirect
+	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a // indirect
+	golang.org/x/mod v0.38.0 // indirect
+)
+
 replace github.com/kcp-dev/multicluster-provider/client => github.com/kcp-dev/multicluster-provider/client v0.8.1-0.20260714141811-833f063357f8
 
 require (
@@ -130,13 +139,3 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
-
-replace go.platform-mesh.io/apis => ../../apis
-
-replace go.platform-mesh.io/golang-commons => ../../golang-commons
-
-replace go.platform-mesh.io/account-operator => ../../operators/account-operator
-
-replace go.platform-mesh.io/subroutines => ../../subroutines
-
-replace github.com/kcp-dev/kcp-operator/sdk => github.com/ntnn/kcp-operator/sdk v0.8.1-0.20260726154422-be62fa798885

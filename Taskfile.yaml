@@ -412,9 +412,9 @@ tasks:
   tidy:
     desc: Tidy every module's go.mod (standalone) and re-sync the workspace.
     cmds:
+      - go work sync
       - for: {var: COMPONENTS}
         cmd: task tidy-{{.ITEM}}
-      - go work sync
       # ref: https://github.com/golang/go/issues/63901
       # TLDR: go work sync doesn't actually everything.
       # We force fill the go.work.sum by downloading all deps.
@@ -437,17 +437,6 @@ tasks:
         # Forward version-pin replaces from go.work into the module's go.mod so
         # it resolves standalone, e.g. in docker builds.
         replaces=$(GOWORK= go work edit -json | jq -r '.Replace[] | "\(.Old.Path)=\(.New.Path)@\(.New.Version)"')
-        {{- if not (has (index .MATCH 0) .LIBRARIES)}}
-        # Point in-repo dependencies at their source tree for the same reason.
-        # This also decouples this component from needing a release of the used library.
-        up=$(printf '%s' "$dir" | awk -F/ '{for (i = 1; i <= NF; i++) printf "../"}')
-        for d in $(GOWORK= go work edit -json | jq -r '.Use[].DiskPath'); do
-          if [ "$d" != "./$dir" ]; then
-            p=$(go mod edit -json "$d/go.mod" | jq -r '.Module.Path')
-            replaces="$replaces $p=$up${d#./}"
-          fi
-        done
-        {{- end}}
         cd "$dir"
         go mod edit $(printf ' -replace=%s' $replaces)
         go mod tidy

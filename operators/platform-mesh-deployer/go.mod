@@ -4,23 +4,17 @@ go 1.26.4
 
 replace github.com/kcp-dev/kcp-operator/sdk => github.com/ntnn/kcp-operator/sdk v0.8.1-0.20260726154422-be62fa798885
 
-replace go.platform-mesh.io/apis => ../../apis
-
-replace go.platform-mesh.io/golang-commons => ../../golang-commons
-
-replace go.platform-mesh.io/subroutines => ../../subroutines
-
 require (
 	github.com/go-logr/logr v1.4.4
 	github.com/google/cel-go v0.30.0
-	github.com/kcp-dev/kcp-operator/sdk v0.0.0-00010101000000-000000000000
+	github.com/kcp-dev/kcp-operator/sdk v0.8.1-0.20260807064708-a6575ae6d6bb
 	github.com/kcp-dev/kcp/sdk v0.28.3
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
-	go.platform-mesh.io/apis v0.0.0-00010101000000-000000000000
+	go.platform-mesh.io/apis v0.0.4-0.20260806145628-e7fde50f913d
 	go.platform-mesh.io/golang-commons v0.18.1
 	golang.org/x/mod v0.38.0
 	k8s.io/api v0.36.3
