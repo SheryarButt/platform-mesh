@@ -12,7 +12,7 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
-	go.platform-mesh.io/apis v0.0.3
+	go.platform-mesh.io/apis v0.0.4-0.20260806145628-e7fde50f913d
 	go.platform-mesh.io/golang-commons v0.18.1
 	golang.org/x/oauth2 v0.36.0
 	k8s.io/api v0.36.3

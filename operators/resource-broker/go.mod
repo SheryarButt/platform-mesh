@@ -2,7 +2,6 @@ module go.platform-mesh.io/resource-broker
 
 go 1.26.3
 
-
 require (
 	github.com/go-logr/logr v1.4.4
 	github.com/google/cel-go v0.30.0
@@ -11,8 +10,8 @@ require (
 	github.com/kcp-dev/multicluster-provider/client v0.8.0
 	github.com/kcp-dev/sdk v0.32.3
 	github.com/stretchr/testify v1.11.1
-	go.platform-mesh.io/apis v0.0.3
-	go.platform-mesh.io/golang-commons v0.18.1
+	go.platform-mesh.io/apis v0.0.4-0.20260809133610-db141559915f
+	go.platform-mesh.io/golang-commons v0.18.2-0.20260809133610-db141559915f
 	go.platform-mesh.io/subroutines v0.6.1
 	golang.org/x/sync v0.22.0
 	k8s.io/api v0.36.3
@@ -98,7 +97,5 @@ require (
 )
 
 replace github.com/kcp-dev/multicluster-provider/client => github.com/kcp-dev/multicluster-provider/client v0.8.1-0.20260714141811-833f063357f8
-
-
 
 replace github.com/kcp-dev/kcp-operator/sdk => github.com/ntnn/kcp-operator/sdk v0.8.1-0.20260726154422-be62fa798885

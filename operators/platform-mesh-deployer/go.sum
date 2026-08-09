@@ -208,6 +208,10 @@ go.opentelemetry.io/otel/trace v1.45.0 h1:l/mP6Uv7oNO7/TblbhpbgMidxhq1uO/rPsikOy
 go.opentelemetry.io/otel/trace v1.45.0/go.mod h1:qoJJA2xNMnxRrdISU/kLtfUH2wNeQbiv+jhs/CxI8bc=
 go.opentelemetry.io/proto/otlp v1.10.0 h1:IQRWgT5srOCYfiWnpqUYz9CVmbO8bFmKcwYxpuCSL2g=
 go.opentelemetry.io/proto/otlp v1.10.0/go.mod h1:/CV4QoCR/S9yaPj8utp3lvQPoqMtxXdzn7ozvvozVqk=
+go.platform-mesh.io/apis v0.0.4-0.20260806145628-e7fde50f913d h1:jDN5ZiJDRwm5haR30vkH7fIOhcrBeRQ8VkIxEczMVhc=
+go.platform-mesh.io/apis v0.0.4-0.20260806145628-e7fde50f913d/go.mod h1:EX3ovmUqmC0lSJPqF7Qzkaxe7SZ6HCvVMH+wGjdNLHQ=
+go.platform-mesh.io/golang-commons v0.18.1 h1:jg9k2FIRI3dON16y+nQVJ625gHAA3UfhcNR6PmPyFpo=
+go.platform-mesh.io/golang-commons v0.18.1/go.mod h1:ersNhRizduHTrodcTF/JGuOJYb30yzro7sk+0VRl0cY=
 go.uber.org/goleak v1.3.1-0.20251210191316-2b7fd8a0d244 h1:OdZ8e4E9yDUGiis9x2ta/Ec5yhMAKT6ZivRvakyxC7E=
 go.uber.org/goleak v1.3.1-0.20251210191316-2b7fd8a0d244/go.mod h1:CoHD4mav9JJNrW/WLlf7HGZPjdw8EucARQHekz1X6bE=
 go.uber.org/multierr v1.11.0 h1:blXXJkSxSSfBVBlC76pxqeO+LN3aDfLQo+309xJstO0=
