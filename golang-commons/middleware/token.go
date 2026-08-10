@@ -27,7 +27,7 @@ import (
 
 const tokenAuthPrefix = "BEARER"
 
-var signatureAlgorithms = []jose.SignatureAlgorithm{jose.RS256}
+var signatureAlgorithms = []jose.SignatureAlgorithm{jose.RS256, jose.PS256}
 
 // StoreWebToken returns middleware that extracts a JWT from the HTTP `Authorization` header
 // and stores it in the request pmcontext for downstream handlers.
