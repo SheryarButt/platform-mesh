@@ -19,6 +19,8 @@ step is required.
 
 ### Running it
 
+#### Tilt setup
+
 ```bash
 kind create cluster --name platform-mesh
 tilt up -f contrib/tilt/Tiltfile
@@ -33,6 +35,15 @@ repo's Tilt env sits on the kcp it builds.
 It needs the ntnn/kcp-operator fork pinned by the `replace` in `go.mod`, which
 owns the same CRDs as the upstream operator; bump the two together. See
 [contrib/tilt/README.md](../../contrib/tilt/README.md#how-kcp-gets-built).
+
+#### Kind setup, without Tilt
+
+The same single-cluster environment stood up with plain `kubectl`, `helm` and
+`kind` — no Tilt session owning it. Step by step, including the pieces that are
+easy to miss (the CoreDNS sslip.io block, the gateway NodePort, the kubeconfig
+Secret that engages the cluster with itself, and an admin kubeconfig at the end):
+[`docs/local-kind.md`](docs/local-kind.md).
+
 
 ## Samples
 
