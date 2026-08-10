@@ -27,6 +27,7 @@ operator: it shares pkg/paths, pkg/identity and the API types with the code that
 reconciles what it writes.
 */}}
 {{- if .Values.virtualWorkspace.enabled }}
+{{- if .Values.virtualWorkspace.cert.create }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -63,6 +64,7 @@ spec:
   usages:
   - server auth
 ---
+{{- end }}
 apiVersion: v1
 kind: Service
 metadata:

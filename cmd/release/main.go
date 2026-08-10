@@ -45,6 +45,8 @@ limitations under the License.
 //	                                               GitHub release, chart bump, SBOM, OCM
 //	security-operator  security-operator/v<X.Y.Z>  security-operator.yml: signed image,
 //	                                               GitHub release, chart bump, SBOM, OCM
+//	tenancy-operator   tenancy-operator/v<X.Y.Z>   tenancy-operator.yml: signed image,
+//	                                               GitHub release, SBOM, OCM (chart in-repo)
 //	terminal-controller-manager   terminal-controller-manager/v<X.Y.Z>
 //	                                               terminal-controller-manager.yml: signed image,
 //	                                               GitHub release, chart bump, SBOM, OCM
@@ -481,6 +483,7 @@ Components:
   kro-composition-operator     kro-composition-operator/v<X.Y.Z>     (signed image + release + chart + SBOM + OCM)
   kubernetes-graphql-gateway   kubernetes-graphql-gateway/v<X.Y.Z>   (signed image + release + chart + SBOM + OCM)
   security-operator            security-operator/v<X.Y.Z>            (signed image + release + chart + SBOM + OCM)
+  tenancy-operator             tenancy-operator/v<X.Y.Z>             (signed image + release + SBOM + OCM, chart in-repo)
   search-operator              search-operator/v<X.Y.Z>              (signed image + release + chart + SBOM + OCM)
   search-service               search-service/v<X.Y.Z>               (signed image + release + chart + SBOM + OCM)
   terminal-controller-manager  terminal-controller-manager/v<X.Y.Z>  (signed image + release + chart + SBOM + OCM)

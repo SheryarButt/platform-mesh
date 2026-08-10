@@ -218,7 +218,15 @@ virtualWorkspace:
 
   # -- Its serving certificate. The front-proxy routes to this server, so an
   # ephemeral self-signed cert would fail verification on every restart.
+  #
+  # `create: false` skips the cert-manager Certificate and expects `secretName`
+  # to be a TLS secret provided by whoever deploys this. That is how the OCM
+  # module payload runs: the platform-mesh-deployer mints a certificate per
+  # mapped component (synced as `<module>-<component>-serving`), signed by the
+  # root shard's server CA — the CA the front proxy already validates backends
+  # against — in a cluster where this chart's issuer does not exist.
   cert:
+    create: true
     secretName: tenancy-virtual-workspace-cert
     duration: 8760h0m0s
     renewBefore: 168h0m0s
