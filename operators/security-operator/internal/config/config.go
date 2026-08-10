@@ -107,6 +107,7 @@ type Config struct {
 	HttpClientTimeoutSeconds         int
 	SetDefaultPassword               bool
 	AllowMemberTuplesEnabled         bool
+	RekeyOrphanedTuplesEnabled       bool
 	IDP                              IDPConfig
 	Keycloak                         KeycloakConfig
 	Initializer                      InitializerConfig
@@ -179,6 +180,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.IntVar(&c.HttpClientTimeoutSeconds, "http-client-timeout-seconds", c.HttpClientTimeoutSeconds, "Set HTTP client timeout in seconds")
 	fs.BoolVar(&c.SetDefaultPassword, "set-default-password", c.SetDefaultPassword, "Enable setting default password for identity provider users")
 	fs.BoolVar(&c.AllowMemberTuplesEnabled, "allow-member-tuples-enabled", c.AllowMemberTuplesEnabled, "Enable allow-member tuples management")
+	fs.BoolVar(&c.RekeyOrphanedTuplesEnabled, "rekey-orphaned-tuples-enabled", c.RekeyOrphanedTuplesEnabled, "Enable re-keying of org tuples orphaned by a workspace re-creation (cluster-id change)")
 	fs.StringSliceVar(&c.IDP.RealmDenyList, "idp-realm-deny-list", c.IDP.RealmDenyList, "Comma-separated list of Keycloak realms to ignore")
 	fs.StringVar(&c.IDP.SMTPServer, "idp-smtp-server", c.IDP.SMTPServer, "Set Keycloak SMTP server host")
 	fs.IntVar(&c.IDP.SMTPPort, "idp-smtp-port", c.IDP.SMTPPort, "Set Keycloak SMTP server port")

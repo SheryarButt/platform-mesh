@@ -68,3 +68,15 @@ func (s *MetricsTestSuite) TestFGAOperations() {
 	metrics.FGAOperations.WithLabelValues("list", "success").Inc()
 	s.Require().Equal(before+1, testutil.ToFloat64(metrics.FGAOperations.WithLabelValues("list", "success")))
 }
+
+// TestRekeyedTuples verifies that the RekeyedTuples counter accumulates tuple
+// counts per result label.
+func (s *MetricsTestSuite) TestRekeyedTuples() {
+	before := testutil.ToFloat64(metrics.RekeyedTuples.WithLabelValues("rekeyed"))
+	metrics.RekeyedTuples.WithLabelValues("rekeyed").Add(42)
+	s.Require().Equal(before+42, testutil.ToFloat64(metrics.RekeyedTuples.WithLabelValues("rekeyed")))
+
+	before = testutil.ToFloat64(metrics.RekeyedTuples.WithLabelValues("skipped_live"))
+	metrics.RekeyedTuples.WithLabelValues("skipped_live").Inc()
+	s.Require().Equal(before+1, testutil.ToFloat64(metrics.RekeyedTuples.WithLabelValues("skipped_live")))
+}

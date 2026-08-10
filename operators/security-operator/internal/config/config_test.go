@@ -48,6 +48,7 @@ func TestConfigAddFlags(t *testing.T) {
 		"--webhooks-enabled=true",
 		"--webhooks-port=10443",
 		"--additional-audiences=aud-a,aud-b",
+		"--rekey-orphaned-tuples-enabled=true",
 	})
 
 	assert.NoError(t, err)
@@ -57,6 +58,12 @@ func TestConfigAddFlags(t *testing.T) {
 	assert.True(t, cfg.Webhooks.Enabled)
 	assert.Equal(t, 10443, cfg.Webhooks.Port)
 	assert.Equal(t, []string{"aud-a", "aud-b"}, cfg.AdditionalAudiences)
+	assert.True(t, cfg.RekeyOrphanedTuplesEnabled)
+}
+
+func TestConfigRekeyOrphanedTuplesDefaultsToDisabled(t *testing.T) {
+	cfg := NewConfig()
+	assert.False(t, cfg.RekeyOrphanedTuplesEnabled)
 }
 
 func TestInitContainerConfigAddFlags(t *testing.T) {
