@@ -168,6 +168,7 @@ func (s *IndexableResourceWatcherSubroutine) Process(ctx context.Context, instan
 	doc.SemanticFields = extractStringConfiguredFields(resource, searchIndex.Spec.SemanticFields)
 	doc.FilterableFields = extractFilterableFields(resource, searchIndex.Spec.FilterableFields)
 	doc.SetDefaultFilterableFields()
+	doc.FilterableFields["account_fga_object"] = buildFGAObjectName(pmcorev1alpha1.GroupName, pmsearchv1alpha1.AccountKind, orgID, orgName, "")
 
 	accountInfo, err := s.getAccountInfo(ctx, workspacePath, gvk, resource)
 	if err != nil {

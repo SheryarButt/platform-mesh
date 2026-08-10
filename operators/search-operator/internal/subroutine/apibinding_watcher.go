@@ -286,9 +286,9 @@ type searchConfigFilter struct {
 
 func newSearchConfigFilter(cfg *pmsearchv1alpha1.SearchConfig) searchConfigFilter {
 	return searchConfigFilter{
-		excluded: sets.New[string](cfg.Spec.ExcludedFields...),
-		exact:    sets.New[string](cfg.Spec.ExactFields...),
-		semantic: sets.New[string](cfg.Spec.SemanticFields...),
+		excluded: sets.New(cfg.Spec.ExcludedFields...),
+		exact:    sets.New(cfg.Spec.ExactFields...),
+		semantic: sets.New(cfg.Spec.SemanticFields...),
 	}
 }
 

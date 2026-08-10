@@ -27,7 +27,7 @@ import (
 
 // DefaultFilterableFields are always extractable for every resource and are
 // injected as filterable facets regardless of a SearchConfig's configuration.
-var DefaultFilterableFields = []string{"kind", "name", "namespace", "cluster_name", "workspace_path"}
+var DefaultFilterableFields = []string{"kind", "name", "namespace", "cluster_name", "workspace_path", "account_fga_object"}
 
 // FieldMappings holds the dot-notation field paths that drive the dynamic part of the index mapping.
 type FieldMappings struct {

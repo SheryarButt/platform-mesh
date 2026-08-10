@@ -148,3 +148,46 @@ func TestDefaultIndexMappingSemanticWinsPriority(t *testing.T) {
 		t.Fatalf("spec.title type = %v, want semantic (priority)", got)
 	}
 }
+
+func TestSetDefaultFilterableFieldsAllocatesNilMap(t *testing.T) {
+	doc := &ResourceDocument{
+		Kind:          "ConfigMap",
+		Name:          "my-cm",
+		Namespace:     "default",
+		ClusterName:   "cluster-1",
+		WorkspacePath: "root:org:ws",
+	}
+
+	doc.SetDefaultFilterableFields()
+
+	want := map[string]any{
+		"kind":           "ConfigMap",
+		"name":           "my-cm",
+		"namespace":      "default",
+		"cluster_name":   "cluster-1",
+		"workspace_path": "root:org:ws",
+	}
+	for k, v := range want {
+		if got := doc.FilterableFields[k]; got != v {
+			t.Errorf("FilterableFields[%q] = %v, want %v", k, got, v)
+		}
+	}
+}
+
+func TestSetDefaultFilterableFieldsPreservesConfiguredFields(t *testing.T) {
+	doc := &ResourceDocument{
+		Kind: "ConfigMap",
+		FilterableFields: map[string]any{
+			"status.phase": "Ready",
+		},
+	}
+
+	doc.SetDefaultFilterableFields()
+
+	if got := doc.FilterableFields["status.phase"]; got != "Ready" {
+		t.Errorf("configured field status.phase = %v, want Ready", got)
+	}
+	if got := doc.FilterableFields["kind"]; got != "ConfigMap" {
+		t.Errorf("FilterableFields[kind] = %v, want ConfigMap", got)
+	}
+}
