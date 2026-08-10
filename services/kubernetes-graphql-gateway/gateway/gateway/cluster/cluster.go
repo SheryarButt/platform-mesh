@@ -41,11 +41,19 @@ type Cluster struct {
 	adminCfg *rest.Config
 }
 
+type Options struct {
+	// KubernetesQPS is the max requests per second to the Kubernetes API server.
+	KubernetesQPS float32
+	// KubernetesBurst is the max burst size for requests to the Kubernetes API server.
+	KubernetesBurst int
+}
+
 // New creates a new Cluster connection from cluster metadata.
 func New(
 	ctx context.Context,
 	name string,
 	metadata *pmgatewayv1alpha1.ClusterMetadata,
+	opts Options,
 ) (*Cluster, error) {
 	if metadata == nil {
 		return nil, fmt.Errorf("cluster %s requires cluster metadata", name)
@@ -59,6 +67,13 @@ func New(
 	cluster.restCfg, err = pmgatewayv1alpha1.BuildRestConfigFromMetadata(*metadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build config from metadata: %w", err)
+	}
+
+	if opts.KubernetesQPS > 0 {
+		cluster.restCfg.QPS = opts.KubernetesQPS
+	}
+	if opts.KubernetesBurst > 0 {
+		cluster.restCfg.Burst = opts.KubernetesBurst
 	}
 
 	cluster.adminCfg = rest.CopyConfig(cluster.restCfg)

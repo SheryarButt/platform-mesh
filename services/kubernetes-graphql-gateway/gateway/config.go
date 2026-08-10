@@ -23,6 +23,7 @@ import (
 
 	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway"
 	gatewayconfig "go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/config"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/cluster"
 	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/metrics"
 	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/middleware"
 	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/http"
@@ -59,6 +60,10 @@ func NewConfig(opts *options.CompletedOptions) (*Config, error) {
 		},
 		TokenReviewCacheTTL: cfg.Options.TokenReviewCacheTTL,
 		Metrics:             metrics.NewCollector(prometheus.DefaultRegisterer),
+		ClusterOptions: cluster.Options{
+			KubernetesQPS:   cfg.Options.KubernetesQPS,
+			KubernetesBurst: cfg.Options.KubernetesBurst,
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gateway server: %w", err)
