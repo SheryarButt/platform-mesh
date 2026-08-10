@@ -226,6 +226,33 @@ tasks:
       # of this, by design (RFC 010 §2.2).
       - '{{.BIN}}/tenancyctl memberships --server={{.VW_SERVER}} --vw-ca-file={{.VW_CA}} {{if .TENANT}}--tenant={{.TENANT}}{{end}}'
 
+  dev-grant-group:
+    desc: 'Grant an IdP group access to a tenant (TENANT=<uuid|name> [GROUP=<g>] [ROLE=<role>]).'
+    deps: [tenancyctl, dev-ca]
+    vars:
+      # The group both dev identities carry. Granting THIS one is what makes the
+      # dev environment mode C rather than mode A: bob@ reaches the tenant without
+      # anybody granting bob@ anything, because the grant names a group their token
+      # happens to carry.
+      GROUP: '{{.GROUP | default "acme-engineering"}}'
+      ROLE: '{{.ROLE | default "member"}}'
+    cmds:
+      - |
+        if [ -z "{{.TENANT}}" ]; then
+          echo "TENANT is required — a grant has to say where." >&2
+          echo >&2
+          echo "  task dev-tenants                     # the ones you administer" >&2
+          echo "  TENANT=<uuid|name> task dev-grant-group" >&2
+          echo >&2
+          echo 'You must be an ADMIN of it. After "task dev-login", that is your' >&2
+          echo "own personal tenant." >&2
+          exit 1
+        fi
+      # Nothing verifies the group. There is no object for one and no way to
+      # enumerate it, so a typo is accepted and grants nobody — check with
+      # `task dev-whoami-bob`, which prints the groups bob's token carries.
+      - '{{.BIN}}/tenancyctl memberships add --group={{.GROUP}} --tenant={{.TENANT}} --role={{.ROLE}} --server={{.VW_SERVER}} --vw-ca-file={{.VW_CA}}'
+
   dev-kubeconfig:
     desc: 'Write a kubeconfig for one workspace (CLUSTER=<id> task dev-kubeconfig).'
     deps: [tenancyctl]
@@ -261,17 +288,22 @@ tasks:
       - task: fmt
       - task: tools:lint
   test:
-    desc: Run unit tests.
+    desc: Run unit tests. test/e2e is excluded — it needs a real kcp (see test-e2e).
     cmds:
-      - go test -count=1 ./...
+      # Every package EXCEPT test/e2e, which starts a kcp and takes minutes. Listed
+      # by exclusion rather than by naming ./internal/... and ./pkg/... so a new
+      # top-level package is covered by default instead of silently untested.
+      - go test -count=1 $(go list ./... | grep -v '/test/e2e$')
   test-e2e:
     desc: Run envtest integration tests (uses the shared kcp from the root bin).
     deps: [tools:kcp]
     env:
       TEST_KCP_ASSETS: '{{.BIN}}'
     cmds:
-      # No envtest suite yet — the reconcilers land with their suites (see README).
-      - 'echo "tenancy-operator: no e2e tests yet"'
+      # A real kcp, started by the suite. Slower than the unit tests by an order of
+      # magnitude — the install alone creates five workspaces and waits for each —
+      # so it is a separate target rather than part of `test`.
+      - go test -count=1 -timeout 20m ./test/e2e/... {{.ADDITIONAL_COMMAND_ARGS}}
   cover:
     cmds:
-      - go test -count=1 ./... -coverprofile=./cover.out -covermode=atomic -coverpkg=./...
+      - go test -count=1 $(go list ./... | grep -v '/test/e2e$') -coverprofile=./cover.out -covermode=atomic -coverpkg=./...

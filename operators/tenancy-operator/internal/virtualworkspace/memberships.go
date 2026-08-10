@@ -93,12 +93,7 @@ func (s *MembershipStorage) GetSingularName() string { return "membership" }
 // Visible to every role, including viewer. A viewer may read the roster and change
 // nothing in it — which is the same shape as every other read on this surface.
 func (s *MembershipStorage) List(ctx context.Context, _ *metainternalversion.ListOptions) (runtime.Object, error) {
-	self, err := s.callerName(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	view, err := resolveAccess(ctx, s.directory, self)
+	_, view, err := resolveCallerAccess(ctx, s.directory)
 	if err != nil {
 		return nil, err
 	}
@@ -140,12 +135,7 @@ func (s *MembershipStorage) Get(ctx context.Context, name string, _ *metav1.GetO
 // find locates a Membership by name across the caller's Tenants, and returns
 // the tenant view it was found in so a caller can apply role checks against it.
 func (s *MembershipStorage) find(ctx context.Context, name string) (*pmtenancyv1alpha1.Membership, *tenantAccess, error) {
-	self, err := s.callerName(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	view, err := resolveAccess(ctx, s.directory, self)
+	_, view, err := resolveCallerAccess(ctx, s.directory)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -208,19 +198,27 @@ func (s *MembershipStorage) Create(ctx context.Context, obj runtime.Object, _ re
 		return nil, apierrors.NewBadRequest(err.Error())
 	}
 
-	// The subject must already exist. A User is created only by its own identity
+	// A USER subject must already exist. A User is created only by its own identity
 	// signing in (§Part 0), so granting access to someone who has never
 	// authenticated would write a Membership that resolves to nobody — and the
 	// reconciler would report it as a failure rather than a pending invitation.
 	// Invitations are a separate object; this is deliberately not one.
-	user := &pmtenancyv1alpha1.User{}
-	if err := s.directory.Get(ctx, ctrlruntimeclient.ObjectKey{Name: submitted.Spec.User}, user); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, apierrors.NewBadRequest(fmt.Sprintf(
-				"user %s does not exist: they must sign in once before they can be granted access",
-				submitted.Spec.User))
+	//
+	// A GROUP subject is not checked, because there is nothing to check it against.
+	// The platform holds no object for a group and cannot enumerate one, so a typo
+	// is a Membership that grants nobody while reporting Ready. That is the cost of
+	// the property this exists for: a group grant reaches people who have never
+	// signed in, which is exactly what the check above makes impossible for users.
+	if submitted.SubjectKind() == pmtenancyv1alpha1.SubjectKindUser {
+		user := &pmtenancyv1alpha1.User{}
+		if err := s.directory.Get(ctx, ctrlruntimeclient.ObjectKey{Name: submitted.Spec.User}, user); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil, apierrors.NewBadRequest(fmt.Sprintf(
+					"user %s does not exist: they must sign in once before they can be granted access",
+					submitted.Spec.User))
+			}
+			return nil, err
 		}
-		return nil, err
 	}
 
 	if submitted.Spec.Scope == pmtenancyv1alpha1.MembershipScopeProject {
@@ -249,10 +247,12 @@ func (s *MembershipStorage) Create(ctx context.Context, obj runtime.Object, _ re
 	// revoking one would leave the other live.
 	m := &pmtenancyv1alpha1.Membership{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: membership.Name(submitted.Spec.User, submitted.Spec.Scope, submitted.Spec.Project),
+			Name: membership.NameFor(submitted.SubjectKind(), submitted.SubjectName(),
+				submitted.Spec.Scope, submitted.Spec.Project),
 		},
 		Spec: pmtenancyv1alpha1.MembershipSpec{
 			User:    submitted.Spec.User,
+			Group:   submitted.Spec.Group,
 			Scope:   submitted.Spec.Scope,
 			Project: submitted.Spec.Project,
 			Role:    submitted.Spec.Role,
@@ -306,11 +306,12 @@ func (s *MembershipStorage) Update(
 	}
 
 	if updated.Spec.User != current.Spec.User ||
+		updated.Spec.Group != current.Spec.Group ||
 		updated.Spec.Scope != current.Spec.Scope ||
 		updated.Spec.Project != current.Spec.Project {
 		return nil, false, apierrors.NewBadRequest(
-			"only spec.role may be changed: user, scope and project identify the grant, and " +
-				"metadata.name is derived from them. Delete this Membership and create the one you want instead")
+			"only spec.role may be changed: the subject (user or group), scope and project identify the grant, " +
+				"and metadata.name is derived from them. Delete this Membership and create the one you want instead")
 	}
 	if err := validateMembershipSpec(updated.Spec); err != nil {
 		return nil, false, apierrors.NewBadRequest(err.Error())
@@ -369,9 +370,23 @@ func (s *MembershipStorage) Delete(ctx context.Context, name string, _ rest.Vali
 		return nil, false, err
 	}
 
-	if tenant.Role != pmtenancyv1alpha1.MembershipRoleAdmin && m.Spec.User != self {
-		return nil, false, apierrors.NewForbidden(membershipsResource, name,
-			fmt.Errorf("only an admin of tenant %s, or the subject themselves, may revoke this", tenant.UUID))
+	// Self-leave covers a grant made to YOU. It cannot cover a group grant, and not
+	// merely because `m.Spec.User` is empty on one: deleting a group Membership
+	// revokes it for everyone who holds that group, so "leaving" through this path
+	// would be one member removing every other member's access. You leave a group
+	// at the identity provider, where the platform will observe it on your next
+	// token.
+	if tenant.Role != pmtenancyv1alpha1.MembershipRoleAdmin {
+		if m.SubjectKind() == pmtenancyv1alpha1.SubjectKindGroup {
+			return nil, false, apierrors.NewForbidden(membershipsResource, name,
+				fmt.Errorf("this grant belongs to group %q, not to you: only an admin of tenant %s may revoke it, "+
+					"and leaving the group itself is done at your identity provider",
+					m.Spec.Group, tenant.UUID))
+		}
+		if m.Spec.User != self {
+			return nil, false, apierrors.NewForbidden(membershipsResource, name,
+				fmt.Errorf("only an admin of tenant %s, or the subject themselves, may revoke this", tenant.UUID))
+		}
 	}
 
 	cl, err := s.clusterClient(tenant.ClusterID)
@@ -410,7 +425,10 @@ func (s *MembershipStorage) Delete(ctx context.Context, name string, _ rest.Vali
 // reconciler that reports an ownerless Tenant is the durable answer.
 func (s *MembershipStorage) guardLastAdmin(ctx context.Context, cl ctrlruntimeclient.Client, doomed *pmtenancyv1alpha1.Membership) error {
 	if doomed.Spec.Scope != pmtenancyv1alpha1.MembershipScopeTenant ||
-		doomed.Spec.Role != pmtenancyv1alpha1.MembershipRoleAdmin {
+		doomed.Spec.Role != pmtenancyv1alpha1.MembershipRoleAdmin ||
+		doomed.SubjectKind() != pmtenancyv1alpha1.SubjectKindUser {
+		// Removing a group admin is never what strands a tenant, because it was
+		// never what proved the tenant had one.
 		return nil
 	}
 
@@ -423,20 +441,30 @@ func (s *MembershipStorage) guardLastAdmin(ctx context.Context, cl ctrlruntimecl
 		if m.Name == doomed.Name || !m.DeletionTimestamp.IsZero() {
 			continue
 		}
+		if m.SubjectKind() != pmtenancyv1alpha1.SubjectKindUser {
+			continue
+		}
 		if m.Spec.Scope == pmtenancyv1alpha1.MembershipScopeTenant && m.Spec.Role == pmtenancyv1alpha1.MembershipRoleAdmin {
 			return nil
 		}
 	}
 
 	return apierrors.NewConflict(membershipsResource, doomed.Name,
-		fmt.Errorf("this is the last admin of the tenant; promote another member to admin first, "+
-			"because a tenant with no admin cannot be administered again"))
+		fmt.Errorf("this is the last admin of the tenant that names a person; promote another member to admin first, "+
+			"because a tenant with no admin cannot be administered again. A group-subject admin does not count here: "+
+			"the platform cannot tell an empty group from a full one, so it cannot tell whether any admin remains"))
 }
 
 // validateMembershipSpec checks what the enum cannot.
 func validateMembershipSpec(spec pmtenancyv1alpha1.MembershipSpec) error {
-	if spec.User == "" {
-		return fmt.Errorf("spec.user is required")
+	switch {
+	case spec.User == "" && spec.Group == "":
+		return fmt.Errorf("a Membership must have a subject: set spec.user or spec.group")
+	case spec.User != "" && spec.Group != "":
+		// Not merely redundant: metadata.name is derived from the subject, so a
+		// Membership with two of them is a grant whose identity depends on which
+		// field the derivation happened to read.
+		return fmt.Errorf("spec.user and spec.group are mutually exclusive: a Membership grants to one subject")
 	}
 	switch spec.Role {
 	case pmtenancyv1alpha1.MembershipRoleAdmin, pmtenancyv1alpha1.MembershipRoleMember, pmtenancyv1alpha1.MembershipRoleViewer:
@@ -465,11 +493,7 @@ func validateMembershipSpec(spec pmtenancyv1alpha1.MembershipSpec) error {
 // A 404 rather than a 403 when they are not a member, so this cannot be used to
 // discover which Tenant UUIDs exist.
 func (s *MembershipStorage) callerOrg(ctx context.Context, tenantUUID string) (*tenantAccess, error) {
-	self, err := s.callerName(ctx)
-	if err != nil {
-		return nil, err
-	}
-	view, err := resolveAccess(ctx, s.directory, self)
+	_, view, err := resolveCallerAccess(ctx, s.directory)
 	if err != nil {
 		return nil, err
 	}
@@ -489,7 +513,12 @@ func (s *MembershipStorage) ConvertToTable(_ context.Context, object runtime.Obj
 	table := &metav1.Table{
 		ColumnDefinitions: []metav1.TableColumnDefinition{
 			{Name: "Name", Type: "string", Format: "name"},
-			{Name: "User", Type: "string"},
+			// Two columns rather than one: a row that showed only "the subject"
+			// would make a grant to a person and a grant to everyone in a group
+			// look identical, and they are the two things a reader of this table is
+			// most likely to be trying to tell apart.
+			{Name: "Kind", Type: "string"},
+			{Name: "Subject", Type: "string"},
 			{Name: "Scope", Type: "string"},
 			{Name: "Project", Type: "string"},
 			{Name: "Role", Type: "string"},
@@ -499,7 +528,7 @@ func (s *MembershipStorage) ConvertToTable(_ context.Context, object runtime.Obj
 
 	add := func(m *pmtenancyv1alpha1.Membership) {
 		table.Rows = append(table.Rows, metav1.TableRow{
-			Cells: []any{m.Name, m.Spec.User, m.Spec.Scope, m.Spec.Project, m.Spec.Role,
+			Cells: []any{m.Name, m.SubjectKind(), m.SubjectName(), m.Spec.Scope, m.Spec.Project, m.Spec.Role,
 				duration.HumanDuration(timeSince(m.CreationTimestamp))},
 			Object: runtime.RawExtension{Object: m},
 		})

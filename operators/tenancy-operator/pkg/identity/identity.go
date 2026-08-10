@@ -77,6 +77,10 @@ type Config struct {
 	// UsernamePrefix is prepended to that claim's value. Without one, usernames
 	// can collide with kcp-internal or ServiceAccount subjects.
 	UsernamePrefix string
+
+	// GroupsPrefix is prepended to every group kcp extracts, and is the mirror
+	// that matters for a Group subject in a ClusterRoleBinding.
+	GroupsPrefix string
 }
 
 // Resolver derives identities under one authenticator configuration.
@@ -112,6 +116,25 @@ func (r *Resolver) RBACIdentity(c Claims) (string, error) {
 		return "", fmt.Errorf("claim %q is empty: cannot derive an RBAC identity", r.cfg.UsernameClaim)
 	}
 	return r.cfg.UsernamePrefix + value, nil
+}
+
+// RBACGroup returns the name kcp will know a group by — the subject every
+// group-scoped ClusterRoleBinding must name.
+func (r *Resolver) RBACGroup(group string) (string, error) {
+	if strings.TrimSpace(group) == "" {
+		return "", fmt.Errorf("group must not be empty")
+	}
+	return r.cfg.GroupsPrefix + group, nil
+}
+
+// GroupName returns the object name of a group's read model: sha256 of the group,
+// as 64 lowercase hex characters.
+func GroupName(group string) (string, error) {
+	if strings.TrimSpace(group) == "" {
+		return "", fmt.Errorf("group must not be empty")
+	}
+	sum := sha256.Sum256([]byte(group))
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // Mutable reports whether the configured claim can change for a person who stays

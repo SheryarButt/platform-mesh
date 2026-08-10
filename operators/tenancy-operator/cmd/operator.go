@@ -17,9 +17,7 @@ limitations under the License.
 package cmd
 
 import (
-	"context"
 	"crypto/tls"
-	"fmt"
 	"net/http"
 
 	"github.com/spf13/cobra"
@@ -28,20 +26,11 @@ import (
 	platformmeshcontext "go.platform-mesh.io/golang-commons/context"
 	"go.platform-mesh.io/golang-commons/traces"
 	"go.platform-mesh.io/tenancy-operator/internal/bootstrap"
-	"go.platform-mesh.io/tenancy-operator/internal/controller/memberships"
-	"go.platform-mesh.io/tenancy-operator/internal/controller/projects"
-	"go.platform-mesh.io/tenancy-operator/internal/controller/tenants"
-	"go.platform-mesh.io/tenancy-operator/internal/controller/users"
-	"go.platform-mesh.io/tenancy-operator/internal/controller/workspaces"
+	"go.platform-mesh.io/tenancy-operator/internal/operator"
 
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
-	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
-
-	"github.com/kcp-dev/multicluster-provider/apiexport"
-	pathaware "github.com/kcp-dev/multicluster-provider/path-aware"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
@@ -139,137 +128,29 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 		}
 	}
 
-	// Primary manager: the tenancy-platform export. It hosts every controller,
-	// serves metrics and health, and is the one that takes the leader lock.
-	platformMgr, err := newManager(restCfg, operatorCfg.Kcp.PlatformEndpointSlice, mcmanager.Options{
-		Scheme: scheme,
-		Metrics: metricsserver.Options{
-			BindAddress:   defaultCfg.Metrics.BindAddress,
-			SecureServing: defaultCfg.Metrics.Secure,
-			TLSOpts:       tlsOpts,
-		},
-		BaseContext:                   func() context.Context { return ctx },
-		HealthProbeBindAddress:        defaultCfg.HealthProbeBindAddress,
-		LeaderElection:                defaultCfg.LeaderElectionEnabled,
-		LeaderElectionID:              "tenancy-operator.platform-mesh.io",
-		LeaderElectionConfig:          leaderCfg,
-		LeaderElectionReleaseOnCancel: true,
-	})
-	if err != nil {
-		log.Fatal().Err(err).Str("export", operatorCfg.Kcp.PlatformEndpointSlice).Msg("unable to start manager")
-	}
-
-	// Secondary manager: the tenancy-provisioner export. It hosts NO controllers
-	// — it exists so the Tenant chain can reach the fleet root, where Tenant
-	// workspaces are created, through that export's single claim. Metrics, health
-	// and leader election stay on the primary so the two cannot contend for a
-	// port or a lock.
-	provisionerMgr, err := newManager(restCfg, operatorCfg.Kcp.ProvisionerEndpointSlice, mcmanager.Options{
+	// Everything from here is the wiring, and it lives in internal/operator so the
+	// e2e suite can run exactly this against a real kcp. What used to be inline
+	// could only be exercised by starting a process, which left the question of
+	// which controller reaches which export — the question that decides whether
+	// anything reconciles — as the least tested part of the operator.
+	managers, err := operator.Build(ctx, operator.Options{
+		RestConfig:             restCfg,
+		Config:                 operatorCfg,
+		Layout:                 layout,
+		Identities:             identities,
 		Scheme:                 scheme,
-		Metrics:                metricsserver.Options{BindAddress: "0"},
-		BaseContext:            func() context.Context { return ctx },
-		HealthProbeBindAddress: "0",
-		LeaderElection:         false,
+		Common:                 defaultCfg,
+		MetricsBindAddress:     defaultCfg.Metrics.BindAddress,
+		MetricsSecure:          defaultCfg.Metrics.Secure,
+		MetricsTLSOpts:         tlsOpts,
+		HealthProbeBindAddress: defaultCfg.HealthProbeBindAddress,
+		LeaderElection:         defaultCfg.LeaderElectionEnabled,
+		LeaderElectionConfig:   leaderCfg,
 	})
 	if err != nil {
-		log.Fatal().Err(err).Str("export", operatorCfg.Kcp.ProvisionerEndpointSlice).Msg("unable to start manager")
+		log.Fatal().Err(err).Msg("unable to build the managers")
 	}
-
-	// Third manager: the tenancy-access export. Like the provisioner it hosts no
-	// controllers — it is how WorkspaceReconciler writes INTO a tenant workspace,
-	// bounded by that export's claims. Reading Workspaces and writing into them go
-	// through different exports on purpose, so neither claim list has to widen to
-	// cover the other.
-	accessMgr, err := newManager(restCfg, operatorCfg.Kcp.AccessEndpointSlice, mcmanager.Options{
-		Scheme:                 scheme,
-		Metrics:                metricsserver.Options{BindAddress: "0"},
-		BaseContext:            func() context.Context { return ctx },
-		HealthProbeBindAddress: "0",
-		LeaderElection:         false,
-	})
-	if err != nil {
-		log.Fatal().Err(err).Str("export", operatorCfg.Kcp.AccessEndpointSlice).Msg("unable to start manager")
-	}
-
-	// Fourth manager: the tenancy export. It owns `memberships`, which live inside
-	// each Tenant workspace — neither the platform nor the provisioner
-	// export can reach them, so seeding an owner's grant needs this one.
-	tenancyMgr, err := newManager(restCfg, operatorCfg.Kcp.TenancyEndpointSlice, mcmanager.Options{
-		Scheme:                 scheme,
-		Metrics:                metricsserver.Options{BindAddress: "0"},
-		BaseContext:            func() context.Context { return ctx },
-		HealthProbeBindAddress: "0",
-		LeaderElection:         false,
-	})
-	if err != nil {
-		log.Fatal().Err(err).Str("export", operatorCfg.Kcp.TenancyEndpointSlice).Msg("unable to start manager")
-	}
-
-	if operatorCfg.Controllers.User.Enabled {
-		r, err := users.NewReconciler(platformMgr, provisionerMgr, tenancyMgr, layout, identities, operatorCfg)
-		if err != nil {
-			log.Fatal().Err(err).Msg("unable to create user reconciler")
-		}
-		if err := r.SetupWithManager(platformMgr, defaultCfg); err != nil {
-			log.Fatal().Err(err).Str("controller", "User").Msg("unable to create controller")
-		}
-	}
-
-	if operatorCfg.Controllers.Tenant.Enabled {
-		r, err := tenants.NewReconciler(platformMgr, provisionerMgr, tenancyMgr, layout, operatorCfg)
-		if err != nil {
-			log.Fatal().Err(err).Msg("unable to create tenant reconciler")
-		}
-		if err := r.SetupWithManager(platformMgr, defaultCfg); err != nil {
-			log.Fatal().Err(err).Str("controller", "Tenant").Msg("unable to create controller")
-		}
-	}
-
-	if operatorCfg.Controllers.Workspace.Enabled {
-		// Registered on the PROVISIONER manager: Workspace objects live in the
-		// workspaces that bind that export, not in the tenant workspaces the
-		// reconciler writes to.
-		r, err := workspaces.NewReconciler(provisionerMgr, accessMgr, &operatorCfg)
-		if err != nil {
-			log.Fatal().Err(err).Msg("unable to create workspace reconciler")
-		}
-		if err := r.SetupWithManager(provisionerMgr); err != nil {
-			log.Fatal().Err(err).Str("controller", "Workspace").Msg("unable to create controller")
-		}
-	}
-
-	if operatorCfg.Controllers.Membership.Enabled {
-		// Registered on the ACCESS manager, not the tenancy one: role bindings are
-		// only visible through that export. It repairs by nudging the Membership,
-		// because a builder cannot take a source from another manager.
-		b := memberships.NewBindingReconciler(accessMgr, tenancyMgr)
-		if err := b.SetupWithManager(accessMgr, defaultCfg); err != nil {
-			log.Fatal().Err(err).Str("controller", "MembershipBinding").Msg("unable to create controller")
-		}
-	}
-
-	if operatorCfg.Controllers.Project.Enabled {
-		r, err := projects.NewReconciler(provisionerMgr, tenancyMgr, layout, operatorCfg)
-		if err != nil {
-			log.Fatal().Err(err).Msg("unable to create project reconciler")
-		}
-		if err := r.SetupWithManager(tenancyMgr, defaultCfg); err != nil {
-			log.Fatal().Err(err).Str("controller", "Project").Msg("unable to create controller")
-		}
-	}
-
-	if operatorCfg.Controllers.Membership.Enabled {
-		// Registered on the TENANCY manager, which is where Memberships are
-		// readable; it writes through the access manager into whichever workspace
-		// the Membership targets.
-		r, err := memberships.NewReconciler(platformMgr, tenancyMgr, accessMgr, layout, identities, operatorCfg)
-		if err != nil {
-			log.Fatal().Err(err).Msg("unable to create membership reconciler")
-		}
-		if err := r.SetupWithManager(tenancyMgr, defaultCfg); err != nil {
-			log.Fatal().Err(err).Str("controller", "Membership").Msg("unable to create controller")
-		}
-	}
+	platformMgr := managers.Platform
 
 	if err := platformMgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		log.Fatal().Err(err).Msg("unable to set up health check")
@@ -280,44 +161,8 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 
 	signalCtx := ctrl.SetupSignalHandler()
 
-	// The provisioner manager only serves clients, so a failure there must take
-	// the process down rather than leave the primary reconciling against a
-	// manager whose cache never warmed.
-	go func() {
-		if err := provisionerMgr.Start(signalCtx); err != nil {
-			log.Fatal().Err(err).Str("export", operatorCfg.Kcp.ProvisionerEndpointSlice).Msg("provisioner manager stopped")
-		}
-	}()
-
-	go func() {
-		if err := tenancyMgr.Start(signalCtx); err != nil {
-			log.Fatal().Err(err).Str("export", operatorCfg.Kcp.TenancyEndpointSlice).Msg("tenancy manager stopped")
-		}
-	}()
-
-	go func() {
-		if err := accessMgr.Start(signalCtx); err != nil {
-			log.Fatal().Err(err).Str("export", operatorCfg.Kcp.AccessEndpointSlice).Msg("access manager stopped")
-		}
-	}()
-
-	log.Info().Msg("starting manager")
-	if err := platformMgr.Start(signalCtx); err != nil {
-		log.Fatal().Err(err).Msg("problem running manager")
+	log.Info().Msg("starting managers")
+	if err := managers.Start(signalCtx); err != nil {
+		log.Fatal().Err(err).Msg("problem running managers")
 	}
-}
-
-// newManager builds a multicluster manager over one APIExport virtual workspace.
-// The provider is path-aware so a subroutine can address a workspace by path
-// (root:tenants) and not only by logical cluster ID — a path resolves exactly when
-// that workspace binds this export, which is what keeps reach tied to bindings.
-func newManager(restCfg *rest.Config, endpointSlice string, opts mcmanager.Options) (mcmanager.Manager, error) { // coverage-ignore
-	provider, err := pathaware.New(restCfg, endpointSlice, apiexport.Options{
-		Log:    &ctrl.Log,
-		Scheme: opts.Scheme,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating APIExport provider for %q: %w", endpointSlice, err)
-	}
-	return mcmanager.New(restCfg, provider, opts)
 }

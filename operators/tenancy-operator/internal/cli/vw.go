@@ -440,11 +440,31 @@ func ListMemberships(ctx context.Context, opts VWOptions) ([]pmtenancyv1alpha1.M
 
 // CreateMembership grants a user access to a Tenant or to one Project.
 //
-// The subject is a User NAME — the sha256(issuer + "\n" + sub) digest, not an
+// A USER subject is a User NAME — the sha256(issuer + "\n" + sub) digest, not an
 // email. There is no lookup by email anywhere in this API: the VW is never a
 // directory of the platform's people, so the caller must already know who they are
 // granting to.
-func CreateMembership(ctx context.Context, opts VWOptions, tenantUUID, userName, scope, project, role string) (*pmtenancyv1alpha1.Membership, error) {
+//
+// A GROUP subject is the group as the identity provider emits it, WITHOUT the
+// prefix kcp applies. It needs no lookup and no prior sign-in, which is the whole
+// difference between the two.
+// Subject is who a grant is for: exactly one of the two is set.
+//
+// A struct rather than two string parameters, because two adjacent strings at a
+// call site is how you end up granting a group named after a user digest.
+type Subject struct {
+	User  string
+	Group string
+}
+
+func CreateMembership(ctx context.Context, opts VWOptions, tenantUUID string, subject Subject, scope, project, role string) (*pmtenancyv1alpha1.Membership, error) {
+	spec := pmtenancyv1alpha1.MembershipSpec{Scope: scope, Project: project, Role: role}
+	if subject.Group != "" {
+		spec.Group = subject.Group
+	} else {
+		spec.User = subject.User
+	}
+
 	body, err := json.Marshal(&pmtenancyv1alpha1.Membership{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: pmtenancyv1alpha1.GroupName + "/" + pmtenancyv1alpha1.GroupVersion,
@@ -453,9 +473,7 @@ func CreateMembership(ctx context.Context, opts VWOptions, tenantUUID, userName,
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{pmtenancyv1alpha1.LabelTenant: tenantUUID},
 		},
-		Spec: pmtenancyv1alpha1.MembershipSpec{
-			User: userName, Scope: scope, Project: project, Role: role,
-		},
+		Spec: spec,
 	})
 	if err != nil {
 		return nil, err

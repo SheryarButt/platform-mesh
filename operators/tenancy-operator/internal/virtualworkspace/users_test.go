@@ -18,6 +18,8 @@ package virtualworkspace_test
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -58,15 +60,25 @@ func testStorage(t *testing.T, objs ...ctrlruntimeclient.Object) *virtualworkspa
 	})
 	require.NoError(t, err)
 
-	c := fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(objs...).Build()
+	c := fake.NewClientBuilder().
+		WithScheme(testScheme(t)).
+		WithObjects(objs...).
+		WithStatusSubresource(&pmtenancyv1alpha1.User{}).
+		Build()
 	return virtualworkspace.NewUserStorage(c, resolver)
 }
 
 // authenticated builds the request context the authenticator would produce.
 func authenticated(issuer, subject, email string) context.Context {
+	return authenticatedInGroups(issuer, subject, email)
+}
+
+// authenticatedInGroups is the same, carrying IdP groups on top of the synthetic
+// one every authenticated caller has.
+func authenticatedInGroups(issuer, subject, email string, groups ...string) context.Context {
 	return request.WithUser(context.Background(), &user.DefaultInfo{
 		Name:   "pm:" + email,
-		Groups: []string{"system:authenticated"},
+		Groups: append([]string{"system:authenticated"}, groups...),
 		Extra: map[string][]string{
 			virtualworkspace.ExtraIssuer:  {issuer},
 			virtualworkspace.ExtraSubject: {subject},
@@ -259,4 +271,100 @@ func TestCreateDoesNotUseTheUsernameAsADisplayName(t *testing.T) {
 	require.True(t, ok)
 	assert.Empty(t, created.Spec.Name, "an absent name claim must not fall back to the prefixed username")
 	assert.Equal(t, "pm:"+testEmail, created.Spec.RBACIdentity, "the identity must be prefixed exactly once")
+}
+
+// The group sample is bounded, and the bound is the point: a federated identity
+// can arrive carrying thousands of groups, and this field exists to help someone
+// debug — not to mirror a directory into an object the platform stores and lists.
+func TestCreateStoresABoundedGroupSample(t *testing.T) {
+	s := testStorage(t)
+
+	many := make([]string, 0, 2000)
+	for i := range 2000 {
+		many = append(many, fmt.Sprintf("group-%04d", i))
+	}
+
+	obj, err := s.Create(authenticatedInGroups(testIssuer, testSubject, testEmail, many...),
+		&pmtenancyv1alpha1.User{}, nil, &metav1.CreateOptions{})
+	require.NoError(t, err)
+	created := obj.(*pmtenancyv1alpha1.User)
+
+	assert.Len(t, created.Status.Groups, pmtenancyv1alpha1.MaxObservedGroups)
+	assert.Equal(t, int32(2000), created.Status.GroupCount)
+	assert.Equal(t, "group-0000", created.Status.Groups[0])
+	assert.Equal(t, "group-0031", created.Status.Groups[pmtenancyv1alpha1.MaxObservedGroups-1])
+}
+
+// `system:authenticated` names every caller there is. It is added by this server
+// rather than by the issuer, and a field that listed it would be inviting whoever
+// reads it next to treat "in a group" as meaning nothing.
+func TestCreateDropsSyntheticAndOversizedGroups(t *testing.T) {
+	s := testStorage(t)
+
+	huge := strings.Repeat("x", pmtenancyv1alpha1.MaxObservedGroupLength+1)
+	ctx := authenticatedInGroups(testIssuer, testSubject, testEmail,
+		"acme-engineering", "system:masters", huge)
+
+	obj, err := s.Create(ctx, &pmtenancyv1alpha1.User{}, nil, &metav1.CreateOptions{})
+	require.NoError(t, err)
+	created := obj.(*pmtenancyv1alpha1.User)
+
+	assert.Equal(t, []string{"acme-engineering"}, created.Status.Groups)
+	assert.Equal(t, int32(1), created.Status.GroupCount)
+}
+
+// Self-provision is the call a client makes on every login, so it is what stamps
+// the login time — on the first create and on every repeat of it, which are two
+// different code paths.
+func TestCreateStampsLastLogin(t *testing.T) {
+	s := testStorage(t)
+	ctx := authenticatedInGroups(testIssuer, testSubject, testEmail, "acme-engineering")
+
+	first, err := s.Create(ctx, &pmtenancyv1alpha1.User{}, nil, &metav1.CreateOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, first.(*pmtenancyv1alpha1.User).Status.LastLogin,
+		"the first provision is a login too")
+
+	second, err := s.Create(ctx, &pmtenancyv1alpha1.User{}, nil, &metav1.CreateOptions{})
+	require.NoError(t, err, "a repeated self-provision must not error")
+
+	was := first.(*pmtenancyv1alpha1.User).Status.LastLogin
+	now := second.(*pmtenancyv1alpha1.User).Status.LastLogin
+	require.NotNil(t, now)
+	assert.False(t, now.Before(was), "lastLogin must not move backwards")
+}
+
+// A read is not a login. This is the same rule that makes provisioning an
+// explicit call: if GET moved the timestamp, a monitoring probe polling `users ~`
+// would report a fleet of identities that never stopped signing in.
+func TestGetDoesNotStampLastLogin(t *testing.T) {
+	s := testStorage(t)
+	ctx := authenticated(testIssuer, testSubject, testEmail)
+
+	created, err := s.Create(ctx, &pmtenancyv1alpha1.User{}, nil, &metav1.CreateOptions{})
+	require.NoError(t, err)
+	stamped := created.(*pmtenancyv1alpha1.User).Status.LastLogin
+	require.NotNil(t, stamped)
+
+	got, err := s.Get(ctx, virtualworkspace.SelfAlias, &metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, stamped, got.(*pmtenancyv1alpha1.User).Status.LastLogin)
+}
+
+// A group change IS observed, and on the arm that matters: the first create runs
+// once, so anything that only wrote there would record the sample at first login
+// and let it rot through every login after.
+func TestCreateRefreshesAChangedGroupSample(t *testing.T) {
+	s := testStorage(t)
+
+	_, err := s.Create(authenticatedInGroups(testIssuer, testSubject, testEmail, "acme-engineering"),
+		&pmtenancyv1alpha1.User{}, nil, &metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	obj, err := s.Create(authenticatedInGroups(testIssuer, testSubject, testEmail, "platform-admins"),
+		&pmtenancyv1alpha1.User{}, nil, &metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	updated := obj.(*pmtenancyv1alpha1.User)
+	assert.Equal(t, []string{"platform-admins"}, updated.Status.Groups)
 }

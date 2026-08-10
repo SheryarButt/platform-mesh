@@ -138,6 +138,8 @@ func runVirtualWorkspace(c *cobra.Command) error {
 			CAFile:         operatorCfg.OIDC.CAFile,
 			UsernameClaim:  operatorCfg.OIDC.UsernameClaim,
 			UsernamePrefix: operatorCfg.OIDC.UsernamePrefix,
+			GroupsClaim:    operatorCfg.OIDC.GroupsClaim,
+			GroupsPrefix:   operatorCfg.OIDC.GroupsPrefix,
 		},
 	})
 }

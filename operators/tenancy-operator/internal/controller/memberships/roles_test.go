@@ -29,7 +29,7 @@ import (
 // non-resource entry rules.
 func verbsFor(t *testing.T, role string) []string {
 	t.Helper()
-	rules, err := rulesFor(role)
+	rules, err := RulesFor(role)
 	require.NoError(t, err)
 
 	for _, r := range rules {
@@ -82,7 +82,7 @@ func TestEveryRoleCanEnterAndDiscover(t *testing.T) {
 		pmtenancyv1alpha1.MembershipRoleMember,
 		pmtenancyv1alpha1.MembershipRoleViewer,
 	} {
-		rules, err := rulesFor(role)
+		rules, err := RulesFor(role)
 		require.NoError(t, err)
 
 		var access, discovery bool
@@ -102,14 +102,14 @@ func TestEveryRoleCanEnterAndDiscover(t *testing.T) {
 // An unknown role is terminal, not a retry: no amount of requeuing fixes a bad
 // spec, and defaulting to something would grant access nobody asked for.
 func TestUnknownRoleIsAnError(t *testing.T) {
-	_, err := rulesFor("superuser")
+	_, err := RulesFor("superuser")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown role")
 
-	_, err = clusterRoleFor("superuser")
+	_, err = ClusterRoleFor("superuser")
 	require.Error(t, err)
 
-	_, err = rulesFor("")
+	_, err = RulesFor("")
 	require.Error(t, err)
 }
 
@@ -122,7 +122,7 @@ func TestEveryRoleMapsToItsOwnClusterRole(t *testing.T) {
 		pmtenancyv1alpha1.MembershipRoleMember,
 		pmtenancyv1alpha1.MembershipRoleViewer,
 	} {
-		name, err := clusterRoleFor(role)
+		name, err := ClusterRoleFor(role)
 		require.NoError(t, err, "role %q has no ClusterRole", role)
 
 		if other, dup := seen[name]; dup {

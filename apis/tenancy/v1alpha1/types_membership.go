@@ -91,14 +91,15 @@ const (
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
 // +kubebuilder:printcolumn:name="User",type="string",JSONPath=".spec.user"
+// +kubebuilder:printcolumn:name="Group",type="string",JSONPath=".spec.group"
 // +kubebuilder:printcolumn:name="Scope",type="string",JSONPath=".spec.scope"
 // +kubebuilder:printcolumn:name="Project",type="string",JSONPath=".spec.project"
 // +kubebuilder:printcolumn:name="Role",type="string",JSONPath=".spec.role"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// Membership grants a User a role in a Tenant or a Project. The controller
-// turns it into kcp RBAC.
+// Membership grants a role in a Tenant or a Project to a subject — a User, or
+// everyone in an identity-provider group. The controller turns it into kcp RBAC.
 //
 // Memberships always live in the Tenant workspace, whatever their scope. Because
 // of that, deleting a Project does not remove its Memberships — the Project
@@ -122,14 +123,45 @@ type MembershipList struct {
 }
 
 // MembershipSpec defines the desired state of a Membership.
+//
+// Exactly one of user or group is set — the subject of the grant. They are two
+// fields rather than one polymorphic one because they are not interchangeable:
+// `user` names an object the platform holds and can verify, `group` names a claim
+// the identity provider makes and the platform can only take on trust. Code that
+// means "the person" should say user and mean it.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.user) != has(self.group)",message="exactly one of spec.user or spec.group must be set"
 // +k8s:openapi-gen=true
 type MembershipSpec struct {
 	// User is the metadata.name of a User in the directory workspace.
 	//
-	// +kubebuilder:validation:Required
+	// Mutually exclusive with Group.
+	//
+	// +optional
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
-	User string `json:"user"`
+	User string `json:"user,omitempty"`
+
+	// Group grants to everyone whose token carries this group, present and
+	// future. The value is the group as the IDENTITY PROVIDER emits it, without
+	// the prefix kcp applies — the prefix is deployment configuration, and a
+	// Membership that hardcoded it would stop matching the day it changed.
+	//
+	// UNVERIFIABLE, and that is the trade. There is no object to check it against,
+	// so a typo is a Membership that grants nobody anything while reporting Ready,
+	// and there is no way to enumerate who holds it. In exchange it grants people
+	// who have never signed in, which no user-subject Membership can do.
+	//
+	// Revocation belongs to the identity provider. Removing someone from the group
+	// there stops their next token carrying it, and kcp stops admitting them.
+	// Deleting this Membership revokes it for EVERYONE.
+	//
+	// Mutually exclusive with User.
+	//
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Group string `json:"group,omitempty"`
 
 	// Scope selects what this Membership grants access to.
 	//
@@ -169,6 +201,38 @@ type MembershipStatus struct {
 	// +patchMergeKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
+
+// SubjectKind reports what this Membership grants to, using the kube RBAC
+// subject kinds so a caller can hand the answer straight to a RoleRef.
+//
+// An empty spec reports SubjectKindUser, which is what the CRD's own validation
+// already rejects — the zero value should not invent a third kind for a state
+// that cannot be stored.
+func (in *Membership) SubjectKind() string {
+	if in.Spec.Group != "" {
+		return SubjectKindGroup
+	}
+	return SubjectKindUser
+}
+
+// SubjectName is the subject's name in whichever kind it is: a User's digest
+// name, or the group as the identity provider emits it.
+//
+// NOT an RBAC subject name. A binding names the group WITH the configured prefix
+// and a user by their rbacIdentity, and both of those are resolved from
+// deployment configuration this package knows nothing about.
+func (in *Membership) SubjectName() string {
+	if in.Spec.Group != "" {
+		return in.Spec.Group
+	}
+	return in.Spec.User
+}
+
+// Subject kinds, spelled as kube's RBAC subject kinds are.
+const (
+	SubjectKindUser  = "User"
+	SubjectKindGroup = "Group"
+)
 
 // GetConditions implements conditions.ConditionAccessor.
 func (in *Membership) GetConditions() []metav1.Condition { return in.Status.Conditions }

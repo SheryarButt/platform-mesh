@@ -20,6 +20,23 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// MaxObservedGroups caps UserStatus.Groups.
+//
+// Declared beside the field's own +kubebuilder:validation:MaxItems because the
+// two MUST be the same number: the marker makes the API server reject a longer
+// list, and this is what the writer trims to. If they ever disagree, the writer
+// is the one that loses — every login would fail on a validation error for a
+// field that exists only to help someone debug.
+//
+// 32 is a debugging sample, not a membership. Nothing reads this field to make a
+// decision, so a bigger number buys nothing and costs object size on every User.
+const MaxObservedGroups = 32
+
+// MaxObservedGroupLength bounds one entry, for the same reason the count is
+// bounded: a claim is whatever the issuer put in it, and neither the number of
+// groups nor the length of one is something this platform gets to assume.
+const MaxObservedGroupLength = 253
+
 const (
 	// UserConditionReady is True once the User has been bootstrapped: a personal
 	// Tenant exists (unless personal tenants are disabled) and the membership
@@ -180,11 +197,50 @@ type UserStatus struct {
 	// +optional
 	Active bool `json:"active,omitempty"`
 
-	// LastLogin is stamped by the tenancy virtual workspace on an authenticated
-	// request.
+	// LastLogin is stamped by the tenancy virtual workspace when this identity
+	// provisions itself — the explicit `create users` call, which a client makes on
+	// every login. A read does not move it, so `whoami` alone is not a login.
+	//
+	// A RECORD, like everything else in this status. Nothing consults it, and an
+	// identity that has not signed in for a year is not thereby restricted: kcp
+	// RBAC does not know this field exists. Reading it as a session or an
+	// expiry would be inventing an access-control input out of a timestamp that is
+	// only as accurate as the last client to call.
 	//
 	// +optional
 	LastLogin *metav1.Time `json:"lastLogin,omitempty"`
+
+	// Groups is a SAMPLE of the groups this identity's token carried the last time
+	// it provisioned itself, kept for debugging and nothing else.
+	//
+	// NOT AN AUTHORIZATION INPUT, and it cannot become one. It is a copy of an
+	// answer that belongs to the identity provider, it is only as fresh as the last
+	// login, and it does not shrink when someone is removed from a group — so a
+	// grant resolved from this field would keep granting after the IdP revoked it.
+	// kcp evaluates group subjects against the groups in the token being presented,
+	// which is the only reading that revokes on time.
+	//
+	// TRUNCATED, and deliberately: a federated identity can arrive carrying
+	// thousands of groups, and every one of them would otherwise be copied into an
+	// object the platform stores, watches and lists. At most MaxObservedGroups are
+	// kept; GroupCount records how many there really were, so a truncated sample is
+	// visibly a sample rather than a short list.
+	//
+	// +optional
+	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=32
+	// +kubebuilder:validation:items:MaxLength=253
+	Groups []string `json:"groups,omitempty"`
+
+	// GroupCount is how many groups that token carried, before truncation.
+	//
+	// Its whole job is to make the difference visible: `groups` with 32 entries and
+	// a groupCount of 2000 says "this is a sample", where the list alone would read
+	// as the whole membership.
+	//
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	GroupCount int32 `json:"groupCount,omitempty"`
 
 	// DefaultTenant is the UUID of the Tenant seeded for this User at bootstrap.
 	//

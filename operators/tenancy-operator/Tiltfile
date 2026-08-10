@@ -100,6 +100,18 @@ def deploy_tenancy(
     KCP_KUBECONFIG_SECRET = 'tenancy-kcp-kubeconfig'
     KCP_RESOURCE = 'tenancy-kcp-credential'
 
+    # The CA the VW's serving certificate roots from. Fixed name, chosen here, for
+    # the same reason the Secret above is: everything kcp-operator generates
+    # carries a hash and cannot be named in a values file.
+    #
+    # A CA OF ITS OWN rather than kcp's, which is a statement about the topology
+    # and not a shortcut. The VW is not a shard and nothing inside kcp dials it —
+    # it is reached only over its own SNI hostname on the passthrough listener, by
+    # clients that read `ca.crt` out of the cert Secret (`task dev-ca`). So there
+    # is no party that has to trust kcp's CA and this one, and rooting it in kcp's
+    # chain would only buy a dependency on a name that moves.
+    VW_CA_ISSUER = 'tenancy-vw-ca'
+
     # Only the values that MUST agree with something outside the chart are set
     # here, and each comes from the same variable the other side uses.
     helm_set = [
@@ -137,6 +149,16 @@ def deploy_tenancy(
         'virtualWorkspace.gatewayApi.name=' + gateway.get('name', ''),
         'virtualWorkspace.gatewayApi.namespace=' + gateway.get('namespace', ''),
         'virtualWorkspace.gatewayApi.hostname=' + gateway.get('hostname', ''),
+        # The VW's own CA, defined below — NOT the chart default.
+        #
+        # That default names `root-server-ca`, which is a kcp-operator-generated
+        # issuer, and kcp-operator generates it as `dev-root-<hash>-server-ca`.
+        # The hash is over names nothing here can reproduce, so the default cannot
+        # be right in this environment and cert-manager reports it as
+        # `Referenced "Issuer" not found` on a CertificateRequest — two objects
+        # away from the pod, which just says the Secret is missing.
+        'virtualWorkspace.cert.issuer.kind=Issuer',
+        'virtualWorkspace.cert.issuer.name=' + VW_CA_ISSUER,
         'virtualWorkspace.oidc.issuerURL=' + oidc.get('issuerURL', ''),
         'virtualWorkspace.oidc.clientID=' + oidc.get('clientID', ''),
         'virtualWorkspace.oidc.caSecretName=' + oidc.get('caFileRef', {}).get('name', ''),
@@ -145,6 +167,11 @@ def deploy_tenancy(
         # Read from the same dict kcp is configured from, so the operator's mirror
         # of kcp's username convention cannot drift from kcp's actual one.
         'oidc.usernamePrefix=' + oidc.get('usernamePrefix', ''),
+        # Same dict, same reason — and one sharper edge: kcp defaults an UNSET
+        # groupsPrefix to `oidc:`, so both ends have to read this explicitly or
+        # they name the same IdP group differently.
+        'oidc.groupsClaim=' + oidc.get('groupsClaim', ''),
+        'oidc.groupsPrefix=' + oidc.get('groupsPrefix', ''),
         # Word-pair names in dev, UUIDs in production. A workspace you have to
         # read out of a log, paste into a kubeconfig or say out loud is the whole
         # inner loop here, and `amber-harbor` survives that where a UUID does not.
@@ -206,6 +233,39 @@ kubectl -n "$NS" wait "secret/{secret}" --for=create --timeout=5m'''.format(
         allow_parallel=True,
     )
 
+    # selfsigned -> tenancy-vw-ca -> the leaf the chart asks for. The same three
+    # links dex's cert chain uses (manifests/dex.yaml), and for the same reason: a
+    # real CA rather than a self-signed leaf means `ca.crt` in the Secret stays
+    # the same across renewal, so a CA a client pulled once keeps verifying.
+    #
+    # `selfsigned` comes from the infra profile, which tenancy already sits on.
+    k8s_yaml(blob('''apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {ca}
+  namespace: {ns}
+spec:
+  isCA: true
+  commonName: {ca}
+  secretName: {ca}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned
+    kind: Issuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {ca}
+  namespace: {ns}
+spec:
+  ca:
+    secretName: {ca}
+'''.format(ca=VW_CA_ISSUER, ns=namespace)))
+
     component_build(
         name='tenancy-operator',
         path='operators/tenancy-operator',
@@ -231,7 +291,15 @@ kubectl -n "$NS" wait "secret/{secret}" --for=create --timeout=5m'''.format(
     k8s_resource(
         'tenancy-operator-vw',
         new_name='tenancy-vw',
-        objects=['tenancy-operator-vw:certificate', 'tenancy-operator-vw:tlsroute'],
+        # The CA rides with the VW rather than the infra profile: it exists only to
+        # sign this one certificate, and cert-manager resolves the ordering between
+        # the two itself.
+        objects=[
+            'tenancy-operator-vw:certificate',
+            'tenancy-operator-vw:tlsroute',
+            VW_CA_ISSUER + ':certificate',
+            VW_CA_ISSUER + ':issuer',
+        ],
         resource_deps=[INIT_RESOURCE],
         labels=[LABEL],
     )

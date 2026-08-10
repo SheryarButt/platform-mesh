@@ -390,3 +390,131 @@ func TestMembershipUpdateChangesTheRole(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "admin", out.(*pmtenancyv1alpha1.Membership).Spec.Role)
 }
+
+func groupMembership(group, role string) *pmtenancyv1alpha1.Membership {
+	return &pmtenancyv1alpha1.Membership{
+		ObjectMeta: metav1.ObjectMeta{Name: membership.NameForGroup(group, pmtenancyv1alpha1.MembershipScopeTenant, "")},
+		Spec: pmtenancyv1alpha1.MembershipSpec{
+			Group: group, Scope: pmtenancyv1alpha1.MembershipScopeTenant, Role: role,
+		},
+	}
+}
+
+// A group subject needs no prior sign-in, which is the one thing a user subject
+// cannot do — and the reason group grants exist. Nothing is checked because
+// nothing CAN be: the platform holds no object for a group.
+func TestMembershipCreateAcceptsAnUncheckableGroup(t *testing.T) {
+	f := newFleet(t,
+		[]ctrlruntimeclient.Object{
+			index(wantName(t), pmtenancyv1alpha1.MembershipIndexEntry{
+				TenantUUID: "tenant", TenantClusterID: "c1", Role: "admin",
+			}),
+		},
+		map[string][]ctrlruntimeclient.Object{"c1": nil},
+	)
+
+	submitted := submitMembership("", pmtenancyv1alpha1.MembershipScopeTenant, "", "member")
+	submitted.Spec.Group = "acme-engineering"
+
+	obj, err := f.membershipStorage(t).Create(
+		authenticated(testIssuer, testSubject, testEmail), submitted, nil, &metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	created := obj.(*pmtenancyv1alpha1.Membership)
+	assert.Equal(t, "acme-engineering", created.Spec.Group)
+	assert.Empty(t, created.Spec.User)
+	assert.Equal(t, pmtenancyv1alpha1.SubjectKindGroup, created.SubjectKind())
+}
+
+// One subject per grant. metadata.name is derived from it, so a Membership
+// carrying both is a grant whose identity depends on which field was read first.
+func TestMembershipCreateRefusesTwoSubjects(t *testing.T) {
+	f := newFleet(t,
+		[]ctrlruntimeclient.Object{
+			directoryUser("teammate"),
+			index(wantName(t), pmtenancyv1alpha1.MembershipIndexEntry{
+				TenantUUID: "tenant", TenantClusterID: "c1", Role: "admin",
+			}),
+		},
+		map[string][]ctrlruntimeclient.Object{"c1": nil},
+	)
+
+	submitted := submitMembership("teammate", pmtenancyv1alpha1.MembershipScopeTenant, "", "member")
+	submitted.Spec.Group = "acme-engineering"
+
+	_, err := f.membershipStorage(t).Create(
+		authenticated(testIssuer, testSubject, testEmail), submitted, nil, &metav1.CreateOptions{})
+	require.Error(t, err)
+	assert.True(t, apierrors.IsBadRequest(err), "want BadRequest, got %v", err)
+}
+
+// THE SHARPEST CONSEQUENCE OF GROUP GRANTS. A group-subject admin is not evidence
+// that any admin exists: the platform cannot tell an empty group from a full one.
+// Counting one as the survivor would let the guard pass while leaving the tenant
+// exactly as unrecoverable as deleting its last admin outright.
+func TestMembershipDeleteRefusesTheLastUserAdminEvenWithAGroupAdmin(t *testing.T) {
+	self := wantName(t)
+	onlyUserAdmin := tenantMembership(self, "admin")
+	groupAdmin := groupMembership("acme-owners", "admin")
+
+	f := newFleet(t,
+		[]ctrlruntimeclient.Object{
+			index(self, pmtenancyv1alpha1.MembershipIndexEntry{
+				TenantUUID: "tenant", TenantClusterID: "c1", Role: "admin",
+			}),
+		},
+		map[string][]ctrlruntimeclient.Object{"c1": {onlyUserAdmin, groupAdmin}},
+	)
+
+	_, _, err := f.membershipStorage(t).Delete(
+		authenticated(testIssuer, testSubject, testEmail), onlyUserAdmin.Name, nil, &metav1.DeleteOptions{})
+
+	require.Error(t, err)
+	assert.True(t, apierrors.IsConflict(err), "want Conflict, got %v", err)
+}
+
+// The converse: removing a GROUP admin is never what strands a tenant, because it
+// was never what proved the tenant had one. The guard must not block it.
+func TestMembershipDeleteAllowsRemovingAGroupAdmin(t *testing.T) {
+	self := wantName(t)
+	userAdmin := tenantMembership(self, "admin")
+	groupAdmin := groupMembership("acme-owners", "admin")
+
+	f := newFleet(t,
+		[]ctrlruntimeclient.Object{
+			index(self, pmtenancyv1alpha1.MembershipIndexEntry{
+				TenantUUID: "tenant", TenantClusterID: "c1", Role: "admin",
+			}),
+		},
+		map[string][]ctrlruntimeclient.Object{"c1": {userAdmin, groupAdmin}},
+	)
+
+	_, _, err := f.membershipStorage(t).Delete(
+		authenticated(testIssuer, testSubject, testEmail), groupAdmin.Name, nil, &metav1.DeleteOptions{})
+	require.NoError(t, err)
+}
+
+// Self-leave is for a grant made to YOU. Deleting a group grant revokes it for
+// everyone holding that group, so letting a non-admin "leave" through this path
+// would be one member removing every other member's access.
+func TestMembershipDeleteRefusesSelfLeaveOfAGroupGrant(t *testing.T) {
+	self := wantName(t)
+	mine := tenantMembership(self, "member")
+	groupGrant := groupMembership("acme-engineering", "member")
+
+	f := newFleet(t,
+		[]ctrlruntimeclient.Object{
+			index(self, pmtenancyv1alpha1.MembershipIndexEntry{
+				TenantUUID: "tenant", TenantClusterID: "c1", Role: "member",
+			}),
+		},
+		map[string][]ctrlruntimeclient.Object{"c1": {mine, groupGrant}},
+	)
+
+	_, _, err := f.membershipStorage(t).Delete(
+		authenticated(testIssuer, testSubject, testEmail), groupGrant.Name, nil, &metav1.DeleteOptions{})
+
+	require.Error(t, err)
+	assert.True(t, apierrors.IsForbidden(err), "want Forbidden, got %v", err)
+	assert.Contains(t, err.Error(), "identity provider")
+}

@@ -19,6 +19,9 @@ package virtualworkspace
 import (
 	"context"
 	"fmt"
+	"math"
+	"sort"
+	"strings"
 	"time"
 
 	pmtenancyv1alpha1 "go.platform-mesh.io/apis/tenancy/v1alpha1"
@@ -178,11 +181,51 @@ func (s *UserStorage) Create(ctx context.Context, obj runtime.Object, _ rest.Val
 			if getErr := s.client.Get(ctx, ctrlruntimeclient.ObjectKey{Name: name}, existing); getErr != nil {
 				return nil, getErr
 			}
+			s.recordLogin(ctx, existing, claims)
 			return existing, nil
 		}
 		return nil, err
 	}
+
+	s.recordLogin(ctx, user, claims)
 	return user, nil
+}
+
+// observedGroups turns the caller's authenticated groups into the bounded sample
+// stored on the User, and the true count alongside it.
+func observedGroups(groups []string) ([]string, int32) {
+	kept := make([]string, 0, len(groups))
+	for _, g := range groups {
+		if g == "" || strings.HasPrefix(g, "system:") {
+			continue
+		}
+		if len(g) > pmtenancyv1alpha1.MaxObservedGroupLength {
+			continue
+		}
+		kept = append(kept, g)
+	}
+
+	sort.Strings(kept)
+	total := int32(min(len(kept), math.MaxInt32)) //nolint:gosec // clamped to int32 range
+
+	if len(kept) > pmtenancyv1alpha1.MaxObservedGroups {
+		kept = kept[:pmtenancyv1alpha1.MaxObservedGroups]
+	}
+	if len(kept) == 0 {
+		// nil rather than an empty slice, so an identity in no groups leaves the
+		// field absent instead of storing `groups: []`.
+		return nil, total
+	}
+	return kept, total
+}
+
+// recordLogin stamps what this authenticated provision call observed: when it
+// happened, and the groups the token carried.
+func (s *UserStorage) recordLogin(ctx context.Context, user *pmtenancyv1alpha1.User, claims identity.Claims) {
+	now := metav1.Now()
+	user.Status.LastLogin = &now
+	user.Status.Groups, user.Status.GroupCount = observedGroups(claims.Groups)
+	_ = s.client.Status().Update(ctx, user)
 }
 
 // callerName resolves the authenticated caller to their User name.

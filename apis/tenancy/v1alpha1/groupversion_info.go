@@ -110,6 +110,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&MembershipList{},
 		&UserMembershipIndex{},
 		&UserMembershipIndexList{},
+		&GroupMembershipIndex{},
+		&GroupMembershipIndexList{},
 	)
 
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)

@@ -24,7 +24,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	pmtenancyv1alpha1 "go.platform-mesh.io/apis/tenancy/v1alpha1"
+	"go.platform-mesh.io/tenancy-operator/pkg/identity"
 
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -164,4 +166,52 @@ func TestOrgClusterOfRequiresTheClusterAnnotation(t *testing.T) {
 	_, err := tenantClusterOf(membership(pmtenancyv1alpha1.MembershipScopeTenant, "", ""))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cluster annotation")
+}
+
+// A group grant resolves to a Group subject with the configured prefix, and
+// resolves WITHOUT touching the directory — there is no User to read and no
+// object for a group at all. That asymmetry is the model, not an omission: it is
+// what lets a group grant reach people who have never signed in.
+func TestSubjectForAGroupIsPrefixedAndNeedsNoLookup(t *testing.T) {
+	resolver, err := identity.NewResolver(identity.Config{
+		UsernameClaim:  identity.ClaimEmail,
+		UsernamePrefix: "pm:",
+		GroupsPrefix:   "pm:",
+	})
+	require.NoError(t, err)
+
+	// No platform manager wired at all. A user subject would panic or fail here;
+	// a group subject must not need it.
+	r := &applyRBAC{resolver: resolver}
+
+	m := &pmtenancyv1alpha1.Membership{
+		ObjectMeta: metav1.ObjectMeta{Name: "m"},
+		Spec: pmtenancyv1alpha1.MembershipSpec{
+			Group: "acme-engineering", Scope: pmtenancyv1alpha1.MembershipScopeTenant, Role: "member",
+		},
+	}
+
+	got, err := r.subjectFor(context.Background(), m)
+	require.NoError(t, err)
+
+	assert.Equal(t, rbacv1.GroupKind, got.Kind)
+	assert.Equal(t, "pm:acme-engineering", got.Name, "the binding must name the group as kcp will see it")
+	assert.Equal(t, rbacv1.GroupName, got.APIGroup)
+}
+
+// An empty groups prefix is a legitimate deployment, and must produce the bare
+// group rather than being treated as "unset" and defaulted to something.
+func TestSubjectForAGroupHonoursAnEmptyPrefix(t *testing.T) {
+	resolver, err := identity.NewResolver(identity.Config{
+		UsernameClaim: identity.ClaimEmail,
+		GroupsPrefix:  "",
+	})
+	require.NoError(t, err)
+
+	r := &applyRBAC{resolver: resolver}
+	got, err := r.subjectFor(context.Background(), &pmtenancyv1alpha1.Membership{
+		Spec: pmtenancyv1alpha1.MembershipSpec{Group: "acme", Scope: pmtenancyv1alpha1.MembershipScopeTenant, Role: "member"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "acme", got.Name)
 }

@@ -18,8 +18,10 @@ package virtualworkspace
 
 import (
 	"context"
+	"strings"
 
 	pmtenancyv1alpha1 "go.platform-mesh.io/apis/tenancy/v1alpha1"
+	"go.platform-mesh.io/tenancy-operator/pkg/identity"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -58,19 +60,50 @@ type access struct {
 // What it does decide is VISIBILITY here, which is why a caller with no index
 // sees an empty list rather than an error: having no memberships is the normal
 // state of a brand-new identity, not a failure.
-func resolveAccess(ctx context.Context, directory ctrlruntimeclient.Client, userName string) (*access, error) {
+func resolveAccess(ctx context.Context, directory ctrlruntimeclient.Client, userName string, groups ...string) (*access, error) {
 	a := &access{Tenants: map[string]*tenantAccess{}}
 
 	index := &pmtenancyv1alpha1.UserMembershipIndex{}
 	if err := directory.Get(ctx, ctrlruntimeclient.ObjectKey{Name: userName}, index); err != nil {
-		if apierrors.IsNotFound(err) {
-			// No memberships yet. An empty view, not an error.
-			return a, nil
+		if !apierrors.IsNotFound(err) {
+			return nil, err
 		}
-		return nil, err
+		// No memberships of their own. Not an error, and NOT the end: a caller can
+		// hold everything they can reach through a group and have no index at all,
+		// which is the normal state under a group-driven installation.
 	}
 
-	for _, e := range index.Spec.Entries {
+	entries := index.Spec.Entries
+
+	// The group half, read from the groups on the CALLER'S OWN TOKEN.
+	//
+	// This is the whole reason group access is indexed by group rather than fanned
+	// out onto members: the membership half of the answer arrives with the request
+	// and is never stored, so removing someone from a group at the identity
+	// provider takes their access away on the next token, with nothing here to
+	// invalidate and nothing to go stale. A stored copy — status.groups, say —
+	// would be an access-control input that outlives its own revocation.
+	for _, g := range groups {
+		name, err := identity.GroupName(g)
+		if err != nil {
+			// An empty group name. Nothing to look up, and not worth failing a whole
+			// listing over.
+			continue
+		}
+		gmi := &pmtenancyv1alpha1.GroupMembershipIndex{}
+		if err := directory.Get(ctx, ctrlruntimeclient.ObjectKey{Name: name}, gmi); err != nil {
+			if apierrors.IsNotFound(err) {
+				// A group that has been granted nothing. By far the common case — a
+				// caller carries every group their provider emits, and only some of
+				// them mean anything here.
+				continue
+			}
+			return nil, err
+		}
+		entries = append(entries, gmi.Spec.Entries...)
+	}
+
+	for _, e := range entries {
 		if e.TenantUUID == "" {
 			continue
 		}
@@ -107,6 +140,36 @@ func resolveAccess(ctx context.Context, directory ctrlruntimeclient.Client, user
 	}
 
 	return a, nil
+}
+
+// resolveCallerAccess resolves the authenticated caller and their whole view in
+// one step, and returns the caller's User name alongside it.
+func resolveCallerAccess(ctx context.Context, directory ctrlruntimeclient.Client) (string, *access, error) {
+	claims, err := claimsFrom(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+	self, err := identity.UserName(claims.Issuer, claims.Subject)
+	if err != nil {
+		return "", nil, apierrors.NewBadRequest(err.Error())
+	}
+	view, err := resolveAccess(ctx, directory, self, grantableGroups(claims.Groups)...)
+	if err != nil {
+		return "", nil, err
+	}
+	return self, view, nil
+}
+
+// grantableGroups drops the groups a Membership must never be able to name.
+func grantableGroups(groups []string) []string {
+	out := make([]string, 0, len(groups))
+	for _, g := range groups {
+		if g == "" || strings.HasPrefix(g, "system:") {
+			continue
+		}
+		out = append(out, g)
+	}
+	return out
 }
 
 // CanSeeProject reports whether the caller may see one Project of this tenant.

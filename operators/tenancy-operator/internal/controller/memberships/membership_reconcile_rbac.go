@@ -69,7 +69,7 @@ func (r *applyRBAC) Name() string { return pmtenancyv1alpha1.MembershipCondition
 func (r *applyRBAC) FinalizerName() string { return rbacFinalizer }
 
 func (r *applyRBAC) Reconcile(ctx context.Context, cl ctrlruntimeclient.Client, m *pmtenancyv1alpha1.Membership) (chain.Status, error) {
-	subject, err := r.rbacIdentity(ctx, m)
+	subject, err := r.subjectFor(ctx, m)
 	if err != nil {
 		chain.MarkFalse(m, r.Name(), "Pending", err.Error())
 		return chain.StopAndRequeue, nil
@@ -81,13 +81,13 @@ func (r *applyRBAC) Reconcile(ctx context.Context, cl ctrlruntimeclient.Client, 
 		return chain.StopAndRequeue, nil
 	}
 
-	roleName, err := clusterRoleFor(m.Spec.Role)
+	roleName, err := ClusterRoleFor(m.Spec.Role)
 	if err != nil {
 		// A role outside the enum. Terminal: no retry fixes a bad spec.
 		chain.MarkFalse(m, r.Name(), "Invalid", err.Error())
 		return chain.Stop, nil
 	}
-	rules, err := rulesFor(m.Spec.Role)
+	rules, err := RulesFor(m.Spec.Role)
 	if err != nil {
 		chain.MarkFalse(m, r.Name(), "Invalid", err.Error())
 		return chain.Stop, nil
@@ -119,7 +119,7 @@ func (r *applyRBAC) Reconcile(ctx context.Context, cl ctrlruntimeclient.Client, 
 }
 
 // bind writes the ClusterRole and its binding into one workspace.
-func (r *applyRBAC) bind(ctx context.Context, targetCluster, roleName string, rules []rbacv1.PolicyRule, subject string, m *pmtenancyv1alpha1.Membership) error {
+func (r *applyRBAC) bind(ctx context.Context, targetCluster, roleName string, rules []rbacv1.PolicyRule, subject rbacv1.Subject, m *pmtenancyv1alpha1.Membership) error {
 	target, err := clusters.ClientForCluster(ctx, r.access, targetCluster)
 	if err != nil {
 		return fmt.Errorf("workspace %s not reachable through the tenancy-access export yet", targetCluster)
@@ -166,11 +166,10 @@ func (r *applyRBAC) bind(ctx context.Context, targetCluster, roleName string, ru
 			Kind:     "ClusterRole",
 			Name:     roleName,
 		}
-		binding.Subjects = []rbacv1.Subject{{
-			APIGroup: rbacv1.GroupName,
-			Kind:     rbacv1.UserKind,
-			Name:     subject,
-		}}
+		// One subject, resolved by subjectFor: a User's rbacIdentity, or a
+		// prefixed Group. Replaced wholesale rather than appended to, so a
+		// hand-added subject on a platform-owned binding does not survive.
+		binding.Subjects = []rbacv1.Subject{subject}
 		return nil
 	}); err != nil {
 		if !apierrors.IsInvalid(err) {
@@ -260,6 +259,37 @@ func (r *applyRBAC) revoke(ctx context.Context, cl ctrlruntimeclient.Client, m *
 	// The ClusterRole is deliberately left: it is shared by every Membership in
 	// this workspace, and removing it here would revoke everyone else.
 	return chain.Continue, nil
+}
+
+// subjectFor resolves the Membership to the RBAC subject a binding must name.
+//
+// The two kinds resolve through different amounts of the system, and the
+// asymmetry is the model rather than an omission:
+//
+//	user   two hops — the Membership names a User, the User carries the claims,
+//	       and the username convention turns those into a subject. Every hop can
+//	       fail loudly, and a User that does not exist is a Membership that is
+//	       refused rather than one that grants nobody.
+//	group  one hop — a prefix. There is NOTHING to look up: the platform holds no
+//	       object for a group and no list of who is in one, so a group that does
+//	       not exist is indistinguishable from one that is empty, and both produce
+//	       a binding that is valid and matches nobody. That is not a failure to
+//	       validate, it is the property that lets a group grant reach people who
+//	       have never signed in.
+func (r *applyRBAC) subjectFor(ctx context.Context, m *pmtenancyv1alpha1.Membership) (rbacv1.Subject, error) {
+	if m.SubjectKind() == pmtenancyv1alpha1.SubjectKindGroup {
+		name, err := r.resolver.RBACGroup(m.Spec.Group)
+		if err != nil {
+			return rbacv1.Subject{}, err
+		}
+		return rbacv1.Subject{APIGroup: rbacv1.GroupName, Kind: rbacv1.GroupKind, Name: name}, nil
+	}
+
+	name, err := r.rbacIdentity(ctx, m)
+	if err != nil {
+		return rbacv1.Subject{}, err
+	}
+	return rbacv1.Subject{APIGroup: rbacv1.GroupName, Kind: rbacv1.UserKind, Name: name}, nil
 }
 
 // rbacIdentity resolves the Membership's User to the username kcp will see.

@@ -92,12 +92,7 @@ func (s *ProjectStorage) GetSingularName() string { return "project" }
 // asks after login, and answering it per-tenant would make the client fan out over
 // tenants it had to discover first.
 func (s *ProjectStorage) List(ctx context.Context, _ *metainternalversion.ListOptions) (runtime.Object, error) {
-	self, err := s.callerName(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	view, err := resolveAccess(ctx, s.directory, self)
+	_, view, err := resolveCallerAccess(ctx, s.directory)
 	if err != nil {
 		return nil, err
 	}
@@ -135,12 +130,7 @@ func (s *ProjectStorage) List(ctx context.Context, _ *metainternalversion.ListOp
 
 // Get returns one Project the caller may reach.
 func (s *ProjectStorage) Get(ctx context.Context, name string, _ *metav1.GetOptions) (runtime.Object, error) {
-	self, err := s.callerName(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	view, err := resolveAccess(ctx, s.directory, self)
+	_, view, err := resolveCallerAccess(ctx, s.directory)
 	if err != nil {
 		return nil, err
 	}
@@ -217,14 +207,6 @@ func (s *ProjectStorage) ConvertToTable(_ context.Context, object runtime.Object
 	return table, nil
 }
 
-func (s *ProjectStorage) callerName(ctx context.Context) (string, error) {
-	claims, err := claimsFrom(ctx)
-	if err != nil {
-		return "", err
-	}
-	return identity.UserName(claims.Issuer, claims.Subject)
-}
-
 // timeSince is split out so both storages format ages the same way.
 func timeSince(t metav1.Time) time.Duration {
 	if t.IsZero() {
@@ -270,11 +252,7 @@ func (s *ProjectStorage) Create(ctx context.Context, obj runtime.Object, _ rest.
 			pmtenancyv1alpha1.LabelTenant))
 	}
 
-	self, err := s.callerName(ctx)
-	if err != nil {
-		return nil, err
-	}
-	view, err := resolveAccess(ctx, s.directory, self)
+	_, view, err := resolveCallerAccess(ctx, s.directory)
 	if err != nil {
 		return nil, err
 	}

@@ -28,8 +28,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 
+	pmtenancyv1alpha1 "go.platform-mesh.io/apis/tenancy/v1alpha1"
 	"go.platform-mesh.io/tenancy-operator/internal/cli"
 	"go.platform-mesh.io/tenancy-operator/pkg/identity"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // The id_token is what kcp and the VW authenticate, and oauth2.Token drops Extra
@@ -139,6 +142,39 @@ func TestPrintIdentityDerivesTheUserName(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), want)
 	assert.Contains(t, buf.String(), "admin@example.com")
+}
+
+// The groups a User is shown with come from the token rather than the object,
+// because the object has none — so the one thing worth pinning is that they are
+// reported at all, and that an empty list says why instead of vanishing.
+func TestPrintUserReportsGroups(t *testing.T) {
+	user := &pmtenancyv1alpha1.User{
+		ObjectMeta: metav1.ObjectMeta{Name: "digest"},
+		Spec: pmtenancyv1alpha1.UserSpec{
+			Email:        "dex@pm.localhost",
+			RBACIdentity: "pm:dex@pm.localhost",
+		},
+	}
+
+	t.Run("groups from the token", func(t *testing.T) {
+		var buf bytes.Buffer
+		require.NoError(t, cli.PrintUser(&buf, user, []string{"platform-admins", "acme-engineering"}))
+
+		assert.Contains(t, buf.String(), "platform-admins, acme-engineering")
+		// Said out loud, because the value printed is NOT the RBAC subject: that
+		// carries a prefix this CLI is not configured with.
+		assert.Contains(t, buf.String(), "unprefixed")
+	})
+
+	// An absent groups claim is usually a missing scope, not an empty group list,
+	// and that is the sentence someone needs at exactly this moment.
+	t.Run("no groups says why", func(t *testing.T) {
+		var buf bytes.Buffer
+		require.NoError(t, cli.PrintUser(&buf, user, nil))
+
+		assert.Contains(t, buf.String(), "groups:      none")
+		assert.Contains(t, buf.String(), "`groups` scope")
+	})
 }
 
 func TestParseClaimsRejectsNonJWT(t *testing.T) {

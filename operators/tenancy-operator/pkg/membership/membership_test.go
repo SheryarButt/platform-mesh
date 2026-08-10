@@ -21,6 +21,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	pmtenancyv1alpha1 "go.platform-mesh.io/apis/tenancy/v1alpha1"
 	"go.platform-mesh.io/tenancy-operator/pkg/membership"
 )
 
@@ -60,4 +61,45 @@ func TestNameIsAUsableObjectName(t *testing.T) {
 	assert.NotEmpty(t, name)
 	assert.LessOrEqual(t, len(name), 253)
 	assert.NotContains(t, name, "\n")
+}
+
+// The formula that names user grants is FROZEN. These are the names every
+// Membership in every existing installation already has, and the object's name is
+// how the reconciler finds it again — so a change here does not rename anything,
+// it orphans the old object and has the reconciler create a second one granting
+// the same access.
+func TestUserNamesAreFrozen(t *testing.T) {
+	// Computed by the formula as it shipped: uuidv5(ns, "u\nscope\nproject").
+	assert.Equal(t,
+		"a8726d9a-277c-5e99-b8d0-cd7a8d198bb5",
+		membership.Name("f00d", "tenant", ""))
+	assert.Equal(t,
+		"b32bae79-0cb9-5c1f-bc91-7c4a831fac7b",
+		membership.Name("f00d", "project", "proj-1"))
+}
+
+// A group grant and a user grant must never land on the same name: one object
+// cannot be two grants, and the reconciler would bind whichever spec it read.
+func TestGroupNamesCannotCollideWithUserNames(t *testing.T) {
+	// The adversarial case: a group named exactly like the three components of a
+	// user key, which is what a naive prefix scheme would fold together.
+	assert.NotEqual(t,
+		membership.Name("admins", "tenant", ""),
+		membership.NameForGroup("admins", "tenant", ""))
+
+	// And the one that would break a "prepend a literal" scheme: a user whose name
+	// IS the marker. Users are always digests so this cannot occur, but the key
+	// shape must not be the only thing standing between the two spaces.
+	assert.NotEqual(t,
+		membership.Name("group", "tenant", ""),
+		membership.NameForGroup("", "tenant", ""))
+}
+
+func TestNameForDispatchesOnKind(t *testing.T) {
+	assert.Equal(t,
+		membership.NameForGroup("acme", "tenant", ""),
+		membership.NameFor(pmtenancyv1alpha1.SubjectKindGroup, "acme", "tenant", ""))
+	assert.Equal(t,
+		membership.Name("acme", "tenant", ""),
+		membership.NameFor(pmtenancyv1alpha1.SubjectKindUser, "acme", "tenant", ""))
 }

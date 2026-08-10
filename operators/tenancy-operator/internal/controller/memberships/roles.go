@@ -24,7 +24,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 )
 
-// rulesFor returns what a role grants inside a tenant workspace.
+// RulesFor returns what a role grants inside a tenant workspace.
 //
 // Each tier is genuinely less than the one above rather than all mapping to
 // cluster-admin. What separates them is `escalate` and `bind`: without those,
@@ -35,7 +35,7 @@ import (
 // until you notice the Membership is the source of truth — this reconciler
 // rewrites the binding it owns, and Memberships live one tier up where a member
 // cannot reach them.
-func rulesFor(role string) ([]rbacv1.PolicyRule, error) {
+func RulesFor(role string) ([]rbacv1.PolicyRule, error) {
 	switch role {
 	case pmtenancyv1alpha1.MembershipRoleAdmin:
 		return append(workspaceEntryRules(), rbacv1.PolicyRule{
@@ -72,8 +72,8 @@ func rulesFor(role string) ([]rbacv1.PolicyRule, error) {
 	}
 }
 
-// clusterRoleFor names the ClusterRole a role maps to.
-func clusterRoleFor(role string) (string, error) {
+// ClusterRoleFor names the ClusterRole a role maps to.
+func ClusterRoleFor(role string) (string, error) {
 	switch role {
 	case pmtenancyv1alpha1.MembershipRoleAdmin:
 		return pmtenancyv1alpha1.ClusterRoleProjectAdmin, nil
