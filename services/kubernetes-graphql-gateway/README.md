@@ -201,8 +201,8 @@ Optionally set `ca.secretRef` for custom CA certificates.
 | `--max-query-batch-size` | `10` | Max queries per batch request |
 | `--read-header-timeout` | `32s` | Max duration for reading request headers |
 | `--idle-timeout` | `90s` | Max idle duration for keep-alive connections |
-| `--kubernetes-qps` | `0` (client-go default: 5) | Max requests per second to the Kubernetes API server |
-| `--kubernetes-burst` | `0` (client-go default: 10) | Max burst size for requests to the Kubernetes API server |
+| `--kubernetes-qps` | `0` (uses client-go default: 5) | Max requests per second to the Kubernetes API server |
+| `--kubernetes-burst` | `0` (uses client-go default: 10) | Max burst size for requests to the Kubernetes API server |
 
 Set any limit flag to `0` to disable that limit.
 

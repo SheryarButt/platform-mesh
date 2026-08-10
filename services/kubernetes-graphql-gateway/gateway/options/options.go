@@ -156,6 +156,8 @@ func (options *Options) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&options.ReadHeaderTimeout, "read-header-timeout", options.ReadHeaderTimeout, "maximum duration for reading request headers (0 to disable)")
 	fs.DurationVar(&options.IdleTimeout, "idle-timeout", options.IdleTimeout, "maximum duration an idle keep-alive connection remains open (0 to disable)")
 	fs.StringVar(&options.EndpointSuffix, "endpoint-suffix", options.EndpointSuffix, "suffix appended to the cluster endpoint path (default \"/graphql\")")
+	fs.Float32Var(&options.KubernetesQPS, "kubernetes-qps", options.KubernetesQPS, "max requests per second to the Kubernetes API server (0 uses client-go default of 5)")
+	fs.IntVar(&options.KubernetesBurst, "kubernetes-burst", options.KubernetesBurst, "max burst size for requests to the Kubernetes API server (0 uses client-go default of 10)")
 }
 
 func (options *Options) Complete() (*CompletedOptions, error) {
@@ -224,6 +226,14 @@ func (options *CompletedOptions) Validate() error {
 
 	if options.IdleTimeout < 0 {
 		return errors.New("--idle-timeout must not be negative")
+	}
+
+	if options.KubernetesQPS < 0 {
+		return errors.New("--kubernetes-qps must not be negative")
+	}
+
+	if options.KubernetesBurst < 0 {
+		return errors.New("--kubernetes-burst must not be negative")
 	}
 
 	return nil

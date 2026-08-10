@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/authn"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/cluster"
 	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/metrics"
 )
 
@@ -66,11 +67,8 @@ type Gateway struct {
 	// metrics. Pass nil to disable instrumentation entirely.
 	Metrics *metrics.Collector
 
-	// KubernetesQPS is the maximum queries per second to the Kubernetes API server.
-	KubernetesQPS float32
-
-	// KubernetesBurst is the maximum burst size for requests to the Kubernetes API server.
-	KubernetesBurst int
+	// ClusterOptions holds tuning parameters applied to every cluster connection.
+	ClusterOptions cluster.Options
 }
 
 // GraphQL holds GraphQL handler configuration.
