@@ -30,6 +30,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -91,6 +93,20 @@ Dev tool. Not a supported client.`,
 	root.PersistentFlags().StringVar(&vwServer, "server", envOr("TENANCY_VW_SERVER", ""), "Tenancy virtual workspace URL")
 	root.PersistentFlags().StringVar(&vwCA, "vw-ca-file", envOr("TENANCY_VW_CA_FILE", ""), "CA bundle for the virtual workspace's certificate")
 	root.PersistentFlags().StringVar(&vwCluster, "vw-cluster", envOr("TENANCY_VW_CLUSTER", ""), "The /clusters/{x} segment to address (default \"*\")")
+
+	// Addressing kcp itself. Persistent rather than local to `kubeconfig`, even
+	// though that is the only command which DIALS kcp, because `login` is what
+	// remembers the environment — and a value that can only be supplied on the
+	// command that consumes it can never be refreshed by the command that caches
+	// it. Merge only fills EMPTY fields, so a kcp address remembered against a
+	// previous environment then survives every later login and silently outlives
+	// the cluster it named. That is exactly how a kubeconfig ends up pointing at an
+	// address nothing listens on, with `login` reporting success.
+	//
+	// NOT --server: that is the tenancy virtual workspace above, and one flag
+	// meaning two endpoints depending on the subcommand is a trap.
+	root.PersistentFlags().StringVar(&kubeServer, "kcp-server", envOr("TENANCY_KCP_SERVER", ""), "kcp front-proxy base URL")
+	root.PersistentFlags().StringVar(&kubeCA, "certificate-authority", envOr("TENANCY_CA_FILE", ""), "CA bundle verifying kcp")
 
 	root.AddCommand(loginCmd(), getTokenCmd(), kubeconfigCmd(), whoamiCmd(), usersCmd(),
 		tenantsCmd(), projectsCmd(), membershipsCmd())
@@ -324,6 +340,18 @@ nowhere, and an ambiguous one is refused rather than guessed.`,
 				if err != nil {
 					return fmt.Errorf("locating this binary for the credential plugin: %w", err)
 				}
+				if isEphemeralBinary(self) {
+					// `go run` builds into a temp directory and deletes it on exit, so
+					// the path written here stops existing the moment this command
+					// returns. The kubeconfig looks correct and fails on first use with
+					// an ENOENT naming a path the user never chose — refuse at the point
+					// of the mistake instead, for the same reason a missing issuer is
+					// refused above.
+					return fmt.Errorf("this binary is a temporary build at %s, so a kubeconfig naming it as a "+
+						"credential plugin would break as soon as this command exits.\n"+
+						"Build it first (`go build -o bin/tenancyctl ./cmd/tenancyctl`, or `task dev-kubeconfig`), "+
+						"or pass --exec=false to embed the current token instead", self)
+				}
 				opts.ExecCommand = self
 				opts.ExecArgs = []string{"get-token", "--oidc-issuer-url=" + issuerURL, "--oidc-client-id=" + clientID}
 				if caFile != "" {
@@ -365,10 +393,9 @@ nowhere, and an ambiguous one is refused rather than guessed.`,
 			return cli.WriteKubeconfig(outputPath, data)
 		},
 	}
-	// NOT --server: that is the tenancy virtual workspace on every other command,
-	// and one flag meaning two endpoints depending on the subcommand is a trap.
-	c.Flags().StringVar(&kubeServer, "kcp-server", envOr("TENANCY_KCP_SERVER", ""), "kcp front-proxy base URL")
-	c.Flags().StringVar(&kubeCA, "certificate-authority", envOr("TENANCY_CA_FILE", ""), "CA bundle verifying kcp")
+	// --kcp-server and --certificate-authority are PERSISTENT flags on the root
+	// command, so `login` can record the address it signed in against instead of
+	// leaving a previous environment's cached and unreachable.
 	c.Flags().StringVar(&cluster, "cluster", "", "logical cluster to point at, if you already know it")
 	c.Flags().StringVar(&project, "project", "", "project to point at (UUID or display name)")
 	c.Flags().StringVar(&tenant, "tenant", "", "tenant the project is in (UUID or display name)")
@@ -950,6 +977,36 @@ func config() (cli.Config, error) {
 		Scopes:      scopes,
 		RedirectURL: redirectURL,
 	}, nil
+}
+
+// isEphemeralBinary reports whether path looks like a `go run` build — a binary
+// under the temp directory in a `go-build*` cache directory.
+//
+// Matched on the path rather than on anything authoritative because there is
+// nothing authoritative to ask: a process cannot tell it was started by `go run`.
+// A false positive costs a real binary in /tmp its exec plugin (with an error
+// naming --exec=false); a false negative is only the pre-existing behaviour.
+func isEphemeralBinary(path string) bool {
+	dir := filepath.Dir(path)
+	tmp, err := filepath.EvalSymlinks(os.TempDir())
+	if err != nil {
+		tmp = os.TempDir()
+	}
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		resolved = dir
+	}
+	if !strings.HasPrefix(resolved+string(filepath.Separator), tmp+string(filepath.Separator)) {
+		return false
+	}
+	// go-build<digits>/b001/exe/<name> — the cache directory is the part that says
+	// "the toolchain made this", so look for it anywhere below the temp root.
+	for _, part := range strings.Split(resolved, string(filepath.Separator)) {
+		if strings.HasPrefix(part, "go-build") {
+			return true
+		}
+	}
+	return false
 }
 
 func envOr(key, fallback string) string {

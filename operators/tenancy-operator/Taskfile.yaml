@@ -151,7 +151,14 @@ tasks:
       # --server makes login finish the flow: token, then the one
       # explicit `create users` call. Drop it (or pass --provision=false) to stop
       # at the token.
-      - '{{.BIN}}/tenancyctl login --oidc-issuer-url={{.OIDC_ISSUER}} --oidc-client-id={{.OIDC_CLIENT_ID}} --oidc-ca-file={{.DEX_CA}} --server={{.VW_SERVER}} --vw-ca-file={{.VW_CA}}'
+      # --kcp-server/--certificate-authority are passed even though login never
+      # dials kcp: login is what CACHES the environment, and the cache only fills
+      # empty fields. Leaving them out here means an address remembered against a
+      # previous cluster survives every later login — and since every hostname
+      # here carries the node's IP, recreating the kind cluster changes all of
+      # them. `tenancyctl kubeconfig` then writes a kubeconfig for an address
+      # nothing listens on.
+      - '{{.BIN}}/tenancyctl login --oidc-issuer-url={{.OIDC_ISSUER}} --oidc-client-id={{.OIDC_CLIENT_ID}} --oidc-ca-file={{.DEX_CA}} --server={{.VW_SERVER}} --vw-ca-file={{.VW_CA}} --kcp-server={{.KCP_SERVER}} --certificate-authority={{.KCP_CA}}'
 
   dev-login-bob:
     desc: 'Sign in as the SECOND test identity (bob@pm.localhost / dex), cached separately.'
