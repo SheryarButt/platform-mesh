@@ -288,9 +288,12 @@ tasks:
       - task: fmt
       - task: tools:lint
   test:
-    desc: Run unit tests.
+    desc: Run unit tests. test/e2e is excluded — it needs a real kcp (see test-e2e).
     cmds:
-      - go test -count=1 ./...
+      # Every package EXCEPT test/e2e, which starts a kcp and takes minutes. Listed
+      # by exclusion rather than by naming ./internal/... and ./pkg/... so a new
+      # top-level package is covered by default instead of silently untested.
+      - go test -count=1 $(go list ./... | grep -v '/test/e2e$')
   test-e2e:
     desc: Run envtest integration tests (uses the shared kcp from the root bin).
     deps: [tools:kcp]
@@ -303,4 +306,4 @@ tasks:
       - go test -count=1 -timeout 20m ./test/e2e/... {{.ADDITIONAL_COMMAND_ARGS}}
   cover:
     cmds:
-      - go test -count=1 ./... -coverprofile=./cover.out -covermode=atomic -coverpkg=./...
+      - go test -count=1 $(go list ./... | grep -v '/test/e2e$') -coverprofile=./cover.out -covermode=atomic -coverpkg=./...
