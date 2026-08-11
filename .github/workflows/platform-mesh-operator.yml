@@ -110,6 +110,8 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - run: task test-${COMPONENT}
+        env:
+          GITHUB_WORKFLOW: ci
 
   # Integration (envtest) suite: downloads the shared kcp (tools:kcp) and runs
   # the kcp-backed controller tests under internal/controller.
@@ -135,6 +137,8 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - run: task test-e2e-${COMPONENT}
+        env:
+          GITHUB_WORKFLOW: ci
 
   # ──────────────────────────────────────────────
   # PR: build only, never push.

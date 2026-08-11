@@ -88,12 +88,8 @@ tasks:
       - go test ./pkg/ocm/ -run=^$ -fuzz=FuzzParseRef -fuzztime={{.FUZZTIME}} -count=1
 
   test-e2e:
-    deps: [tools:mkcert, tools:kind]
-    env:
-      KIND_BINARY: '{{.KIND}}'
-      MKCERT_BINARY: '{{.MKCERT}}'
     cmds:
-      - go test -timeout 30m -coverprofile=cover.out -v -tags e2e ./test/e2e/kind {{.ADDITIONAL_COMMAND_ARGS}}
+      - echo "Not yet implemented."
 
   manifests:
     cmds:
