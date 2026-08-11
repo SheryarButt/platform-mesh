@@ -65,16 +65,16 @@ func makeProviderMeta() *pmuiv1alpha1.ProviderMetadata {
 
 // makeDefaultExport with default values.
 func makeDefaultExport(cfg config.ServiceConfig) *kcpapisv1alpha1.APIExport {
-	return makeExport(cfg, testExportName, testProviderName)
+	return makeExport(cfg, testExportName, testOrgClusterID, testProviderName)
 }
 
 // makeExport returns an APIExport with the given name and provider label.
-func makeExport(cfg config.ServiceConfig, name, provider string) *kcpapisv1alpha1.APIExport {
+func makeExport(cfg config.ServiceConfig, name, clusterID, provider string) *kcpapisv1alpha1.APIExport {
 	return &kcpapisv1alpha1.APIExport{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
+			Annotations: map[string]string{"kcp.io/cluster": clusterID},
 			Labels:      map[string]string{cfg.ContentForLabel: provider},
-			Annotations: map[string]string{"kcp.io/cluster": testProviderClusterID},
 		},
 		Spec: kcpapisv1alpha1.APIExportSpec{
 			LatestResourceSchemas: []string{"v260810" + name},
@@ -167,7 +167,7 @@ func TestMarketplace_ExportsWithoutMatchingProvider(t *testing.T) {
 	cfg := config.NewServiceConfig()
 	s := marketplaceTestScheme(t)
 
-	orphanedExport := makeExport(cfg, testExportName, "unknown-provider")
+	orphanedExport := makeExport(cfg, testExportName, "foocluster-123", "unknown-provider")
 
 	lister := fake.NewClientBuilder().
 		WithScheme(s).
