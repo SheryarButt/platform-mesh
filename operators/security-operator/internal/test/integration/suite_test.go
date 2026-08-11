@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -30,6 +32,7 @@ import (
 	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
 	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
 	platformeshconfig "go.platform-mesh.io/golang-commons/config"
+	platformmeshcontext "go.platform-mesh.io/golang-commons/context"
 	"go.platform-mesh.io/golang-commons/logger"
 	iclient "go.platform-mesh.io/security-operator/internal/client"
 	"go.platform-mesh.io/security-operator/internal/config"
@@ -102,21 +105,19 @@ var (
 
 func init() {
 	utilruntime.Must(kcpapisv1alpha1.AddToScheme(scheme.Scheme))
+	utilruntime.Must(kcpapisv1alpha2.AddToScheme(scheme.Scheme))
 	utilruntime.Must(kcpcorev1alpha1.AddToScheme(scheme.Scheme))
 	utilruntime.Must(kcptenancyv1alpha1.AddToScheme(scheme.Scheme))
 	utilruntime.Must(pmcorev1alpha1.AddToScheme(scheme.Scheme))
 	utilruntime.Must(pmprovidersv1alpha1.AddToScheme(scheme.Scheme))
-	utilruntime.Must(kcpapisv1alpha2.AddToScheme(scheme.Scheme))
 }
 
 type IntegrationSuite struct {
 	suite.Suite
-	env                              *envtest.Environment
-	kcpConfig                        *rest.Config
-	coreApiExportEndpointSliceConfig *rest.Config
-	providersApiExportEndpointConfig *rest.Config
-	platformMeshSysPath              logicalcluster.Path
-	platformMeshSystemClient         ctrlruntimeclient.Client
+	env                      *envtest.Sharded
+	kcpConfig                *rest.Config
+	platformMeshSysPath      logicalcluster.Path
+	platformMeshSystemClient ctrlruntimeclient.Client
 }
 
 func TestIntegrationSuite(t *testing.T) {
@@ -133,9 +134,24 @@ func (suite *IntegrationSuite) SetupSuite() {
 	require.NoError(suite.T(), err, "failed to create test logger")
 	ctrl.SetLogger(testLogger.Logr())
 
-	suite.env = &envtest.Environment{}
+	// Do not use T.Context() because that context would be cancelled before the cleanup
+	// functions are executed, which would interfere with a clean test teardown.
+	ctx, cancel, _ := platformmeshcontext.StartContext(testLogger, nil, 0)
 
-	suite.kcpConfig, err = suite.env.Start()
+	// Do not use the Suite's teardown to stop kcp, since this would happen
+	// before the test's Cleanup functions are called. Since we use the envtest's
+	// workspace fixture, we have to keep kcp alive until that fixture can clean up.
+	suite.T().Cleanup(func() {
+		cancel(fmt.Errorf("tearing down test suite"))
+	})
+
+	suite.env = &envtest.Sharded{
+		StartTimeout: 2 * time.Minute,
+		StopTimeout:  time.Second * 30,
+		WorkDir:      filepath.Join(os.Getenv("COMPONENT_DIRECTORY"), ".test", "IntegrationSuite"),
+	}
+
+	err = suite.env.Start(ctx)
 	require.NoError(suite.T(), err, "failed to start envtest environment")
 
 	suite.T().Cleanup(func() {
@@ -144,6 +160,8 @@ func (suite *IntegrationSuite) SetupSuite() {
 		}
 		suite.T().Log("kcp server has been stopped")
 	})
+
+	suite.kcpConfig = suite.env.Config()
 
 	suite.setupPlatformMesh(suite.T())
 	suite.setupControllers(defaultCfg, testLogger)
@@ -271,45 +289,18 @@ func (suite *IntegrationSuite) setupPlatformMesh(t *testing.T) {
 
 	suite.Require().NotEmpty(endpointSlice.Status.APIExportEndpoints, "APIExportEndpointSlice should have at least one endpoint")
 	suite.Require().NotEqual("", endpointSlice.Status.APIExportEndpoints[0].URL, "APIExportEndpointSlice endpoint URL should not be empty")
-
-	// set up config for core.platform-mesh.io virtual workspace
-	coreCfg := rest.CopyConfig(suite.kcpConfig)
-	coreCfg.Host = endpointSlice.Status.APIExportEndpoints[0].URL
-	suite.coreApiExportEndpointSliceConfig = coreCfg
-	t.Logf("created coreApiExportEndpointSliceConfig with host: %s", suite.coreApiExportEndpointSliceConfig.Host)
-
-	// Wait for providers.platform-mesh.io APIExportEndpointSlice
-	var providersEndpointSlice kcpapisv1alpha1.APIExportEndpointSlice
-	suite.Assert().Eventually(func() bool {
-		err := cli.Cluster(platformMeshSystemClusterPath).Get(ctx, ctrlruntimeclient.ObjectKey{Name: "providers.platform-mesh.io"}, &providersEndpointSlice)
-		if err != nil {
-			return false
-		}
-		return len(providersEndpointSlice.Status.APIExportEndpoints) > 0 && providersEndpointSlice.Status.APIExportEndpoints[0].URL != ""
-	}, 10*time.Second, 200*time.Millisecond, "KCP should automatically create providers.platform-mesh.io APIExportEndpointSlice with populated endpoints")
-
-	suite.Require().NotEmpty(providersEndpointSlice.Status.APIExportEndpoints, "providers APIExportEndpointSlice should have at least one endpoint")
-
-	// set up config for providers.platform-mesh.io virtual workspace
-	providersCfg := rest.CopyConfig(suite.kcpConfig)
-	providersCfg.Host = providersEndpointSlice.Status.APIExportEndpoints[0].URL
-	suite.providersApiExportEndpointConfig = providersCfg
-	t.Logf("created providersApiExportEndpointConfig with host: %s", suite.providersApiExportEndpointConfig.Host)
 }
 
 func (suite *IntegrationSuite) setupControllers(defaultCfg *platformeshconfig.CommonServiceConfig, testLogger *logger.Logger) {
 	ctx := suite.T().Context()
 
-	coreProviderConfig, err := suite.getPlatformMeshSystemConfig(suite.coreApiExportEndpointSliceConfig)
+	pmSystemConfig, err := suite.getPlatformMeshSystemConfig(suite.kcpConfig)
 	suite.Require().NoError(err)
 
-	coreProvider, err := apiexport.New(coreProviderConfig, "core.platform-mesh.io", apiexport.Options{Scheme: scheme.Scheme})
+	coreProvider, err := apiexport.New(pmSystemConfig, "core.platform-mesh.io", apiexport.Options{Scheme: scheme.Scheme})
 	suite.Require().NoError(err)
 
-	providersProviderConfig, err := suite.getPlatformMeshSystemConfig(suite.providersApiExportEndpointConfig)
-	suite.Require().NoError(err)
-
-	providersProvider, err := apiexport.New(providersProviderConfig, "providers.platform-mesh.io", apiexport.Options{Scheme: scheme.Scheme})
+	providersProvider, err := apiexport.New(pmSystemConfig, "providers.platform-mesh.io", apiexport.Options{Scheme: scheme.Scheme})
 	suite.Require().NoError(err)
 
 	multiProv := multiprovider.New(multiprovider.Options{})
@@ -318,7 +309,7 @@ func (suite *IntegrationSuite) setupControllers(defaultCfg *platformeshconfig.Co
 	err = multiProv.AddProvider(config.ProvidersProviderName, providersProvider)
 	suite.Require().NoError(err)
 
-	mgr, err := mcmanager.New(coreProviderConfig, multiProv, mcmanager.Options{
+	mgr, err := mcmanager.New(pmSystemConfig, multiProv, mcmanager.Options{
 		Scheme: scheme.Scheme,
 	})
 	suite.Require().NoError(err)

@@ -66,7 +66,7 @@ const (
 type AccountTestSuite struct {
 	suite.Suite
 
-	env                 *mcenvtest.Environment
+	env                 *mcenvtest.Sharded
 	kcpClient           mcc.ClusterClient
 	kcpConfig           *rest.Config
 	mgr                 mcmanager.Manager
