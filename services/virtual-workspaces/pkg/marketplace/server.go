@@ -33,6 +33,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	genericapiserver "k8s.io/apiserver/pkg/server"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 
 	"github.com/kcp-dev/client-go/dynamic"
 	"github.com/kcp-dev/multicluster-provider/apiexport"
@@ -82,7 +84,17 @@ func BuildVirtualWorkspace(
 					return nil, err
 				}
 
-				marketplaceFilter := storage.Marketplace(provider, cfg)
+				marketplaceFilter := storage.Marketplace(
+					provider.Lister(),
+					func(ctx context.Context, name string) (ctrlruntimeclient.Client, error) {
+						cl, err := provider.Get(ctx, multicluster.ClusterName(name))
+						if err != nil {
+							return nil, err
+						}
+						return cl.GetClient(), nil
+					},
+					cfg,
+				)
 
 				storageProvider := storage.CreateStorageProviderFunc(
 					dynamicClient,
