@@ -57,9 +57,14 @@ func marketplaceTestScheme(t *testing.T) *runtime.Scheme {
 	return s
 }
 
-func makeProviderMeta() *pmuiv1alpha1.ProviderMetadata {
+func makeProviderMeta(clusterID string) *pmuiv1alpha1.ProviderMetadata {
 	return &pmuiv1alpha1.ProviderMetadata{
-		ObjectMeta: metav1.ObjectMeta{Name: testProviderName},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testProviderName,
+			Annotations: map[string]string{
+				"kcp.io/cluster": clusterID,
+			},
+		},
 	}
 }
 
@@ -112,13 +117,42 @@ func listMarketplace(
 	return list
 }
 
+func TestMarketplace_ExportsFromForeignCluster(t *testing.T) {
+	cfg := config.NewServiceConfig()
+	s := marketplaceTestScheme(t)
+
+	const (
+		providerClusterID = "id-one"
+		otherClusterID    = "id-two"
+	)
+
+	providerExport := makeExport(cfg, "foo-one", providerClusterID, testProviderName)
+	// any workspace can define its own content-for label values:
+	otherExport := makeExport(cfg, "foo-two", otherClusterID, testProviderName)
+
+	lister := fake.NewClientBuilder().
+		WithScheme(s).
+		WithObjects(makeProviderMeta(providerClusterID), providerExport, otherExport).
+		Build()
+
+	list := listMarketplace(t, lister, fake.NewClientBuilder().WithScheme(s).Build(), cfg)
+
+	require.Len(t, list.Items, 1)
+
+	exportCluster, found, err := unstructured.NestedString(
+		list.Items[0].Object, "spec", "apiExport", "metadata", "annotations", "kcp.io/cluster")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, providerClusterID, exportCluster)
+}
+
 func TestMarketplace_ExportsOfKnownProviders(t *testing.T) {
 	cfg := config.NewServiceConfig()
 	s := marketplaceTestScheme(t)
 
 	lister := fake.NewClientBuilder().
 		WithScheme(s).
-		WithObjects(makeProviderMeta(), makeDefaultExport(cfg)).
+		WithObjects(makeProviderMeta(testProviderClusterID), makeDefaultExport(cfg)).
 		Build()
 
 	bindings := fake.NewClientBuilder().WithScheme(s).Build()
@@ -136,7 +170,7 @@ func TestMarketplace_InstalledBinding(t *testing.T) {
 
 	lister := fake.NewClientBuilder().
 		WithScheme(s).
-		WithObjects(makeProviderMeta(), makeDefaultExport(cfg)).
+		WithObjects(makeProviderMeta(testProviderClusterID), makeDefaultExport(cfg)).
 		Build()
 
 	bindings := fake.NewClientBuilder().
@@ -171,7 +205,7 @@ func TestMarketplace_ExportsWithoutMatchingProvider(t *testing.T) {
 
 	lister := fake.NewClientBuilder().
 		WithScheme(s).
-		WithObjects(makeProviderMeta(), orphanedExport).
+		WithObjects(makeProviderMeta("whatever"), orphanedExport).
 		Build()
 
 	list := listMarketplace(t, lister, fake.NewClientBuilder().WithScheme(s).Build(), cfg)
