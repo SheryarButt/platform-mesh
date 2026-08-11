@@ -93,7 +93,7 @@ tasks:
       KIND_BINARY: '{{.KIND}}'
       MKCERT_BINARY: '{{.MKCERT}}'
     cmds:
-      - go test -timeout 30m -coverprofile=cover.out -tags e2e ./test/e2e/kind {{.ADDITIONAL_COMMAND_ARGS}}
+      - go test -timeout 30m -coverprofile=cover.out -v -tags e2e ./test/e2e/kind {{.ADDITIONAL_COMMAND_ARGS}}
 
   manifests:
     cmds:
