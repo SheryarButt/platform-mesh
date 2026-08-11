@@ -261,6 +261,21 @@ func (c *clients) get(ctx context.Context, workspacePath string, gvk schema.Grou
 	return ri.Get(ctx, name, metav1.GetOptions{})
 }
 
+// list reads every object of one kind from a workspace.
+func (c *clients) list(ctx context.Context, workspacePath string, gvk schema.GroupVersionKind) ([]unstructured.Unstructured, error) {
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(gvk)
+	ri, err := c.resourceFor(workspacePath, obj)
+	if err != nil {
+		return nil, err
+	}
+	l, err := ri.List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return l.Items, nil
+}
+
 // decode splits a multi-document YAML stream into objects, skipping empty
 // documents (a trailing `---` or a comment-only block).
 func decode(data []byte) ([]*unstructured.Unstructured, error) {

@@ -25,6 +25,7 @@
 #   VERSION        component version to build   (default v0.0.0-dev)
 #   IMAGE_VERSION  released image tag to run    (default v0.0.1)
 #   IMAGE          full image reference         (default derived from IMAGE_VERSION)
+#   SKIP_IMAGE_DIGEST=1  do not resolve the image's digest (see below)
 #
 # VERSION defaults to a -dev version deliberately: this component is unsigned,
 # and pushing it over a released version would replace a signed component with
@@ -44,10 +45,31 @@ if [ "${1:-}" = "--push" ]; then
   PUSH=${2:?"--push needs an OCM repository, e.g. ghcr.io/platform-mesh/dev"}
 fi
 
+# Adding an ociImage resource RESOLVES it, to record its digest — which means a
+# HEAD against whatever registry serves that reference.
+#
+# For an image built from this checkout and side-loaded onto a kind node with
+# `kind load`, no registry serves it, and the resolve fails the build:
+#
+#   cannot determine digest: oci artifact ... dial tcp: lookup ...: no such host
+#
+# The digest also buys nothing there. The payload reads the image REFERENCE
+# (${ocm.resources.byName("image").access.imageReference}), the node already has
+# the image, and nothing verifies it in a dev cluster.
+#
+# Off by default: a component built against a PUBLISHED image should carry that
+# image's digest, which is the whole point of packaging it by reference.
+SKIP_DIGEST=""
+if [ "${SKIP_IMAGE_DIGEST:-}" = "1" ]; then
+  SKIP_DIGEST="--skip-digest-generation"
+  echo "not resolving the digest of $IMAGE (SKIP_IMAGE_DIGEST=1)"
+fi
+
 rm -rf "$CTF" gen
 ./render.sh gen
 
 ocm add componentversions --create --file "$CTF" \
+  $SKIP_DIGEST \
   --templater subst \
   component-constructor.yaml \
   -- \

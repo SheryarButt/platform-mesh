@@ -261,8 +261,18 @@ virtualWorkspace:
       algorithm: RSA
       size: 4096
 
-  # -- Exposing the virtual workspace outside the cluster, the same way kcp and
-  # the IdP are exposed: one SNI hostname on a shared passthrough listener.
+  # -- Reaching this server from OUTSIDE its cluster: one SNI hostname on a
+  # shared passthrough listener, the same way kcp and the IdP are exposed.
+  #
+  # NOT how end users reach the tenancy API. They always arrive at the kcp front
+  # proxy, on the path mapped to this Service — that mapping is the only
+  # entrypoint, and it is registered on the FrontProxy resource rather than here
+  # (by an OCMModule component's `mapping`, or by a FrontProxyTemplate).
+  #
+  # This exists for the split-cluster case: a front proxy whose mapped backend
+  # lives in a different cluster cannot dial a Service name, so it dials this
+  # hostname instead and verifies the certificate above. Leave it off whenever
+  # the front proxy and this Deployment share a cluster.
   gatewayApi:
     enabled: false
     name: ""
@@ -270,8 +280,8 @@ virtualWorkspace:
     namespace: ""
     sectionName: passthrough
     # e.g. tenancy.pm.localhost. Also added to the serving certificate, without
-    # which a client dialling this name gets a certificate error rather than a
-    # working endpoint.
+    # which the front proxy dialling this name gets a certificate error rather
+    # than a working backend.
     hostname: ""
 
   # -- MUST be the same issuer kcp authenticates against: one configuration, read

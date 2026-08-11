@@ -27,6 +27,7 @@ import (
 	"go.platform-mesh.io/tenancy-operator/pkg/paths"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -62,6 +63,7 @@ const (
 var (
 	gvkWorkspace      = schema.GroupVersionKind{Group: "tenancy.kcp.io", Version: "v1alpha1", Kind: "Workspace"}
 	gvkAPIExport      = schema.GroupVersionKind{Group: "apis.kcp.io", Version: "v1alpha2", Kind: "APIExport"}
+	gvkAPIBinding     = schema.GroupVersionKind{Group: "apis.kcp.io", Version: "v1alpha2", Kind: "APIBinding"}
 	gvkLogicalCluster = schema.GroupVersionKind{Group: "core.kcp.io", Version: "v1alpha1", Kind: "LogicalCluster"}
 )
 
@@ -120,11 +122,12 @@ func (i *Installer) Run(ctx context.Context) error {
 	// reported as itself. Without this the first symptom is a RESTMapper miss —
 	// "no mapping for tenancy.kcp.io/v1alpha1, Kind=Workspace" — which reads like a
 	// missing CRD and sends the reader looking in entirely the wrong place.
-	if err := i.preflight(ctx); err != nil {
+	start, err := i.preflight(ctx)
+	if err != nil {
 		return err
 	}
 
-	if err := i.ensureWorkspaces(ctx); err != nil {
+	if err := i.ensureWorkspaces(ctx, start); err != nil {
 		return err
 	}
 
@@ -157,41 +160,94 @@ func (i *Installer) Run(ctx context.Context) error {
 	return nil
 }
 
-// preflight confirms the credential can actually talk to kcp's root workspace.
-func (i *Installer) preflight(ctx context.Context) error {
-	wc, err := i.clients.for_("root")
-	if err != nil {
-		return err
+// preflight confirms the credential can talk to kcp, and reports whether the
+// install root is already there.
+//
+// Two installs reach this code and they need opposite things:
+//
+//	pre-provisioned root   a module installed at root:modules:<name>. The deployer
+//	                       created that workspace and minted a kubeconfig that is
+//	                       cluster-admin INSIDE it and denied everywhere else —
+//	                       including the parent. Nothing above the root may be
+//	                       touched, and nothing needs to be.
+//	self-made root         an install rooted at, say, root:tenancy under a kcp
+//	                       admin credential. Nobody has created that workspace;
+//	                       creating it, and any ancestor, is the installer's job.
+//
+// Which one this is cannot be configured — it is a property of the credential and
+// of what already exists — so it is detected: the NEAREST ancestor of the install
+// root that this credential can reach is where building starts.
+//
+// Nearest, not kcp's root. For a module the answer is the install root itself and
+// nothing above it is touched. For a self-made install the answer is whichever
+// ancestor already exists, and everything below is created. Starting from the top
+// instead would put a module install back into the parent it was never given —
+// where kcp reports the denial as a discovery failure, which reads as a missing
+// API rather than a permission the installer should not have needed.
+//
+// Guessing wrong is expensive in both directions: assume the root exists and a
+// self-made install dies on a workspace it was supposed to create; assume it does
+// not and a module install is denied in its parent.
+func (i *Installer) preflight(ctx context.Context) (string, error) {
+	l := i.opts.Layout
+
+	segments := strings.Split(l.Root, paths.Separator)
+	for n := len(segments); n > 0; n-- {
+		candidate := strings.Join(segments[:n], paths.Separator)
+		if !i.serves(candidate) {
+			continue
+		}
+		if candidate != l.Root {
+			i.logf("  %s is not reachable; building it from %s", l.Root, candidate)
+		}
+		return candidate, nil
 	}
-	groups, err := wc.discovery.ServerGroups()
+
+	// %T as well as %v: discovery collapses several very different failures (TLS,
+	// 401/403, unparseable body) into terse messages, and the type is often the
+	// only thing that says which one happened. A kcp 403 in particular arrives
+	// with no decodable body and renders as the bare word "unknown".
+	_, derr := i.discovery(l.Root)
+	return "", fmt.Errorf(
+		"cannot reach %s of kcp at %s, nor any ancestor of it to build from (as user of %s): %T: %v",
+		l.Root, BaseURL(i.clients.base.Host), i.clients.credentialSummary(), derr, derr)
+}
+
+// serves reports whether the workspace answers discovery AND offers the tenancy
+// API — a front proxy that answers but does not serve `workspaces` is not a
+// workspace this installer can build in.
+func (i *Installer) serves(workspacePath string) bool {
+	groups, err := i.discovery(workspacePath)
 	if err != nil {
-		// %T as well as %v: discovery collapses several very different failures
-		// (TLS, 401/403, unparseable body) into terse messages, and the type is
-		// often the only thing that says which one happened.
-		return fmt.Errorf("cannot reach kcp at %s (as user of %s): %T: %v",
-			BaseURL(i.clients.base.Host), i.clients.credentialSummary(), err, err)
+		return false
 	}
 	for _, g := range groups.Groups {
 		if g.Name == gvkWorkspace.Group {
-			return nil
+			return true
 		}
 	}
-	return fmt.Errorf("kcp at %s does not serve %s in the root workspace — is this a kcp front-proxy?",
-		BaseURL(i.clients.base.Host), gvkWorkspace.Group)
+	return false
 }
 
-// ensureWorkspaces creates every missing ancestor of each configured path.
+func (i *Installer) discovery(workspacePath string) (*metav1.APIGroupList, error) {
+	wc, err := i.clients.for_(workspacePath)
+	if err != nil {
+		return nil, err
+	}
+	return wc.discovery.ServerGroups()
+}
+
+// ensureWorkspaces creates every workspace the layout needs below `start`, the
+// nearest reachable ancestor of the install root that preflight found.
 //
-// The first segment is kcp's own root, which always exists; everything below it
-// is ours to make. This is what lets the install root be an arbitrary sub-tree
-// (root:tenancy, root:acme:platform, ...) rather than a shape the installer has
-// to know.
-func (i *Installer) ensureWorkspaces(ctx context.Context) error {
+// Nothing above `start` is touched, which is the whole point: for a module that
+// is the install root itself, and its parent is a workspace the credential is
+// denied in.
+func (i *Installer) ensureWorkspaces(ctx context.Context, start string) error {
 	l := i.opts.Layout
 	for _, p := range []string{l.Exports, l.Directory, l.TenantFleetRoot} {
-		segments := strings.Split(p, paths.Separator)
-		acc := segments[0]
-		for _, seg := range segments[1:] {
+		acc, segments := pendingWorkspaces(start, p)
+		for _, seg := range segments {
 			if err := i.ensureWorkspace(ctx, acc, seg); err != nil {
 				return err
 			}
@@ -199,6 +255,19 @@ func (i *Installer) ensureWorkspaces(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// pendingWorkspaces splits p into the workspace the walk starts from and the
+// segments to create below it, in order.
+func pendingWorkspaces(root, p string) (parent string, segments []string) {
+	if p == root {
+		return root, nil
+	}
+	if rest, ok := strings.CutPrefix(p, root+paths.Separator); ok {
+		return root, strings.Split(rest, paths.Separator)
+	}
+	segs := strings.Split(p, paths.Separator)
+	return segs[0], segs[1:]
 }
 
 func (i *Installer) ensureWorkspace(ctx context.Context, parent, name string) error {
@@ -247,8 +316,21 @@ func (i *Installer) waitWorkspaceReady(ctx context.Context, parent, name string)
 	return nil
 }
 
-// tenancyIdentityHash reads the identity of kcp's own tenancy export from root.
+// tenancyIdentityHash reads the identity of kcp's own tenancy export.
+//
+// Preferably from the install root's OWN APIBinding to that export: every
+// workspace has one — it is what makes `workspaces` a resource there at all — and
+// its status republishes the identity of each bound schema. Reading it needs no
+// rights outside the subtree we were given, which the APIExport in kcp's root
+// does; a module credential is denied there.
+//
+// The export itself is the fallback, for an install rooted where the binding is
+// not visible.
 func (i *Installer) tenancyIdentityHash(ctx context.Context) (string, error) {
+	if hash, err := i.tenancyIdentityHashFromBinding(ctx); err == nil {
+		return hash, nil
+	}
+
 	export, err := i.clients.get(ctx, "root", gvkAPIExport, tenancyKcpExport)
 	if err != nil {
 		return "", fmt.Errorf("reading APIExport %s in root: %w", tenancyKcpExport, err)
@@ -258,6 +340,38 @@ func (i *Installer) tenancyIdentityHash(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("APIExport %s in root has no status.identityHash yet", tenancyKcpExport)
 	}
 	return hash, nil
+}
+
+// tenancyIdentityHashFromBinding finds the install root's binding to the tenancy
+// export and returns the identity it publishes for `workspaces`.
+//
+// The binding is matched on what it points AT, never on its name: kcp names the
+// bindings it creates itself with a random suffix (tenancy.kcp.io-2o7xe).
+func (i *Installer) tenancyIdentityHashFromBinding(ctx context.Context) (string, error) {
+	bindings, err := i.clients.list(ctx, i.opts.Layout.Root, gvkAPIBinding)
+	if err != nil {
+		return "", err
+	}
+	for _, b := range bindings {
+		name, _, _ := unstructured.NestedString(b.Object, "spec", "reference", "export", "name")
+		if name != tenancyKcpExport {
+			continue
+		}
+		bound, _, _ := unstructured.NestedSlice(b.Object, "status", "boundResources")
+		for _, r := range bound {
+			m, ok := r.(map[string]any)
+			if !ok {
+				continue
+			}
+			if res, _, _ := unstructured.NestedString(m, "resource"); res != "workspaces" {
+				continue
+			}
+			if hash, _, _ := unstructured.NestedString(m, "schema", "identityHash"); hash != "" {
+				return hash, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("no APIBinding to %s publishing an identity for workspaces in %s", tenancyKcpExport, i.opts.Layout.Root)
 }
 
 // exportsClusterRef returns the exports workspace's LOGICAL CLUSTER ID.
@@ -340,7 +454,9 @@ func (i *Installer) applyAPISurface(ctx context.Context, rep *strings.Replacer) 
 	}
 	i.logf("  applied bind RBAC")
 
-	if err := i.applyFile(ctx, exports, deploy.KcpBootstrapDir+"/apiexportendpointslices.yaml", rep, true); err != nil {
+	if err := i.retryWhileBindDenied(ctx, "APIExportEndpointSlices", func(ctx context.Context) error {
+		return i.applyFile(ctx, exports, deploy.KcpBootstrapDir+"/apiexportendpointslices.yaml", rep, true)
+	}); err != nil {
 		return err
 	}
 	i.logf("  applied APIExportEndpointSlices")
@@ -377,12 +493,45 @@ func (i *Installer) applyBindings(ctx context.Context, rep *strings.Replacer) er
 		if !ok {
 			return fmt.Errorf("APIBinding %q has no configured target workspace", o.GetName())
 		}
-		if err := i.clients.apply(ctx, ws, o); err != nil {
+		if err := i.retryWhileBindDenied(ctx, "APIBinding "+o.GetName(), func(ctx context.Context) error {
+			return i.clients.apply(ctx, ws, o)
+		}); err != nil {
 			return err
 		}
 		i.logf("  %s: %s", ws, o.GetName())
 	}
 	return nil
+}
+
+// retryWhileBindDenied re-runs fn until kcp stops refusing it a `bind`.
+//
+// kcp emits one message — "no permission to bind to export" — for a real denial
+// AND for an export whose bind RBAC the authorizer has not observed yet, and the
+// two are indistinguishable to the caller. Immediately after this installer
+// creates the exports workspace and writes that RBAC into it, the second is the
+// likely one: the grant has to reach the authorizer serving a DIFFERENT workspace
+// before a binding there is admitted, and the gap is on the order of a second.
+//
+// So wait it out rather than fail. A genuine denial costs one timeout and reports
+// itself, where failing fast turns a race into an install that only succeeds on
+// the init container's second attempt — convergent, but only by way of a crash
+// loop that reads as a broken deployment.
+func (i *Installer) retryWhileBindDenied(ctx context.Context, what string, fn func(context.Context) error) error {
+	var last error
+	err := wait.PollUntilContextTimeout(ctx, time.Second, i.opts.WorkspaceReadyTimeout, true,
+		func(ctx context.Context) (bool, error) {
+			last = fn(ctx)
+			if last != nil && strings.Contains(last.Error(), "no permission to bind to export") {
+				return false, nil
+			}
+			return true, last
+		})
+	if wait.Interrupted(err) && last != nil {
+		return fmt.Errorf("%s: kcp still refuses the bind after %s — if this is not propagation lag, "+
+			"the identity running the install is not a subject of the bind RBAC in %s: %w",
+			what, i.opts.WorkspaceReadyTimeout, i.opts.Layout.Exports, last)
+	}
+	return err
 }
 
 func (i *Installer) applyFile(ctx context.Context, workspacePath, name string, rep *strings.Replacer, recreateOnImmutable bool) error {

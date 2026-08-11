@@ -47,7 +47,6 @@
 # allowed but redundant.
 PROFILES_ALL = ['infra', 'core', 'auth', 'tenancy']
 config.define_string_list('profile', args=False, usage='comma-separated: {}|full (default: infra)'.format('|'.join(PROFILES_ALL)))
-config.define_string_list('components', args=True, usage='monorepo components to hot-reload')
 cfg = config.parse()
 
 # Tilt's string_list accumulates repeated flags but does NOT split on commas, so
@@ -69,8 +68,6 @@ for _p in PROFILES:
 def profile(name):
     """True when `name` was requested (directly or via `full`)."""
     return name in PROFILES
-
-COMPONENTS = cfg.get('components', [])
 
 NAMESPACE = 'platform-mesh-system'
 
@@ -152,7 +149,7 @@ KCP_OIDC = {
 # and the kcp CRs still render.
 NO_INFRA = os.getenv('TILT_NO_INFRA', '') not in ('', '0', 'false', 'no')
 
-print('Platform Mesh dev env — profiles={} components={} no_infra={}'.format(','.join(PROFILES), COMPONENTS, NO_INFRA))
+print('Platform Mesh dev env — profiles={} no_infra={}'.format(','.join(PROFILES), NO_INFRA))
 
 # ---------------------------------------------------------------------------
 # context guard
@@ -210,9 +207,38 @@ k8s_resource(
     resource_deps=['namespace'],
 )
 
-# The tenancy virtual workspace's external name — one more SNI name on the same
-# `eg` gateway kcp and dex use.
-TENANCY_VW_HOSTNAME = sslip('tenancy')
+# Where the front proxy sends /services/tenancy/, and what the VW's serving
+# certificate is issued for.
+#
+# The tenancy virtual workspace has NO address of its own here. Callers reach it
+# at the front proxy, on the path below — the same entrypoint an OCMModule-
+# installed one gets from its component `mapping`. A chart cannot register that
+# path itself (the deployer owns spec.additionalPathMappings and applies it with
+# ForceOwnership), so the environment declares it, and deploy_deployer renders it
+# into the FrontProxyTemplate the PlatformMesh references.
+#
+# A Service name rather than a hostname because this is one cluster: the front
+# proxy and the VW are in the same one, so there is nothing for a gateway to
+# route. A split-cluster installation sets `host` on the module mapping instead
+# and turns the chart's TLSRoute on.
+TENANCY_VW_SERVICE = 'tenancy-operator-vw'
+TENANCY_VW_PORT = 6443
+TENANCY_VW_PATH = '/services/tenancy/'
+TENANCY_VW_BACKEND = 'https://{}.{}.svc:{}'.format(TENANCY_VW_SERVICE, NAMESPACE, TENANCY_VW_PORT)
+
+# Every front-proxy path this environment claims, accumulated per profile.
+#
+# Built here, above the deployer, because the FrontProxyTemplate is rendered with
+# the PlatformMesh — the front proxy is compiled from it, and a profile enabled
+# further down cannot add a path afterwards.
+#
+# Append, do not reassign: a second profile wanting a path adds a line, and the
+# deployer settles precedence and collisions over these AND every module's
+# mapping together (mergePathMappings). Two owners claiming one path is an error
+# there rather than a route that silently shadows another.
+FRONT_PROXY_MAPPINGS = []
+if profile('tenancy'):
+    FRONT_PROXY_MAPPINGS.append({'path': TENANCY_VW_PATH, 'backend': TENANCY_VW_BACKEND})
 
 # The gateway is NOT defined here. The single `eg` gateway comes from the
 # deployer's config/bases/envoy-gateway, together with the NodePort that makes
@@ -272,7 +298,7 @@ if not NO_INFRA:
 # There is exactly one way to get a kcp here, on purpose. A second one would
 # have to own the same shards and the same operator.kcp.io CRDs, and every
 # component would then have to work against both.
-load('./helpers.py', 'component_build', 'component_binary', 'chart_path')
+load('./helpers.py', 'component_build', 'component_binary')
 
 deploy_deployer = load_dynamic('../../operators/platform-mesh-deployer/Tiltfile')['deploy_deployer']
 deploy_deployer(
@@ -293,56 +319,18 @@ deploy_deployer(
     # (`<name>--<clusterID>`) and every generated shard, so changing it renames
     # the whole tree rather than adding a second one.
     platform_mesh_name=os.getenv('PLATFORM_MESH_NAME', 'dev'),
+    # Paths on the front proxy for components this environment installs by Helm,
+    # accumulated above. Declared with the PlatformMesh because the front proxy is
+    # compiled from it — the mapping has to exist before the tenancy profile's
+    # Service does, and a path pointing at an absent backend is a 503 on that path
+    # alone rather than a broken proxy.
+    front_proxy_mappings=FRONT_PROXY_MAPPINGS,
     # Passed in so the build's relative paths keep resolving against this
     # directory rather than the component's.
     component_binary=component_binary,
     resource_deps=['namespace'],
 )
 
-
-# ---------------------------------------------------------------------------
-# component hot-reload (stub — off by default in the skeleton)
-# ---------------------------------------------------------------------------
-
-if COMPONENTS:
-    OCI = 'oci://ghcr.io/platform-mesh/helm-charts'
-    # Example wiring for the pilot component. Real deps/versions land with Phase 1.
-    if 'account-operator' in COMPONENTS:
-        # Pin a published chart version (the placeholder 0.0.0 was never pushed).
-        # Override with ACCOUNT_OPERATOR_CHART_VERSION to track a newer chart, or
-        # set HELM_CHARTS_DIR to a local helm-charts checkout to render the chart
-        # from source (see chart_path in helpers.py) — then this version is ignored.
-        component_build(
-            name='account-operator',
-            path='operators/account-operator',
-            deps=['apis', 'subroutines', 'golang-commons'],
-            # Match the image ref the chart renders so Tilt substitutes the
-            # locally-built image (it swaps by repository, keeping the chart's args).
-            image='ghcr.io/platform-mesh/platform-mesh/account-operator',
-            chart=chart_path('account-operator', os.getenv('ACCOUNT_OPERATOR_CHART_VERSION', '0.17.0'), OCI),
-            namespace=NAMESPACE,
-            # Skip the account-operator-crds subchart: it emits kcp APIExport/
-            # APIResourceSchema/APIExportEndpointSlice objects whose CRDs live in
-            # kcp workspaces, not the runtime kube cluster. Applying them here
-            # fails and drops the webhook cert with it, wedging the pod in
-            # ContainerCreating. The kcp API registration is wired separately.
-            helm_set=['crds.enabled=false'],
-            # Wait for the namespace so a fresh cluster doesn't race "namespace not found".
-            resource_deps=['namespace'],
-            # Fold the chart's non-workload objects into this resource (else Tilt's
-            # dependency-less "uncategorized" catch-all applies them before the
-            # namespace exists). The cluster-scoped ClusterRole/Binding are included
-            # for tidy grouping; the namespaced ones are what actually need the dep.
-            objects=[
-                'account-operator:serviceaccount',
-                'account-operator:clusterrole',
-                'account-operator:clusterrolebinding',
-                'account-operator-ca-cert:certificate',
-                'account-operator-serving-cert:certificate',
-                'account-operator-selfsigned-issuer:issuer',
-                'account-operator-ca-issuer:issuer',
-            ],
-        )
 
 # ---------------------------------------------------------------------------
 # tenancy (RFC 010) — the Organization/Workspace tenancy model
@@ -371,12 +359,16 @@ if profile('tenancy'):
         namespace=NAMESPACE,
         install_root=TENANCY_ROOT,
         oidc=KCP_OIDC,
-        # Same `eg` gateway kcp and dex attach to; one more SNI name on it.
-        gateway={
-            'name': 'eg',
-            'namespace': 'envoy-gateway-system',
-            'hostname': TENANCY_VW_HOSTNAME,
-        },
+        # NO gateway. The VW is reached at the front proxy, on the path declared
+        # in front_proxy_mappings above — one entrypoint, the same one an
+        # OCMModule install gets. The chart's TLSRoute exists for a front proxy
+        # that has to dial a backend in ANOTHER cluster; here they share one, so
+        # the mapping names the Service and nothing is routed by SNI.
+        #
+        # The Service and port the mapping points at, so the certificate minted
+        # below is issued for exactly the name the front proxy will dial.
+        vw_service=TENANCY_VW_SERVICE,
+        vw_port=TENANCY_VW_PORT,
         # NO hostalias_ip/hostnames/internal_server any more. Under sslip.io the
         # address kcp publishes in its own kubeconfigs and endpoint slices already
         # resolves and routes in-cluster, so there is nothing to redirect and
