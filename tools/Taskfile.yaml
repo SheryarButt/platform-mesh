@@ -157,7 +157,7 @@ tasks:
         vars: { tool: sharded-test-server, source: 'https://github.com/kcp-dev/kcp/releases/download/v{VERSION}/sharded-test-server_{VERSION}_{GOOS}_{GOARCH}.tar.gz', version: '{{ .KCP_VERSION }}' }
 
       # kcp's sharded envtest needs binaries without any suffixes
-      - 'ln -sf {{.KCP_CACHE_SERVER}} {{.BIN}}/cache-server'
+      - 'ln -sf {{.CACHE_SERVER}} {{.BIN}}/cache-server'
       - 'ln -sf {{.KCP}} {{.BIN}}/kcp'
       - 'ln -sf {{.KCP_FRONT_PROXY}} {{.BIN}}/kcp-front-proxy'
       - 'ln -sf {{.SHARDED_TEST_SERVER}} {{.BIN}}/sharded-test-server'
