@@ -19,7 +19,9 @@ package ocmmodule
 import (
 	"context"
 	"fmt"
+	"net"
 	"sort"
+	"strconv"
 
 	pmdeployv1alpha1 "go.platform-mesh.io/apis/deploy/v1alpha1"
 	"go.platform-mesh.io/platform-mesh-deployer/pkg/celtemplate"
@@ -181,9 +183,12 @@ func resolveMapping(inst pmocmmodule.Instance, celCtx celtemplate.Context) (*pmd
 		return nil, fmt.Errorf("component %q: mapping path evaluated to %T, want string", inst.Component.Name, path)
 	}
 
+	// JoinHostPort rather than "%s:%d": a `host` mapping may name an IPv6
+	// literal, which has to be bracketed or the port is read as part of the
+	// address.
 	return &pmdeployv1alpha1.ResolvedMapping{
 		Path:    uri,
-		Backend: fmt.Sprintf("https://%s:%d", authority, m.Port),
+		Backend: "https://" + net.JoinHostPort(authority, strconv.Itoa(int(m.Port))),
 	}, nil
 }
 

@@ -301,3 +301,18 @@ func TestResolveMappingRequiresExactlyOneBackend(t *testing.T) {
 		})
 	}
 }
+
+// An IPv6 host has to be bracketed before the port is appended, or the address
+// and the port run together into something no client can dial. This is what
+// net.JoinHostPort is for, and why the backend is not built with a format
+// string.
+func TestResolveMappingIPv6Host(t *testing.T) {
+	inst := instance("vw", pmdeployv1alpha1.PlacementPerFrontProxy, "fp1", "")
+	inst.Component.Mapping = &pmdeployv1alpha1.Mapping{
+		Path: "/services/acme/", Host: "2001:db8::1", Port: 6443,
+	}
+
+	got, err := resolveMapping(inst, celtemplate.Context{})
+	require.NoError(t, err)
+	assert.Equal(t, "https://[2001:db8::1]:6443", got.Backend)
+}
