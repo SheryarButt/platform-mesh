@@ -144,3 +144,41 @@ func convertYAMLToJSON(yamlData []byte) ([]byte, error) {
 
 	return jsonData, nil
 }
+
+func (cC *contentConfiguration) ValidateEntityTypes(input []byte, contentType string, registry *EntityTypeRegistry) *multierror.Error {
+	if registry == nil {
+		return multierror.Append(nil, fmt.Errorf("entity type registry is nil"))
+	}
+
+	rawJSON, err := toJSON(input, contentType)
+	if err != nil {
+		return multierror.Append(nil, err)
+	}
+
+	var cc ContentConfiguration
+	if err := json.Unmarshal(rawJSON, &cc); err != nil {
+		return multierror.Append(nil, fmt.Errorf("error unmarshalling content configuration: %w", err))
+	}
+
+	errs := registry.Validate(cc)
+	if len(errs) == 0 {
+		return nil
+	}
+
+	merr := &multierror.Error{}
+	for _, e := range errs {
+		merr = multierror.Append(merr, e)
+	}
+	return merr
+}
+
+func toJSON(input []byte, contentType string) ([]byte, error) {
+	switch strings.ToLower(contentType) {
+	case "json":
+		return input, nil
+	case "yaml":
+		return convertYAMLToJSON(input)
+	default:
+		return nil, ErrorNoValidator
+	}
+}

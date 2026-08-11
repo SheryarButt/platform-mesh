@@ -18,19 +18,25 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 
+	pmuiv1alpha1 "go.platform-mesh.io/apis/ui/v1alpha1"
 	"go.platform-mesh.io/extension-manager-operator/internal/server"
 	"go.platform-mesh.io/extension-manager-operator/pkg/validation"
 	platformmeshcontext "go.platform-mesh.io/golang-commons/context"
 	"go.platform-mesh.io/golang-commons/traces"
 
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
@@ -70,8 +76,14 @@ func RunServer(_ *cobra.Command, _ []string) { // coverage-ignore
 	// Create Prometheus metrics handler
 	metricsHandler := promhttp.Handler()
 
+	// Initialize entity type registry from cluster if enabled
+	var registry *validation.EntityTypeRegistry
+	if serverCfg.EntityTypeValidationEnabled {
+		registry = initServerEntityTypeRegistry(ctx)
+	}
+
 	// Register Prometheus metrics endpoint
-	rt := server.CreateRouter(defaultCfg.IsLocal, log, validation.NewContentConfiguration())
+	rt := server.CreateRouter(defaultCfg.IsLocal, log, validation.NewContentConfiguration(), registry)
 	rt.Handle("/metrics", metricsHandler)
 
 	srv := &http.Server{
@@ -99,4 +111,81 @@ func RunServer(_ *cobra.Command, _ []string) { // coverage-ignore
 		log.Error().Err(err).Msg("Graceful shutdown failed")
 	}
 	log.Info().Msg("Server stopped")
+}
+
+func initServerEntityTypeRegistry(ctx context.Context) *validation.EntityTypeRegistry { // coverage-ignore
+	registry := validation.NewEntityTypeRegistry()
+
+	k8sClient := buildServerK8sClient()
+	if k8sClient == nil {
+		return registry
+	}
+
+	loadRegistryFromCluster(ctx, k8sClient, registry)
+	log.Info().Int("entityTypes", len(registry.KnownTypes())).Msg("initialized server entity type registry")
+	go refreshRegistryPeriodically(ctx, k8sClient, registry)
+	return registry
+}
+
+func buildServerK8sClient() ctrlruntimeclient.Reader { // coverage-ignore
+	kubeconfigPath := os.Getenv("KUBECONFIG")
+	var restCfg *rest.Config
+	var err error
+	if kubeconfigPath != "" {
+		restCfg, err = clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+		if err != nil {
+			log.Warn().Err(err).Msg("failed to load kubeconfig, entity type validation will only recognize 'global'")
+			return nil
+		}
+	} else {
+		restCfg, err = rest.InClusterConfig()
+		if err != nil {
+			log.Warn().Err(err).Msg("not running in cluster, entity type validation will only recognize 'global'")
+			return nil
+		}
+	}
+
+	k8sClient, err := ctrlruntimeclient.New(restCfg, ctrlruntimeclient.Options{Scheme: scheme})
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to create k8s client, entity type validation will only recognize 'global'")
+		return nil
+	}
+	return k8sClient
+}
+
+func loadRegistryFromCluster(ctx context.Context, k8sClient ctrlruntimeclient.Reader, registry *validation.EntityTypeRegistry) { // coverage-ignore
+	var ccList pmuiv1alpha1.ContentConfigurationList
+	if err := k8sClient.List(ctx, &ccList); err != nil {
+		log.Warn().Err(err).Msg("failed to list ContentConfigurations, entity type validation will only recognize 'global'")
+		return
+	}
+
+	var configs []validation.ContentConfiguration
+	for _, cc := range ccList.Items {
+		if cc.Status.ConfigurationResult == "" {
+			continue
+		}
+		var parsed validation.ContentConfiguration
+		if err := json.Unmarshal([]byte(cc.Status.ConfigurationResult), &parsed); err != nil {
+			log.Warn().Err(err).Str("name", cc.Name).Msg("failed to parse ConfigurationResult for entity type registry")
+			continue
+		}
+		configs = append(configs, parsed)
+	}
+
+	registry.Bulkload(configs)
+	log.Debug().Int("entityTypes", len(registry.KnownTypes())).Msg("refreshed server entity type registry")
+}
+
+func refreshRegistryPeriodically(ctx context.Context, k8sClient ctrlruntimeclient.Reader, registry *validation.EntityTypeRegistry) { // coverage-ignore
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			loadRegistryFromCluster(ctx, k8sClient, registry)
+		}
+	}
 }

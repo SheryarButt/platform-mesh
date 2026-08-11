@@ -440,3 +440,79 @@ func allErrorsContained(merr multierror.Error, expectedErrors []string) bool {
 
 	return true
 }
+
+func TestValidateEntityTypes(t *testing.T) {
+	cC := NewContentConfiguration()
+	registry := NewEntityTypeRegistry()
+	registry.Bulkload([]ContentConfiguration{
+		{
+			LuigiConfigFragment: LuigiConfigFragment{
+				Data: LuigiConfigData{
+					Nodes: []Node{
+						{EntityType: "global", DefineEntity: &DefineEntity{Id: "project"}},
+					},
+				},
+			},
+		},
+	})
+
+	tests := []struct {
+		name        string
+		input       string
+		contentType string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "valid entity type",
+			input:       `{"name": "test", "luigiConfigFragment": {"data": {"nodes": [{"entityType": "project"}]}}}`,
+			contentType: "json",
+		},
+		{
+			name:        "unknown entity type",
+			input:       `{"name": "test", "luigiConfigFragment": {"data": {"nodes": [{"entityType": "unknown"}]}}}`,
+			contentType: "json",
+			expectError: true,
+			errorMsg:    "unknown",
+		},
+		{
+			name:        "valid YAML input",
+			input:       "name: test\nluigiConfigFragment:\n  data:\n    nodes:\n    - entityType: global\n",
+			contentType: "yaml",
+		},
+		{
+			name:        "unsupported content type",
+			input:       "test",
+			contentType: "xml",
+			expectError: true,
+			errorMsg:    "no validator found",
+		},
+		{
+			name:        "invalid JSON unmarshal",
+			input:       `{not json`,
+			contentType: "json",
+			expectError: true,
+			errorMsg:    "error unmarshalling",
+		},
+		{
+			name:        "invalid YAML",
+			input:       "!invalid: {{{",
+			contentType: "yaml",
+			expectError: true,
+			errorMsg:    "error unmarshalling",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			merr := cC.ValidateEntityTypes([]byte(tt.input), tt.contentType, registry)
+			if tt.expectError {
+				assert.NotNil(t, merr)
+				assert.GreaterOrEqual(t, merr.Len(), 1)
+				assert.Contains(t, merr.Error(), tt.errorMsg)
+			} else {
+				assert.Nil(t, merr)
+			}
+		})
+	}
+}

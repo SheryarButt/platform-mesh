@@ -23,6 +23,8 @@ package mocks
 import (
 	"github.com/hashicorp/go-multierror"
 	mock "github.com/stretchr/testify/mock"
+
+	validation "go.platform-mesh.io/extension-manager-operator/pkg/validation"
 )
 
 // NewExtensionConfiguration creates a new instance of ExtensionConfiguration. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -116,6 +118,56 @@ func (_c *ExtensionConfiguration_Validate_Call) Return(s1 string, error *multier
 }
 
 func (_c *ExtensionConfiguration_Validate_Call) RunAndReturn(run func(bytes []byte, s string) (string, *multierror.Error)) *ExtensionConfiguration_Validate_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateEntityTypes provides a mock function for the type ExtensionConfiguration
+func (_mock *ExtensionConfiguration) ValidateEntityTypes(input []byte, contentType string, registry *validation.EntityTypeRegistry) *multierror.Error {
+	ret := _mock.Called(input, contentType, registry)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateEntityTypes")
+	}
+
+	var r0 *multierror.Error
+	if returnFunc, ok := ret.Get(0).(func([]byte, string, *validation.EntityTypeRegistry) *multierror.Error); ok {
+		r0 = returnFunc(input, contentType, registry)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*multierror.Error)
+		}
+	}
+
+	return r0
+}
+
+// ExtensionConfiguration_ValidateEntityTypes_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateEntityTypes'
+type ExtensionConfiguration_ValidateEntityTypes_Call struct {
+	*mock.Call
+}
+
+// ValidateEntityTypes is a helper method to define mock.On call
+//   - input []byte
+//   - contentType string
+//   - registry *validation.EntityTypeRegistry
+func (_e *ExtensionConfiguration_Expecter) ValidateEntityTypes(input interface{}, contentType interface{}, registry interface{}) *ExtensionConfiguration_ValidateEntityTypes_Call {
+	return &ExtensionConfiguration_ValidateEntityTypes_Call{Call: _e.mock.On("ValidateEntityTypes", input, contentType, registry)}
+}
+
+func (_c *ExtensionConfiguration_ValidateEntityTypes_Call) Run(run func(input []byte, contentType string, registry *validation.EntityTypeRegistry)) *ExtensionConfiguration_ValidateEntityTypes_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].([]byte), args[1].(string), args[2].(*validation.EntityTypeRegistry))
+	})
+	return _c
+}
+
+func (_c *ExtensionConfiguration_ValidateEntityTypes_Call) Return(_a0 *multierror.Error) *ExtensionConfiguration_ValidateEntityTypes_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ExtensionConfiguration_ValidateEntityTypes_Call) RunAndReturn(run func([]byte, string, *validation.EntityTypeRegistry) *multierror.Error) *ExtensionConfiguration_ValidateEntityTypes_Call {
 	_c.Call.Return(run)
 	return _c
 }
