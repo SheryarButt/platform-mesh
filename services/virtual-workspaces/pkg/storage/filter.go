@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/selection"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/klog/v2"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -223,19 +224,28 @@ func Marketplace(provider *apiexport.Provider, cfg config.ServiceConfig) forward
 			var results unstructured.UnstructuredList
 			results.SetGroupVersionKind(pmmarketplacev1alpha1.SchemeGroupVersion.WithKind("MarketplaceEntryList"))
 
+			var exportList kcpapisv1alpha1.APIExportList
+
+			req, err := labels.NewRequirement(cfg.ContentForLabel, selection.Exists, nil)
+			if err != nil {
+				return nil, fmt.Errorf("constructing label requirement: %w", err)
+			}
+			err = lister.List(ctx, &exportList, &ctrlruntimeclient.ListOptions{
+				LabelSelector: labels.NewSelector().Add(*req),
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to list apiexports: %w", err)
+			}
+
+			byProvider := make(map[string][]kcpapisv1alpha1.APIExport)
+			for _, v := range exportList.Items {
+				byProvider[v.Labels[cfg.ContentForLabel]] = append(byProvider[v.Labels[cfg.ContentForLabel]], v)
+			}
+
 			// For each provider, find matching APIExports across all shards
 			for _, provider := range providerList.Items {
-				exportList := &kcpapisv1alpha1.APIExportList{}
-
-				if err := lister.List(ctx, exportList, &ctrlruntimeclient.ListOptions{
-					LabelSelector: labels.SelectorFromValidatedSet(map[string]string{
-						cfg.ContentForLabel: provider.GetName(),
-					}),
-				}); err != nil {
-					return nil, fmt.Errorf("failed to list apiexports for provider %s: %w", provider.GetName(), err)
-				}
-
-				for _, export := range exportList.Items {
+				exports := byProvider[provider.GetName()]
+				for _, export := range exports {
 					if len(export.Spec.LatestResourceSchemas) == 0 {
 						continue
 					}
