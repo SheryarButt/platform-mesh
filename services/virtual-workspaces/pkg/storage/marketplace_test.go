@@ -65,7 +65,7 @@ func makeProviderMeta() *pmuiv1alpha1.ProviderMetadata {
 
 // makeDefaultExport with default values.
 func makeDefaultExport(cfg config.ServiceConfig) *kcpapisv1alpha1.APIExport {
-	return makeExport(cfg, testExportName, testOrgClusterID, testProviderName)
+	return makeExport(cfg, testExportName, testProviderClusterID, testProviderName)
 }
 
 // makeExport returns an APIExport with the given name and provider label.
