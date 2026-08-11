@@ -131,12 +131,14 @@ func TestDelete(t *testing.T) {
 	assert.NoError(t, err)
 
 	tests := map[string]struct {
-		clusterName string
-		expectErr   bool
+		clusterName   string
+		expectErr     bool
+		expectMissing bool
 	}{
-		"existing_file":     {clusterName: existing, expectErr: false},
-		"nested_file":       {clusterName: nested, expectErr: false},
-		"non_existent_file": {clusterName: "does/not/exist", expectErr: true},
+		"existing_file":     {clusterName: existing},
+		"nested_file":       {clusterName: nested},
+		"non_existent_file": {clusterName: "does/not/exist", expectErr: true, expectMissing: true},
+		"invalid_path":      {clusterName: "invalid\x00name", expectErr: true},
 	}
 
 	for name, tc := range tests {
@@ -144,6 +146,11 @@ func TestDelete(t *testing.T) {
 			err := handler.Delete(t.Context(), tc.clusterName)
 			if tc.expectErr {
 				assert.Error(t, err)
+				if tc.expectMissing {
+					assert.ErrorIs(t, err, schemahandler.ErrNotExist)
+				} else {
+					assert.NotErrorIs(t, err, schemahandler.ErrNotExist)
+				}
 				return
 			}
 			assert.NoError(t, err)
