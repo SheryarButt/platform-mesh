@@ -33,7 +33,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/selection"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/klog/v2"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -202,102 +201,79 @@ func Marketplace(
 	clusterClient func(context.Context, string) (ctrlruntimeclient.Client, error),
 	cfg config.ServiceConfig,
 ) forwardingregistry.StorageWrapper {
-	return forwardingregistry.StorageWrapperFunc(
-		func(groupResource schema.GroupResource, storage *forwardingregistry.StoreFuncs) {
-			storage.ListerFunc = func(ctx context.Context, options *internalversion.ListOptions) (runtime.Object, error) {
-				cluster := genericapirequest.ClusterFrom(ctx)
+	return forwardingregistry.StorageWrapperFunc(func(resource schema.GroupResource, storage *forwardingregistry.StoreFuncs) {
+		storage.ListerFunc = func(ctx context.Context, options *internalversion.ListOptions) (runtime.Object, error) {
+			cluster := genericapirequest.ClusterFrom(ctx)
 
-				cl, err := clusterClient(ctx, cluster.Name.String())
-				if err != nil {
-					return nil, fmt.Errorf("failed to get cluster from provider: %w", err)
-				}
-
-				// Get APIBindings for this specific cluster
-				installedAPIBindings := &kcpapisv1alpha1.APIBindingList{}
-				if err := cl.List(ctx, installedAPIBindings); err != nil {
-					return nil, fmt.Errorf("failed to list apibindings: %w", err)
-				}
-
-				var providerList pmuiv1alpha1.ProviderMetadataList
-				if err := lister.List(ctx, &providerList); err != nil {
-					return nil, fmt.Errorf("failed to list providermetadatas: %w", err)
-				}
-
-				var exportList kcpapisv1alpha1.APIExportList
-
-				req, err := labels.NewRequirement(cfg.ContentForLabel, selection.Exists, nil)
-				if err != nil {
-					return nil, fmt.Errorf("constructing label requirement: %w", err)
-				}
-				err = lister.List(ctx, &exportList, &ctrlruntimeclient.ListOptions{
-					LabelSelector: labels.NewSelector().Add(*req),
-				})
-				if err != nil {
-					return nil, fmt.Errorf("failed to list apiexports: %w", err)
-				}
-
-				results, err := buildMarketplaceEntries(providerList, exportList.Items, installedAPIBindings, cfg)
-				if err != nil {
-					return nil, err
-				}
-				return &results, nil
-			}
-		})
-}
-
-func buildMarketplaceEntries(
-	providers pmuiv1alpha1.ProviderMetadataList,
-	apiExports []kcpapisv1alpha1.APIExport,
-	bindings *kcpapisv1alpha1.APIBindingList,
-	cfg config.ServiceConfig,
-) (unstructured.UnstructuredList, error) {
-	byProvider := make(map[string][]kcpapisv1alpha1.APIExport)
-	for _, v := range apiExports {
-		byProvider[v.Labels[cfg.ContentForLabel]] = append(byProvider[v.Labels[cfg.ContentForLabel]], v)
-	}
-
-	var results unstructured.UnstructuredList
-	results.SetGroupVersionKind(pmmarketplacev1alpha1.SchemeGroupVersion.WithKind("MarketplaceEntryList"))
-	// For each provider, find matching APIExports across all shards
-	for _, providerMeta := range providers.Items {
-		exports := byProvider[providerMeta.GetName()]
-		for _, export := range exports {
-			if len(export.Spec.LatestResourceSchemas) == 0 {
-				continue
-			}
-
-			idx := slices.IndexFunc(bindings.Items, func(item kcpapisv1alpha1.APIBinding) bool {
-				return item.Spec.Reference.Export.Name == export.Name &&
-					item.Status.APIExportClusterName == export.Annotations["kcp.io/cluster"]
-			})
-
-			var apiBindingName string
-			if idx != -1 {
-				apiBindingName = bindings.Items[idx].Name
-			}
-
-			providerMeta.ManagedFields = nil // clear managed fields to declutter the output
-			export.ManagedFields = nil
-
-			unstructuredEntry, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&pmmarketplacev1alpha1.MarketplaceEntry{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: fmt.Sprintf("%s-%s", export.Name, providerMeta.Name), // TODO: we might need to fix the name length to not exceed the kubernetes limit
-				},
-				Spec: pmmarketplacev1alpha1.MarketplaceEntrySpec{
-					ProviderMetadata: *providerMeta.DeepCopy(),
-					APIExport:        *export.DeepCopy(),
-					APIBindingName:   apiBindingName,
-				},
-			})
+			cl, err := clusterClient(ctx, cluster.Name.String())
 			if err != nil {
-				return unstructured.UnstructuredList{}, fmt.Errorf(
-					"failed to convert marketplace entry to unstructured for export %s and provider %s: %w", export.Name, providerMeta.Name, err)
+				return nil, fmt.Errorf("failed to get cluster from provider: %w", err)
 			}
 
-			us := unstructured.Unstructured{Object: unstructuredEntry}
-			us.SetGroupVersionKind(pmmarketplacev1alpha1.SchemeGroupVersion.WithKind("MarketplaceEntry"))
-			results.Items = append(results.Items, us)
+			// Get APIBindings for this specific cluster
+			installedAPIBindings := &kcpapisv1alpha1.APIBindingList{}
+			if err := cl.List(ctx, installedAPIBindings); err != nil {
+				return nil, fmt.Errorf("failed to list apibindings: %w", err)
+			}
+
+			var providerList pmuiv1alpha1.ProviderMetadataList
+			if err := lister.List(ctx, &providerList); err != nil {
+				return nil, fmt.Errorf("failed to list providermetadatas: %w", err)
+			}
+
+			var results unstructured.UnstructuredList
+			results.SetGroupVersionKind(pmmarketplacev1alpha1.SchemeGroupVersion.WithKind("MarketplaceEntryList"))
+
+			// For each provider, find matching APIExports across all shards
+			for _, provider := range providerList.Items {
+				exportList := &kcpapisv1alpha1.APIExportList{}
+
+				if err := lister.List(ctx, exportList, &ctrlruntimeclient.ListOptions{
+					LabelSelector: labels.SelectorFromValidatedSet(map[string]string{
+						cfg.ContentForLabel: provider.GetName(),
+					}),
+				}); err != nil {
+					return nil, fmt.Errorf("failed to list apiexports for provider %s: %w", provider.GetName(), err)
+				}
+
+				for _, export := range exportList.Items {
+					if len(export.Spec.LatestResourceSchemas) == 0 {
+						continue
+					}
+
+					idx := slices.IndexFunc(installedAPIBindings.Items, func(item kcpapisv1alpha1.APIBinding) bool {
+						return item.Spec.Reference.Export.Name == export.Name &&
+							item.Status.APIExportClusterName == export.Annotations["kcp.io/cluster"]
+					})
+
+					var apiBindingName string
+					if idx != -1 {
+						apiBindingName = installedAPIBindings.Items[idx].Name
+					}
+
+					provider.ManagedFields = nil // clear managed fields to declutter the output
+					export.ManagedFields = nil
+
+					unstructuredEntry, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&pmmarketplacev1alpha1.MarketplaceEntry{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: fmt.Sprintf("%s-%s", export.Name, provider.Name), // TODO: we might need to fix the name length to not exceed the kubernetes limit
+						},
+						Spec: pmmarketplacev1alpha1.MarketplaceEntrySpec{
+							ProviderMetadata: *provider.DeepCopy(),
+							APIExport:        *export.DeepCopy(),
+							APIBindingName:   apiBindingName,
+						},
+					})
+					if err != nil {
+						return nil, fmt.Errorf("failed to convert marketplace entry to unstructured for export %s and provider %s: %w", export.Name, provider.Name, err)
+					}
+
+					us := unstructured.Unstructured{Object: unstructuredEntry}
+					us.SetGroupVersionKind(pmmarketplacev1alpha1.SchemeGroupVersion.WithKind("MarketplaceEntry"))
+					results.Items = append(results.Items, us)
+				}
+			}
+			return &results, nil
 		}
-	}
-	return results, nil
+	})
 }
