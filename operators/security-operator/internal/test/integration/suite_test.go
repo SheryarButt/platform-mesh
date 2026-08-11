@@ -294,16 +294,13 @@ func (suite *IntegrationSuite) setupPlatformMesh(t *testing.T) {
 func (suite *IntegrationSuite) setupControllers(defaultCfg *platformeshconfig.CommonServiceConfig, testLogger *logger.Logger) {
 	ctx := suite.T().Context()
 
-	providerConfig, err := suite.getPlatformMeshSystemConfig(suite.kcpConfig)
+	pmSystemConfig, err := suite.getPlatformMeshSystemConfig(suite.kcpConfig)
 	suite.Require().NoError(err)
 
-	coreProvider, err := apiexport.New(coreProviderConfig, "core.platform-mesh.io", apiexport.Options{Scheme: scheme.Scheme})
+	coreProvider, err := apiexport.New(pmSystemConfig, "core.platform-mesh.io", apiexport.Options{Scheme: scheme.Scheme})
 	suite.Require().NoError(err)
 
-	providersProviderConfig, err := suite.getPlatformMeshSystemConfig(suite.providersApiExportEndpointConfig)
-	suite.Require().NoError(err)
-
-	providersProvider, err := apiexport.New(providersProviderConfig, "providers.platform-mesh.io", apiexport.Options{Scheme: scheme.Scheme})
+	providersProvider, err := apiexport.New(pmSystemConfig, "providers.platform-mesh.io", apiexport.Options{Scheme: scheme.Scheme})
 	suite.Require().NoError(err)
 
 	multiProv := multiprovider.New(multiprovider.Options{})
@@ -312,7 +309,7 @@ func (suite *IntegrationSuite) setupControllers(defaultCfg *platformeshconfig.Co
 	err = multiProv.AddProvider(config.ProvidersProviderName, providersProvider)
 	suite.Require().NoError(err)
 
-	mgr, err := mcmanager.New(coreProviderConfig, multiProv, mcmanager.Options{
+	mgr, err := mcmanager.New(pmSystemConfig, multiProv, mcmanager.Options{
 		Scheme: scheme.Scheme,
 	})
 	suite.Require().NoError(err)
