@@ -91,7 +91,7 @@ tasks:
     desc: Render the four tenancy APIExports and their APIResourceSchemas.
     deps: [tools:apigen]
     env:
-      APIGEN: '{{.BIN}}/apigen'
+      APIGEN: '{{.APIGEN}}'
       HEADER: '{{.HACK}}/boilerplate/boilerplate.yaml.txt'
     cmds:
       # apigen emits one export per API group; this group is split into four
@@ -127,15 +127,7 @@ tasks:
       - kubectl get secret dex-ca -n {{.NAMESPACE}} -o jsonpath='{.data.ca\.crt}' | base64 -d > {{.DEX_CA}}
       # kcp's CA comes out of the admin kubeconfig the Tilt dev env extracts
       # (deployer-admin), so there is one source rather than a second copy.
-      - |
-        python3 - <<'EOF' > {{.KCP_CA}}
-        import base64, re, sys
-        src = "{{.ADMIN_KUBECONFIG}}"
-        m = re.search(r"certificate-authority-data:\s*(\S+)", open(src).read())
-        if not m:
-            sys.exit("no certificate-authority-data in " + src)
-        sys.stdout.write(base64.b64decode(m.group(1)).decode())
-        EOF
+      - yq '.clusters[0].cluster."certificate-authority-data"' {{.ADMIN_KUBECONFIG}} | base64 -d
       # The tenancy virtual workspace serves its own cert, with a SAN for the
       # sslip.io name it is routed on — so verification works against the real
       # address, with nothing to disable and no tunnel in the way.

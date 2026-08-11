@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package resource
 
 import (
@@ -5,16 +21,18 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/platform-mesh/golang-commons/logger"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/mocks"
+
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type ResourceTestSuite struct {
@@ -37,33 +55,33 @@ func (s *ResourceTestSuite) Test_applyReleaseWithValues() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-resource",
 				"namespace": "default",
-				"annotations": map[string]interface{}{
+				"annotations": map[string]any{
 					"artifact": "chart",
 					"repo":     "oci",
 				},
 			},
-			"status": map[string]interface{}{
-				"conditions": []interface{}{
-					map[string]interface{}{
+			"status": map[string]any{
+				"conditions": []any{
+					map[string]any{
 						"type":   "Ready",
 						"status": "True",
 					},
 				},
-				"resource": map[string]interface{}{
+				"resource": map[string]any{
 					"version": "25.2.3",
-					"access": map[string]interface{}{
+					"access": map[string]any{
 						"type":           "ociArtifact",
 						"imageReference": "oci://oci-registry-docker-registry.registry.svc.cluster.local/platform-mesh/upstream-images/charts/keycloak:25.2.3@sha256:cb5be99827d7cfa107fc7ca06f5b2fb0ea486f3ffb0315baf2be1bb348f9db77",
 					},
 				},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -72,7 +90,7 @@ func (s *ResourceTestSuite) Test_applyReleaseWithValues() {
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	clientMock.On("Get", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	clientMock.EXPECT().Patch(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+	clientMock.EXPECT().Patch(mock.Anything, mock.MatchedBy(func(obj ctrlruntimeclient.Object) bool {
 		unstr, ok := obj.(*unstructured.Unstructured)
 		if !ok {
 			return false
@@ -239,7 +257,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 		s.Run(tt.name, func() {
 			ctx := context.TODO()
 
-			annotations := map[string]interface{}{
+			annotations := map[string]any{
 				"artifact": tt.artifact,
 				"repo":     tt.repo,
 			}
@@ -254,20 +272,20 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 			}
 
 			inst := &unstructured.Unstructured{
-				Object: map[string]interface{}{
+				Object: map[string]any{
 					"apiVersion": "delivery.ocm.software/v1alpha1",
 					"kind":       "Resource",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name":        tt.resourceName,
 						"namespace":   tt.resourceNs,
 						"annotations": annotations,
 					},
-					"status": map[string]interface{}{
-						"resource": map[string]interface{}{
+					"status": map[string]any{
+						"resource": map[string]any{
 							"version": tt.version,
 						},
 					},
-					"spec": map[string]interface{}{},
+					"spec": map[string]any{},
 				},
 			}
 
@@ -280,18 +298,18 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 
 			clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 			clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-				func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+				func(ctx context.Context, key ctrlruntimeclient.ObjectKey, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					if _, ok := obj.(*corev1.ConfigMap); ok {
 						return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")
 					}
 					unstr := obj.(*unstructured.Unstructured)
 					unstr.SetName(key.Name)
 					unstr.SetNamespace(key.Namespace)
-					unstr.Object["spec"] = map[string]interface{}{"values": map[string]interface{}{}}
+					unstr.Object["spec"] = map[string]any{"values": map[string]any{}}
 					return nil
 				},
 			)
-			clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+			clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj ctrlruntimeclient.Object) bool {
 				helmRelease, ok := obj.(*unstructured.Unstructured)
 				if !ok {
 					return false
@@ -320,27 +338,27 @@ func (s *ResourceTestSuite) Test_updateGitRepo() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-git-resource",
 				"namespace": "default",
-				"annotations": map[string]interface{}{
+				"annotations": map[string]any{
 					"artifact": "chart",
 					"repo":     "git",
 				},
 			},
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{
-					"access": map[string]interface{}{
+			"status": map[string]any{
+				"resource": map[string]any{
+					"access": map[string]any{
 						"type":    "gitHub",
 						"commit":  "abc123def456",
 						"repoUrl": "https://github.com/example/repo.git",
 					},
 				},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -350,7 +368,7 @@ func (s *ResourceTestSuite) Test_updateGitRepo() {
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	clientMock.On("Get", mock.Anything, mock.Anything, mock.AnythingOfType("*v1.ConfigMap"), mock.Anything).Return(apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")).Maybe()
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+		func(ctx context.Context, obj ctrlruntimeclient.Object, patch ctrlruntimeclient.Patch, opts ...ctrlruntimeclient.PatchOption) error {
 			gitRepo := obj.(*unstructured.Unstructured)
 
 			commit, found, err := unstructured.NestedString(gitRepo.Object, "spec", "ref", "commit")
@@ -381,27 +399,27 @@ func (s *ResourceTestSuite) Test_updateGitRepo_CreateOrUpdateError() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-git-resource",
 				"namespace": "default",
-				"annotations": map[string]interface{}{
+				"annotations": map[string]any{
 					"artifact": "chart",
 					"repo":     "git",
 				},
 			},
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{
-					"access": map[string]interface{}{
+			"status": map[string]any{
+				"resource": map[string]any{
+					"access": map[string]any{
 						"type":    "gitHub",
 						"commit":  "abc123def456",
 						"repoUrl": "https://github.com/example/repo.git",
 					},
 				},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -421,27 +439,27 @@ func (s *ResourceTestSuite) Test_updateHelmRepository() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-helm-resource",
 				"namespace": "default",
-				"annotations": map[string]interface{}{
+				"annotations": map[string]any{
 					"artifact": "chart",
 					"repo":     "helm",
 				},
 			},
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{
+			"status": map[string]any{
+				"resource": map[string]any{
 					"version": "1.2.3",
-					"access": map[string]interface{}{
+					"access": map[string]any{
 						"type":           "helmChart",
 						"helmRepository": "https://charts.example.com",
 					},
 				},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -449,7 +467,7 @@ func (s *ResourceTestSuite) Test_updateHelmRepository() {
 	s.subroutine = NewResourceSubroutine(clientMock, nil, nil)
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	clientMock.EXPECT().Patch(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+	clientMock.EXPECT().Patch(mock.Anything, mock.MatchedBy(func(obj ctrlruntimeclient.Object) bool {
 		unstr := obj.(*unstructured.Unstructured)
 		if unstr.GetKind() != "HelmRepository" {
 			return false
@@ -469,18 +487,18 @@ func (s *ResourceTestSuite) Test_updateHelmRepository() {
 		return true
 	}), mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(1)
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+		func(ctx context.Context, key ctrlruntimeclient.ObjectKey, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			if _, ok := obj.(*corev1.ConfigMap); ok {
 				return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")
 			}
 			unstr := obj.(*unstructured.Unstructured)
 			unstr.SetName(key.Name)
 			unstr.SetNamespace(key.Namespace)
-			unstr.Object["spec"] = map[string]interface{}{"chart": map[string]interface{}{"spec": map[string]interface{}{}}}
+			unstr.Object["spec"] = map[string]any{"chart": map[string]any{"spec": map[string]any{}}}
 			return nil
 		},
 	)
-	clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+	clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj ctrlruntimeclient.Object) bool {
 		unstr := obj.(*unstructured.Unstructured)
 		version, found, err := unstructured.NestedString(unstr.Object, "spec", "chart", "spec", "version")
 		return err == nil && found && version == "1.2.3"
@@ -495,24 +513,24 @@ func (s *ResourceTestSuite) Test_updateHelmRepository_MissingURL() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-helm-resource",
 				"namespace": "default",
-				"annotations": map[string]interface{}{
+				"annotations": map[string]any{
 					"artifact": "chart",
 					"repo":     "helm",
 				},
 			},
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{
+			"status": map[string]any{
+				"resource": map[string]any{
 					"version": "1.2.3",
-					"access":  map[string]interface{}{},
+					"access":  map[string]any{},
 				},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -529,27 +547,27 @@ func (s *ResourceTestSuite) Test_updateHelmRelease() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-helm-resource",
 				"namespace": "default",
-				"annotations": map[string]interface{}{
+				"annotations": map[string]any{
 					"artifact": "chart",
 					"repo":     "helm",
 				},
 			},
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{
+			"status": map[string]any{
+				"resource": map[string]any{
 					"version": "2.5.0",
-					"access": map[string]interface{}{
+					"access": map[string]any{
 						"type":           "helmChart",
 						"helmRepository": "https://charts.example.com",
 					},
 				},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -557,23 +575,23 @@ func (s *ResourceTestSuite) Test_updateHelmRelease() {
 	subroutine := NewResourceSubroutine(clientMock, nil, nil)
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	clientMock.EXPECT().Patch(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+	clientMock.EXPECT().Patch(mock.Anything, mock.MatchedBy(func(obj ctrlruntimeclient.Object) bool {
 		unstr := obj.(*unstructured.Unstructured)
 		return unstr.GetKind() == "HelmRepository"
 	}), mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(1)
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+		func(ctx context.Context, key ctrlruntimeclient.ObjectKey, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			if _, ok := obj.(*corev1.ConfigMap); ok {
 				return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")
 			}
 			unstr := obj.(*unstructured.Unstructured)
 			unstr.SetName(key.Name)
 			unstr.SetNamespace(key.Namespace)
-			unstr.Object["spec"] = map[string]interface{}{"chart": map[string]interface{}{"spec": map[string]interface{}{}}}
+			unstr.Object["spec"] = map[string]any{"chart": map[string]any{"spec": map[string]any{}}}
 			return nil
 		},
 	)
-	clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+	clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj ctrlruntimeclient.Object) bool {
 		unstr := obj.(*unstructured.Unstructured)
 		version, found, err := unstructured.NestedString(unstr.Object, "spec", "chart", "spec", "version")
 		return err == nil && found && version == "2.5.0"
@@ -588,27 +606,27 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_GetError() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-helm-resource",
 				"namespace": "default",
-				"annotations": map[string]interface{}{
+				"annotations": map[string]any{
 					"artifact": "chart",
 					"repo":     "helm",
 				},
 			},
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{
+			"status": map[string]any{
+				"resource": map[string]any{
 					"version": "2.5.0",
-					"access": map[string]interface{}{
+					"access": map[string]any{
 						"type":           "helmChart",
 						"helmRepository": "https://charts.example.com",
 					},
 				},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -628,27 +646,27 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_UpdateError() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-helm-resource",
 				"namespace": "default",
-				"annotations": map[string]interface{}{
+				"annotations": map[string]any{
 					"artifact": "chart",
 					"repo":     "helm",
 				},
 			},
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{
+			"status": map[string]any{
+				"resource": map[string]any{
 					"version": "2.5.0",
-					"access": map[string]interface{}{
+					"access": map[string]any{
 						"type":           "helmChart",
 						"helmRepository": "https://charts.example.com",
 					},
 				},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -658,14 +676,14 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_UpdateError() {
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	clientMock.EXPECT().Patch(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Times(1)
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+		func(ctx context.Context, key ctrlruntimeclient.ObjectKey, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			if _, ok := obj.(*corev1.ConfigMap); ok {
 				return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")
 			}
 			unstr := obj.(*unstructured.Unstructured)
 			unstr.SetName(key.Name)
 			unstr.SetNamespace(key.Namespace)
-			unstr.Object["spec"] = map[string]interface{}{"chart": map[string]interface{}{"spec": map[string]interface{}{}}}
+			unstr.Object["spec"] = map[string]any{"chart": map[string]any{"spec": map[string]any{}}}
 			return nil
 		},
 	)
@@ -680,23 +698,23 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_GetError() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-resource",
 				"namespace": "default",
-				"annotations": map[string]interface{}{
+				"annotations": map[string]any{
 					"artifact": "image",
 					"repo":     "helm",
 				},
 			},
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{
+			"status": map[string]any{
+				"resource": map[string]any{
 					"version": "1.2.3",
 				},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -715,23 +733,23 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_UpdateError() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-resource",
 				"namespace": "default",
-				"annotations": map[string]interface{}{
+				"annotations": map[string]any{
 					"artifact": "image",
 					"repo":     "helm",
 				},
 			},
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{
+			"status": map[string]any{
+				"resource": map[string]any{
 					"version": "1.2.3",
 				},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -740,14 +758,14 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_UpdateError() {
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+		func(ctx context.Context, key ctrlruntimeclient.ObjectKey, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			if _, ok := obj.(*corev1.ConfigMap); ok {
 				return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")
 			}
 			unstr := obj.(*unstructured.Unstructured)
 			unstr.SetName(key.Name)
 			unstr.SetNamespace(key.Namespace)
-			unstr.Object["spec"] = map[string]interface{}{"values": map[string]interface{}{}}
+			unstr.Object["spec"] = map[string]any{"values": map[string]any{}}
 			return nil
 		},
 	)
@@ -762,27 +780,27 @@ func (s *ResourceTestSuite) Test_updateOciRepo_ParseRefError() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-resource",
 				"namespace": "default",
-				"annotations": map[string]interface{}{
+				"annotations": map[string]any{
 					"artifact": "chart",
 					"repo":     "oci",
 				},
 			},
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{
+			"status": map[string]any{
+				"resource": map[string]any{
 					"version": "1.0.0",
-					"access": map[string]interface{}{
+					"access": map[string]any{
 						"type":           "ociArtifact",
 						"imageReference": "oci://invalid url with spaces",
 					},
 				},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -799,27 +817,27 @@ func (s *ResourceTestSuite) Test_updateOciRepo_CreateOrUpdateError() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-resource",
 				"namespace": "default",
-				"annotations": map[string]interface{}{
+				"annotations": map[string]any{
 					"artifact": "chart",
 					"repo":     "oci",
 				},
 			},
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{
+			"status": map[string]any{
+				"resource": map[string]any{
 					"version": "1.0.0",
-					"access": map[string]interface{}{
+					"access": map[string]any{
 						"type":           "ociArtifact",
 						"imageReference": "oci://registry.example.com/charts/mychart:1.0.0",
 					},
 				},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -839,14 +857,14 @@ func (s *ResourceTestSuite) Test_Process_NoAnnotations() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-resource",
 				"namespace": "default",
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -859,27 +877,27 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplication_HelmRepo() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "keycloak-chart",
 				"namespace": "platform-mesh-system",
-				"annotations": map[string]interface{}{
+				"annotations": map[string]any{
 					"artifact": "chart",
 					"repo":     "helm",
 				},
 			},
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{
+			"status": map[string]any{
+				"resource": map[string]any{
 					"version": "25.2.3",
-					"access": map[string]interface{}{
+					"access": map[string]any{
 						"type":           "helmChart",
 						"helmRepository": "https://charts.bitnami.com/bitnami",
 					},
 				},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -888,7 +906,7 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplication_HelmRepo() {
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("no CRD")).Maybe()
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+		func(ctx context.Context, key ctrlruntimeclient.ObjectKey, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			if key.Name == "platform-mesh-profile" || key.Name == "platform-mesh-system-profile" {
 				cm := obj.(*corev1.ConfigMap)
 				cm.Data = map[string]string{"profile.yaml": "infra:\n  deploymentTechnology: argocd\n"}
@@ -902,7 +920,7 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplication_HelmRepo() {
 			return nil
 		},
 	)
-	clientMock.EXPECT().Patch(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+	clientMock.EXPECT().Patch(mock.Anything, mock.MatchedBy(func(obj ctrlruntimeclient.Object) bool {
 		unstr := obj.(*unstructured.Unstructured)
 		repoURL, _, _ := unstructured.NestedString(unstr.Object, "spec", "source", "repoURL")
 		rev, _, _ := unstructured.NestedString(unstr.Object, "spec", "source", "targetRevision")
@@ -918,21 +936,21 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplication_AlreadyUpToDate() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":        "keycloak-chart",
 				"namespace":   "platform-mesh-system",
-				"annotations": map[string]interface{}{"artifact": "chart", "repo": "helm"},
+				"annotations": map[string]any{"artifact": "chart", "repo": "helm"},
 			},
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{
+			"status": map[string]any{
+				"resource": map[string]any{
 					"version": "25.2.3",
-					"access":  map[string]interface{}{"type": "helmChart", "helmRepository": "https://charts.bitnami.com/bitnami"},
+					"access":  map[string]any{"type": "helmChart", "helmRepository": "https://charts.bitnami.com/bitnami"},
 				},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -941,7 +959,7 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplication_AlreadyUpToDate() {
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("no CRD")).Maybe()
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+		func(ctx context.Context, key ctrlruntimeclient.ObjectKey, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			if key.Name == "platform-mesh-profile" || key.Name == "platform-mesh-system-profile" {
 				cm := obj.(*corev1.ConfigMap)
 				cm.Data = map[string]string{"profile.yaml": "infra:\n  deploymentTechnology: argocd\n"}
@@ -965,18 +983,18 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplicationHelmValues() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":        "kcp-image",
 				"namespace":   "platform-mesh-system",
-				"annotations": map[string]interface{}{"artifact": "image", "repo": "oci", "path": "kcp.image.tag"},
+				"annotations": map[string]any{"artifact": "image", "repo": "oci", "path": "kcp.image.tag"},
 			},
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{"version": "v0.30.0"},
+			"status": map[string]any{
+				"resource": map[string]any{"version": "v0.30.0"},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -986,7 +1004,7 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplicationHelmValues() {
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("no CRD")).Maybe()
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+		func(ctx context.Context, key ctrlruntimeclient.ObjectKey, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			if key.Name == "platform-mesh-profile" || key.Name == "platform-mesh-system-profile" {
 				cm := obj.(*corev1.ConfigMap)
 				cm.Data = map[string]string{"profile.yaml": "infra:\n  deploymentTechnology: argocd\n"}
@@ -1013,11 +1031,11 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplicationHelmValues() {
 
 func (s *ResourceTestSuite) Test_resolveArgoCDSource_OCI() {
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{
+		Object: map[string]any{
+			"status": map[string]any{
+				"resource": map[string]any{
 					"version": "1.2.3",
-					"access":  map[string]interface{}{"imageReference": "oci://registry.example.com/charts/mychart:1.2.3@sha256:abc"},
+					"access":  map[string]any{"imageReference": "oci://registry.example.com/charts/mychart:1.2.3@sha256:abc"},
 				},
 			},
 		},
@@ -1031,7 +1049,7 @@ func (s *ResourceTestSuite) Test_resolveArgoCDSource_OCI() {
 
 func (s *ResourceTestSuite) Test_resolveArgoCDSource_NoSource() {
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{"status": map[string]interface{}{"resource": map[string]interface{}{"access": map[string]interface{}{}}}},
+		Object: map[string]any{"status": map[string]any{"resource": map[string]any{"access": map[string]any{}}}},
 	}
 	_, _, _, err := s.subroutine.resolveArgoCDSource(inst)
 	s.NotNil(err)
@@ -1040,7 +1058,7 @@ func (s *ResourceTestSuite) Test_resolveArgoCDSource_NoSource() {
 
 func (s *ResourceTestSuite) Test_resolveArgoCDSource_HelmNoVersion() {
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{"status": map[string]interface{}{"resource": map[string]interface{}{"access": map[string]interface{}{"helmRepository": "https://charts.example.com"}}}},
+		Object: map[string]any{"status": map[string]any{"resource": map[string]any{"access": map[string]any{"helmRepository": "https://charts.example.com"}}}},
 	}
 	_, _, _, err := s.subroutine.resolveArgoCDSource(inst)
 	s.NotNil(err)
@@ -1049,7 +1067,7 @@ func (s *ResourceTestSuite) Test_resolveArgoCDSource_HelmNoVersion() {
 
 func (s *ResourceTestSuite) Test_resolveArgoCDSource_GitNoRef() {
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{"status": map[string]interface{}{"resource": map[string]interface{}{"access": map[string]interface{}{"repoUrl": "https://github.com/org/repo"}}}},
+		Object: map[string]any{"status": map[string]any{"resource": map[string]any{"access": map[string]any{"repoUrl": "https://github.com/org/repo"}}}},
 	}
 	_, _, _, err := s.subroutine.resolveArgoCDSource(inst)
 	s.NotNil(err)
@@ -1109,7 +1127,7 @@ func Test_getValueFromYAML(t *testing.T) {
 }
 
 func Test_getNestedString(t *testing.T) {
-	m := map[string]interface{}{"a": map[string]interface{}{"b": "hello"}}
+	m := map[string]any{"a": map[string]any{"b": "hello"}}
 	got, ok := getNestedString(m, "a", "b")
 	if !ok || got != "hello" {
 		t.Errorf("got %q, ok=%v", got, ok)
@@ -1122,7 +1140,7 @@ func Test_getNestedString(t *testing.T) {
 	if ok {
 		t.Error("expected ok=false for empty path")
 	}
-	m2 := map[string]interface{}{"a": 42}
+	m2 := map[string]any{"a": 42}
 	_, ok = getNestedString(m2, "a")
 	if ok {
 		t.Error("expected ok=false for non-string")
@@ -1141,10 +1159,10 @@ func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_InfraDeploymentNames
 	clientMock := new(mocks.Client)
 	sub := NewResourceSubroutine(clientMock, nil, nil)
 
-	clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key client.ObjectKey) bool {
+	clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key ctrlruntimeclient.ObjectKey) bool {
 		return key.Name == "platform-mesh-profile" && key.Namespace == "platform-mesh-system"
 	}), mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+		func(ctx context.Context, key ctrlruntimeclient.ObjectKey, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			cm := obj.(*corev1.ConfigMap)
 			cm.Data = map[string]string{"profile.yaml": "infra:\n  deploymentNamespace: my-apps\n  deploymentTechnology: argocd\n"}
 			return nil
@@ -1162,10 +1180,10 @@ func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_ComponentsDeployment
 	clientMock := new(mocks.Client)
 	sub := NewResourceSubroutine(clientMock, nil, nil)
 
-	clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key client.ObjectKey) bool {
+	clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key ctrlruntimeclient.ObjectKey) bool {
 		return key.Name == "platform-mesh-profile" && key.Namespace == "platform-mesh-system"
 	}), mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+		func(ctx context.Context, key ctrlruntimeclient.ObjectKey, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			cm := obj.(*corev1.ConfigMap)
 			cm.Data = map[string]string{"profile.yaml": "components:\n  deploymentNamespace: my-apps-int\n"}
 			return nil
@@ -1196,16 +1214,16 @@ func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_NoDeploymentNamespac
 	clientMock := new(mocks.Client)
 	sub := NewResourceSubroutine(clientMock, nil, nil)
 
-	clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key client.ObjectKey) bool {
+	clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key ctrlruntimeclient.ObjectKey) bool {
 		return key.Name == "platform-mesh-profile" && key.Namespace == "platform-mesh-system"
 	}), mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+		func(ctx context.Context, key ctrlruntimeclient.ObjectKey, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			cm := obj.(*corev1.ConfigMap)
 			cm.Data = map[string]string{"profile.yaml": "infra:\n  deploymentTechnology: argocd\n"}
 			return nil
 		},
 	)
-	clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key client.ObjectKey) bool {
+	clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key ctrlruntimeclient.ObjectKey) bool {
 		return key.Name == "platform-mesh-system-profile" && key.Namespace == "platform-mesh-system"
 	}), mock.Anything, mock.Anything).Return(apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "platform-mesh-system-profile"))
 
@@ -1219,27 +1237,27 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplication_UsesDeploymentNamespace
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "keycloak-chart",
 				"namespace": "platform-mesh-system",
-				"annotations": map[string]interface{}{
+				"annotations": map[string]any{
 					"artifact": "chart",
 					"repo":     "helm",
 				},
 			},
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{
+			"status": map[string]any{
+				"resource": map[string]any{
 					"version": "25.2.3",
-					"access": map[string]interface{}{
+					"access": map[string]any{
 						"type":           "helmChart",
 						"helmRepository": "https://charts.bitnami.com/bitnami",
 					},
 				},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -1248,7 +1266,7 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplication_UsesDeploymentNamespace
 
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("no CRD")).Maybe()
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+		func(ctx context.Context, key ctrlruntimeclient.ObjectKey, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			if key.Name == "platform-mesh-profile" || key.Name == "platform-mesh-system-profile" {
 				cm := obj.(*corev1.ConfigMap)
 				cm.Data = map[string]string{"profile.yaml": "infra:\n  deploymentNamespace: my-apps\n  deploymentTechnology: argocd\n"}
@@ -1262,7 +1280,7 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplication_UsesDeploymentNamespace
 			return nil
 		},
 	)
-	clientMock.EXPECT().Patch(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+	clientMock.EXPECT().Patch(mock.Anything, mock.MatchedBy(func(obj ctrlruntimeclient.Object) bool {
 		unstr := obj.(*unstructured.Unstructured)
 		return unstr.GetNamespace() == "my-apps" && unstr.GetName() == "keycloak"
 	}), mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -1521,7 +1539,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage() {
 		s.Run(tt.name, func() {
 			ctx := context.TODO()
 
-			annotations := map[string]interface{}{
+			annotations := map[string]any{
 				"artifact": tt.artifact,
 				"repo":     tt.repo,
 			}
@@ -1536,20 +1554,20 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage() {
 			}
 
 			inst := &unstructured.Unstructured{
-				Object: map[string]interface{}{
+				Object: map[string]any{
 					"apiVersion": "delivery.ocm.software/v1alpha1",
 					"kind":       "Resource",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name":        tt.resourceName,
 						"namespace":   tt.resourceNs,
 						"annotations": annotations,
 					},
-					"status": map[string]interface{}{
-						"resource": map[string]interface{}{
+					"status": map[string]any{
+						"resource": map[string]any{
 							"version": tt.version,
 						},
 					},
-					"spec": map[string]interface{}{},
+					"spec": map[string]any{},
 				},
 			}
 
@@ -1575,14 +1593,14 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage() {
 
 			clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 			clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-				func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+				func(ctx context.Context, key ctrlruntimeclient.ObjectKey, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					if _, ok := obj.(*corev1.ConfigMap); ok {
 						return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")
 					}
 					unstr := obj.(*unstructured.Unstructured)
 					unstr.SetName(key.Name)
 					unstr.SetNamespace(key.Namespace)
-					unstr.Object["spec"] = map[string]interface{}{"values": map[string]interface{}{}}
+					unstr.Object["spec"] = map[string]any{"values": map[string]any{}}
 					parentPath := tt.expectedPath[:len(tt.expectedPath)-1]
 					for leaf, value := range tt.existingCoords {
 						s.Require().NoError(unstructured.SetNestedField(unstr.Object, value, appendPath(parentPath, leaf)...))
@@ -1590,7 +1608,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage() {
 					return nil
 				},
 			)
-			clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+			clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj ctrlruntimeclient.Object) bool {
 				helmRelease, ok := obj.(*unstructured.Unstructured)
 				if !ok {
 					return false
@@ -1635,9 +1653,9 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_StoresResolvedTag() {
 	store := subroutines.NewImageVersionStore()
 
 	inst := imageResource("test-resource",
-		map[string]interface{}{"artifact": "image", "repo": "oci"},
+		map[string]any{"artifact": "image", "repo": "oci"},
 		"1.2.3",
-		map[string]interface{}{
+		map[string]any{
 			"registry":   "oci-registry-docker-registry.registry.svc.cluster.local",
 			"repository": "platform-mesh/account-operator",
 			"tag":        "1.2.3-localized",
@@ -1670,7 +1688,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_RemovesStaleCoordinatesF
 	store.Set("default", "test-resource", "image.digest", "sha256:stale")
 
 	inst := imageResource("test-resource",
-		map[string]interface{}{"artifact": "image", "repo": "oci"},
+		map[string]any{"artifact": "image", "repo": "oci"},
 		"2.0.0", nil)
 
 	clientMock := new(mocks.Client)
@@ -1691,9 +1709,9 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_StoresCoordinatesAtCusto
 	store := subroutines.NewImageVersionStore()
 
 	inst := imageResource("test-resource",
-		map[string]interface{}{"artifact": "image", "repo": "oci", "path": "webhook.image.tag"},
+		map[string]any{"artifact": "image", "repo": "oci", "path": "webhook.image.tag"},
 		"1.2.3",
-		map[string]interface{}{
+		map[string]any{
 			"registry":   "registry.internal",
 			"repository": "platform-mesh/webhook",
 		})
@@ -1719,9 +1737,9 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_PathLeafCollision() {
 	ctx := context.TODO()
 
 	inst := imageResource("test-resource",
-		map[string]interface{}{"artifact": "image", "repo": "oci", "path": "image.registry"},
+		map[string]any{"artifact": "image", "repo": "oci", "path": "image.registry"},
 		"1.2.3",
-		map[string]interface{}{
+		map[string]any{
 			"registry":   "oci-registry-docker-registry.registry.svc.cluster.local",
 			"repository": "platform-mesh/account-operator",
 		})
@@ -1729,7 +1747,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_PathLeafCollision() {
 	clientMock := new(mocks.Client)
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	expectEmptyHelmReleaseGet(clientMock)
-	clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+	clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj ctrlruntimeclient.Object) bool {
 		helmRelease, ok := obj.(*unstructured.Unstructured)
 		if !ok {
 			return false
@@ -1760,14 +1778,14 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_CombinedRefStyle() {
 	store := subroutines.NewImageVersionStore()
 
 	inst := imageResource("openfga-image",
-		map[string]interface{}{
+		map[string]any{
 			"artifact":  "image",
 			"repo":      "oci",
 			"for":       "openfga",
 			"image-ref": "combined",
 		},
 		"1.11.2",
-		map[string]interface{}{
+		map[string]any{
 			"registry":   "zot.local/platform-mesh",
 			"repository": "openfga/openfga",
 			"tag":        "1.11.2",
@@ -1777,7 +1795,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_CombinedRefStyle() {
 	clientMock := new(mocks.Client)
 	clientMock.On("List", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	expectEmptyHelmReleaseGet(clientMock)
-	clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+	clientMock.EXPECT().Update(mock.Anything, mock.MatchedBy(func(obj ctrlruntimeclient.Object) bool {
 		hr, ok := obj.(*unstructured.Unstructured)
 		if !ok {
 			return false
@@ -1815,23 +1833,23 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_GetError() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-resource",
 				"namespace": "default",
-				"annotations": map[string]interface{}{
+				"annotations": map[string]any{
 					"artifact": "image",
 					"repo":     "helm",
 				},
 			},
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{
+			"status": map[string]any{
+				"resource": map[string]any{
 					"version": "1.2.3",
 				},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -1842,7 +1860,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_GetError() {
 	// The profile ConfigMap must resolve, otherwise getAppNamespaceFromProfile fails
 	// first and Process never reaches updateHelmReleaseImage — the case this asserts.
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+		func(ctx context.Context, key ctrlruntimeclient.ObjectKey, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			if _, ok := obj.(*corev1.ConfigMap); ok {
 				return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")
 			}
@@ -1861,23 +1879,23 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_UpdateError() {
 	ctx := context.TODO()
 
 	inst := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-resource",
 				"namespace": "default",
-				"annotations": map[string]interface{}{
+				"annotations": map[string]any{
 					"artifact": "image",
 					"repo":     "helm",
 				},
 			},
-			"status": map[string]interface{}{
-				"resource": map[string]interface{}{
+			"status": map[string]any{
+				"resource": map[string]any{
 					"version": "1.2.3",
 				},
 			},
-			"spec": map[string]interface{}{},
+			"spec": map[string]any{},
 		},
 	}
 
@@ -1897,14 +1915,14 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_UpdateError() {
 // empty spec.values, so updateHelmReleaseImage has a clean object to inject into.
 func expectEmptyHelmReleaseGet(clientMock *mocks.Client) {
 	clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+		func(ctx context.Context, key ctrlruntimeclient.ObjectKey, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			if _, ok := obj.(*corev1.ConfigMap); ok {
 				return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "")
 			}
 			unstr := obj.(*unstructured.Unstructured)
 			unstr.SetName(key.Name)
 			unstr.SetNamespace(key.Namespace)
-			unstr.Object["spec"] = map[string]interface{}{"values": map[string]interface{}{}}
+			unstr.Object["spec"] = map[string]any{"values": map[string]any{}}
 			return nil
 		},
 	)
@@ -1921,24 +1939,24 @@ func storeToMap(store *subroutines.ImageVersionStore, namespace, name string) ma
 
 // imageResource builds the minimal Resource the image-injection tests reconcile:
 // status.resource.version plus, when given, coordinates under status.additional.
-func imageResource(name string, annotations map[string]interface{}, version string, additional map[string]interface{}) *unstructured.Unstructured {
-	status := map[string]interface{}{
-		"resource": map[string]interface{}{"version": version},
+func imageResource(name string, annotations map[string]any, version string, additional map[string]any) *unstructured.Unstructured {
+	status := map[string]any{
+		"resource": map[string]any{"version": version},
 	}
 	if additional != nil {
 		status["additional"] = additional
 	}
 	return &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "delivery.ocm.software/v1alpha1",
 			"kind":       "Resource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":        name,
 				"namespace":   "default",
 				"annotations": annotations,
 			},
 			"status": status,
-			"spec":   map[string]interface{}{},
+			"spec":   map[string]any{},
 		},
 	}
 }

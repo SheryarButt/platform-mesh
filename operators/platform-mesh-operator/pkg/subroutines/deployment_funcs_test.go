@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package subroutines
 
 import (
@@ -5,17 +21,18 @@ import (
 	"encoding/json"
 	"testing"
 
-	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/stretchr/testify/suite"
+
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	pmconfig "go.platform-mesh.io/golang-commons/config"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-
-	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 )
 
 type DeploymentFuncsTestSuite struct {
@@ -27,9 +44,9 @@ func TestDeploymentFuncsTestSuite(t *testing.T) {
 }
 
 func (s *DeploymentFuncsTestSuite) Test_renderTemplatesInValue_StringWithTemplate() {
-	templateData := map[string]interface{}{
+	templateData := map[string]any{
 		"namespace": "prod",
-		"config": map[string]interface{}{
+		"config": map[string]any{
 			"clusterName": "cluster-1",
 			"syncWave":    "10",
 		},
@@ -37,8 +54,8 @@ func (s *DeploymentFuncsTestSuite) Test_renderTemplatesInValue_StringWithTemplat
 
 	tests := []struct {
 		name     string
-		input    interface{}
-		expected interface{}
+		input    any
+		expected any
 	}{
 		{
 			name:     "simple template",
@@ -67,14 +84,14 @@ func (s *DeploymentFuncsTestSuite) Test_renderTemplatesInValue_StringWithTemplat
 }
 
 func (s *DeploymentFuncsTestSuite) Test_renderTemplatesInValue_StringWithoutTemplate() {
-	templateData := map[string]interface{}{
+	templateData := map[string]any{
 		"namespace": "prod",
 	}
 
 	tests := []struct {
 		name     string
-		input    interface{}
-		expected interface{}
+		input    any
+		expected any
 	}{
 		{
 			name:     "plain string",
@@ -103,18 +120,18 @@ func (s *DeploymentFuncsTestSuite) Test_renderTemplatesInValue_StringWithoutTemp
 }
 
 func (s *DeploymentFuncsTestSuite) Test_renderTemplatesInValue_MapWithNestedTemplates() {
-	templateData := map[string]interface{}{
+	templateData := map[string]any{
 		"namespace": "prod",
-		"config": map[string]interface{}{
+		"config": map[string]any{
 			"clusterName": "cluster-1",
 		},
 	}
 
-	input := map[string]interface{}{
+	input := map[string]any{
 		"name":  "{{ .config.clusterName }}",
 		"port":  8080,
 		"label": "static-value",
-		"nested": map[string]interface{}{
+		"nested": map[string]any{
 			"ns": "{{ .namespace }}",
 		},
 	}
@@ -122,41 +139,41 @@ func (s *DeploymentFuncsTestSuite) Test_renderTemplatesInValue_MapWithNestedTemp
 	result, err := renderTemplatesInValue(input, templateData)
 	s.NoError(err)
 
-	resultMap := result.(map[string]interface{})
+	resultMap := result.(map[string]any)
 	s.Equal("cluster-1", resultMap["name"])
 	s.Equal(8080, resultMap["port"])
 	s.Equal("static-value", resultMap["label"])
 
-	nestedMap := resultMap["nested"].(map[string]interface{})
+	nestedMap := resultMap["nested"].(map[string]any)
 	s.Equal("prod", nestedMap["ns"])
 }
 
 func (s *DeploymentFuncsTestSuite) Test_renderTemplatesInValue_SliceWithTemplates() {
-	templateData := map[string]interface{}{
+	templateData := map[string]any{
 		"namespace": "prod",
 		"env":       "production",
 	}
 
-	input := []interface{}{"{{ .namespace }}", "static", "{{ .env }}"}
+	input := []any{"{{ .namespace }}", "static", "{{ .env }}"}
 
 	result, err := renderTemplatesInValue(input, templateData)
 	s.NoError(err)
 
-	resultSlice := result.([]interface{})
+	resultSlice := result.([]any)
 	s.Equal("prod", resultSlice[0])
 	s.Equal("static", resultSlice[1])
 	s.Equal("production", resultSlice[2])
 }
 
 func (s *DeploymentFuncsTestSuite) Test_renderTemplatesInValue_NonStringValues() {
-	templateData := map[string]interface{}{
+	templateData := map[string]any{
 		"namespace": "prod",
 	}
 
 	tests := []struct {
 		name     string
-		input    interface{}
-		expected interface{}
+		input    any
+		expected any
 	}{
 		{
 			name:     "integer",
@@ -195,7 +212,7 @@ func (s *DeploymentFuncsTestSuite) Test_renderTemplatesInValue_NonStringValues()
 }
 
 func (s *DeploymentFuncsTestSuite) Test_renderTemplatesInValue_InvalidTemplate() {
-	templateData := map[string]interface{}{
+	templateData := map[string]any{
 		"namespace": "prod",
 	}
 
@@ -207,7 +224,7 @@ func (s *DeploymentFuncsTestSuite) Test_renderTemplatesInValue_InvalidTemplate()
 }
 
 func (s *DeploymentFuncsTestSuite) Test_renderTemplatesInValue_MissingVariable() {
-	templateData := map[string]interface{}{
+	templateData := map[string]any{
 		"namespace": "prod",
 	}
 
@@ -220,7 +237,7 @@ func (s *DeploymentFuncsTestSuite) Test_renderTemplatesInValue_MissingVariable()
 }
 
 func (s *DeploymentFuncsTestSuite) Test_renderTemplatesInValue_WithTemplateFunctions() {
-	templateData := map[string]interface{}{
+	templateData := map[string]any{
 		"value":   "",
 		"present": "exists",
 	}
@@ -267,20 +284,20 @@ func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_NilServices() {
 }
 
 func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_EmptyServices() {
-	services := map[string]interface{}{}
+	services := map[string]any{}
 	err := calculateSyncWaves(services)
 	s.NoError(err)
 }
 
 func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_NoDependencies() {
-	services := map[string]interface{}{
-		"serviceA": map[string]interface{}{
+	services := map[string]any{
+		"serviceA": map[string]any{
 			"enabled": true,
 		},
-		"serviceB": map[string]interface{}{
+		"serviceB": map[string]any{
 			"enabled": true,
 		},
-		"serviceC": map[string]interface{}{
+		"serviceC": map[string]any{
 			"enabled": true,
 		},
 	}
@@ -290,30 +307,30 @@ func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_NoDependencies() {
 
 	// All services should be at wave 0
 	for name, svc := range services {
-		svcMap := svc.(map[string]interface{})
+		svcMap := svc.(map[string]any)
 		s.Equal(0, svcMap["syncWave"], "service %s should be wave 0", name)
 	}
 }
 
 func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_WithDependencies() {
-	services := map[string]interface{}{
-		"database": map[string]interface{}{
+	services := map[string]any{
+		"database": map[string]any{
 			"enabled": true,
 		},
-		"cache": map[string]interface{}{
+		"cache": map[string]any{
 			"enabled": true,
 		},
-		"api": map[string]interface{}{
+		"api": map[string]any{
 			"enabled": true,
-			"dependsOn": []interface{}{
-				map[string]interface{}{"name": "database"},
-				map[string]interface{}{"name": "cache"},
+			"dependsOn": []any{
+				map[string]any{"name": "database"},
+				map[string]any{"name": "cache"},
 			},
 		},
-		"frontend": map[string]interface{}{
+		"frontend": map[string]any{
 			"enabled": true,
-			"dependsOn": []interface{}{
-				map[string]interface{}{"name": "api"},
+			"dependsOn": []any{
+				map[string]any{"name": "api"},
 			},
 		},
 	}
@@ -322,24 +339,24 @@ func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_WithDependencies() {
 	s.NoError(err)
 
 	// database and cache should be wave 0
-	s.Equal(0, services["database"].(map[string]interface{})["syncWave"])
-	s.Equal(0, services["cache"].(map[string]interface{})["syncWave"])
+	s.Equal(0, services["database"].(map[string]any)["syncWave"])
+	s.Equal(0, services["cache"].(map[string]any)["syncWave"])
 	// api depends on database and cache, should be wave 1
-	s.Equal(1, services["api"].(map[string]interface{})["syncWave"])
+	s.Equal(1, services["api"].(map[string]any)["syncWave"])
 	// frontend depends on api, should be wave 2
-	s.Equal(2, services["frontend"].(map[string]interface{})["syncWave"])
+	s.Equal(2, services["frontend"].(map[string]any)["syncWave"])
 }
 
 func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_UserConfiguredPreserved() {
-	services := map[string]interface{}{
-		"database": map[string]interface{}{
+	services := map[string]any{
+		"database": map[string]any{
 			"enabled": true,
 		},
-		"api": map[string]interface{}{
+		"api": map[string]any{
 			"enabled":  true,
 			"syncWave": 5, // user-configured
-			"dependsOn": []interface{}{
-				map[string]interface{}{"name": "database"},
+			"dependsOn": []any{
+				map[string]any{"name": "database"},
 			},
 		},
 	}
@@ -348,15 +365,15 @@ func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_UserConfiguredPreserv
 	s.NoError(err)
 
 	// database should be wave 0
-	s.Equal(0, services["database"].(map[string]interface{})["syncWave"])
+	s.Equal(0, services["database"].(map[string]any)["syncWave"])
 	// api should preserve user-configured wave 5 (not calculated wave 1)
-	s.Equal(5, services["api"].(map[string]interface{})["syncWave"])
+	s.Equal(5, services["api"].(map[string]any)["syncWave"])
 }
 
 func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_UserConfiguredAsFloat64() {
 	// JSON unmarshaling produces float64 for numbers
-	services := map[string]interface{}{
-		"service": map[string]interface{}{
+	services := map[string]any{
+		"service": map[string]any{
 			"enabled":  true,
 			"syncWave": float64(3),
 		},
@@ -367,12 +384,12 @@ func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_UserConfiguredAsFloat
 
 	// User-configured value should be preserved (skipped in the final update loop)
 	// The syncWave remains as float64(3) since it was user-configured
-	s.Equal(float64(3), services["service"].(map[string]interface{})["syncWave"])
+	s.Equal(float64(3), services["service"].(map[string]any)["syncWave"])
 }
 
 func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_UserConfiguredAsInt64() {
-	services := map[string]interface{}{
-		"service": map[string]interface{}{
+	services := map[string]any{
+		"service": map[string]any{
 			"enabled":  true,
 			"syncWave": int64(7),
 		},
@@ -383,15 +400,15 @@ func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_UserConfiguredAsInt64
 
 	// User-configured value should be preserved (skipped in the final update loop)
 	// The syncWave remains as int64(7) since it was user-configured
-	s.Equal(int64(7), services["service"].(map[string]interface{})["syncWave"])
+	s.Equal(int64(7), services["service"].(map[string]any)["syncWave"])
 }
 
 func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_DependencyNotInServices() {
-	services := map[string]interface{}{
-		"api": map[string]interface{}{
+	services := map[string]any{
+		"api": map[string]any{
 			"enabled": true,
-			"dependsOn": []interface{}{
-				map[string]interface{}{"name": "nonexistent-service"},
+			"dependsOn": []any{
+				map[string]any{"name": "nonexistent-service"},
 			},
 		},
 	}
@@ -400,12 +417,12 @@ func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_DependencyNotInServic
 	s.NoError(err)
 
 	// api should be wave 0 since dependency doesn't exist
-	s.Equal(0, services["api"].(map[string]interface{})["syncWave"])
+	s.Equal(0, services["api"].(map[string]any)["syncWave"])
 }
 
 func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_InvalidDependsOnFormat() {
-	services := map[string]interface{}{
-		"api": map[string]interface{}{
+	services := map[string]any{
+		"api": map[string]any{
 			"enabled":   true,
 			"dependsOn": "invalid-string-format", // should be a slice
 		},
@@ -415,19 +432,19 @@ func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_InvalidDependsOnForma
 	s.NoError(err)
 
 	// Should handle gracefully and set wave 0
-	s.Equal(0, services["api"].(map[string]interface{})["syncWave"])
+	s.Equal(0, services["api"].(map[string]any)["syncWave"])
 }
 
 func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_DependsOnWithInvalidItems() {
-	services := map[string]interface{}{
-		"database": map[string]interface{}{
+	services := map[string]any{
+		"database": map[string]any{
 			"enabled": true,
 		},
-		"api": map[string]interface{}{
+		"api": map[string]any{
 			"enabled": true,
-			"dependsOn": []interface{}{
+			"dependsOn": []any{
 				"invalid-string-item", // should be map
-				map[string]interface{}{"name": "database"},
+				map[string]any{"name": "database"},
 			},
 		},
 	}
@@ -436,15 +453,15 @@ func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_DependsOnWithInvalidI
 	s.NoError(err)
 
 	// api should still get wave 1 from valid database dependency
-	s.Equal(1, services["api"].(map[string]interface{})["syncWave"])
+	s.Equal(1, services["api"].(map[string]any)["syncWave"])
 }
 
 func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_DependsOnMissingName() {
-	services := map[string]interface{}{
-		"api": map[string]interface{}{
+	services := map[string]any{
+		"api": map[string]any{
 			"enabled": true,
-			"dependsOn": []interface{}{
-				map[string]interface{}{"namespace": "other"}, // missing "name" key
+			"dependsOn": []any{
+				map[string]any{"namespace": "other"}, // missing "name" key
 			},
 		},
 	}
@@ -453,13 +470,13 @@ func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_DependsOnMissingName(
 	s.NoError(err)
 
 	// api should be wave 0 since no valid dependency name
-	s.Equal(0, services["api"].(map[string]interface{})["syncWave"])
+	s.Equal(0, services["api"].(map[string]any)["syncWave"])
 }
 
 func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_ServiceConfigNotMap() {
-	services := map[string]interface{}{
+	services := map[string]any{
 		"stringService": "not-a-map",
-		"api": map[string]interface{}{
+		"api": map[string]any{
 			"enabled": true,
 		},
 	}
@@ -468,31 +485,31 @@ func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_ServiceConfigNotMap()
 	s.NoError(err)
 
 	// api should still work
-	s.Equal(0, services["api"].(map[string]interface{})["syncWave"])
+	s.Equal(0, services["api"].(map[string]any)["syncWave"])
 }
 
 func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_ChainedDependencies() {
 	// A -> B -> C -> D (chain of 4)
-	services := map[string]interface{}{
-		"serviceD": map[string]interface{}{
+	services := map[string]any{
+		"serviceD": map[string]any{
 			"enabled": true,
 		},
-		"serviceC": map[string]interface{}{
+		"serviceC": map[string]any{
 			"enabled": true,
-			"dependsOn": []interface{}{
-				map[string]interface{}{"name": "serviceD"},
+			"dependsOn": []any{
+				map[string]any{"name": "serviceD"},
 			},
 		},
-		"serviceB": map[string]interface{}{
+		"serviceB": map[string]any{
 			"enabled": true,
-			"dependsOn": []interface{}{
-				map[string]interface{}{"name": "serviceC"},
+			"dependsOn": []any{
+				map[string]any{"name": "serviceC"},
 			},
 		},
-		"serviceA": map[string]interface{}{
+		"serviceA": map[string]any{
 			"enabled": true,
-			"dependsOn": []interface{}{
-				map[string]interface{}{"name": "serviceB"},
+			"dependsOn": []any{
+				map[string]any{"name": "serviceB"},
 			},
 		},
 	}
@@ -500,10 +517,10 @@ func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_ChainedDependencies()
 	err := calculateSyncWaves(services)
 	s.NoError(err)
 
-	s.Equal(0, services["serviceD"].(map[string]interface{})["syncWave"])
-	s.Equal(1, services["serviceC"].(map[string]interface{})["syncWave"])
-	s.Equal(2, services["serviceB"].(map[string]interface{})["syncWave"])
-	s.Equal(3, services["serviceA"].(map[string]interface{})["syncWave"])
+	s.Equal(0, services["serviceD"].(map[string]any)["syncWave"])
+	s.Equal(1, services["serviceC"].(map[string]any)["syncWave"])
+	s.Equal(2, services["serviceB"].(map[string]any)["syncWave"])
+	s.Equal(3, services["serviceA"].(map[string]any)["syncWave"])
 }
 
 func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_DiamondDependency() {
@@ -512,27 +529,27 @@ func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_DiamondDependency() {
 	//   B   C
 	//    \ /
 	//     D
-	services := map[string]interface{}{
-		"serviceD": map[string]interface{}{
+	services := map[string]any{
+		"serviceD": map[string]any{
 			"enabled": true,
 		},
-		"serviceB": map[string]interface{}{
+		"serviceB": map[string]any{
 			"enabled": true,
-			"dependsOn": []interface{}{
-				map[string]interface{}{"name": "serviceD"},
+			"dependsOn": []any{
+				map[string]any{"name": "serviceD"},
 			},
 		},
-		"serviceC": map[string]interface{}{
+		"serviceC": map[string]any{
 			"enabled": true,
-			"dependsOn": []interface{}{
-				map[string]interface{}{"name": "serviceD"},
+			"dependsOn": []any{
+				map[string]any{"name": "serviceD"},
 			},
 		},
-		"serviceA": map[string]interface{}{
+		"serviceA": map[string]any{
 			"enabled": true,
-			"dependsOn": []interface{}{
-				map[string]interface{}{"name": "serviceB"},
-				map[string]interface{}{"name": "serviceC"},
+			"dependsOn": []any{
+				map[string]any{"name": "serviceB"},
+				map[string]any{"name": "serviceC"},
 			},
 		},
 	}
@@ -540,10 +557,10 @@ func (s *DeploymentFuncsTestSuite) Test_calculateSyncWaves_DiamondDependency() {
 	err := calculateSyncWaves(services)
 	s.NoError(err)
 
-	s.Equal(0, services["serviceD"].(map[string]interface{})["syncWave"])
-	s.Equal(1, services["serviceB"].(map[string]interface{})["syncWave"])
-	s.Equal(1, services["serviceC"].(map[string]interface{})["syncWave"])
-	s.Equal(2, services["serviceA"].(map[string]interface{})["syncWave"])
+	s.Equal(0, services["serviceD"].(map[string]any)["syncWave"])
+	s.Equal(1, services["serviceB"].(map[string]any)["syncWave"])
+	s.Equal(1, services["serviceC"].(map[string]any)["syncWave"])
+	s.Equal(2, services["serviceA"].(map[string]any)["syncWave"])
 }
 
 // ---- buildRuntimeTemplateVars and buildComponentsTemplateVars tests ----
@@ -560,18 +577,18 @@ func TestTemplateVarsTestSuite(t *testing.T) {
 func (s *TemplateVarsTestSuite) SetupSuite() {
 	s.scheme = runtime.NewScheme()
 	s.Require().NoError(clientgoscheme.AddToScheme(s.scheme))
-	s.Require().NoError(v1alpha1.AddToScheme(s.scheme))
+	s.Require().NoError(pmcorev1alpha1.AddToScheme(s.scheme))
 }
 
 // newSubroutineWithProfile creates a DeploymentSubroutine backed by a fake
 // clientRuntime that already contains a profile ConfigMap for the given inst.
-func (s *TemplateVarsTestSuite) newSubroutineWithProfile(profileYAML string, remoteRuntime config.RemoteClusterConfig) (*DeploymentSubroutine, *v1alpha1.PlatformMesh) {
-	inst := &v1alpha1.PlatformMesh{
+func (s *TemplateVarsTestSuite) newSubroutineWithProfile(profileYAML string, remoteRuntime config.RemoteClusterConfig) (*DeploymentSubroutine, *pmcorev1alpha1.PlatformMesh) {
+	inst := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-pm",
 			Namespace: "test-ns",
 		},
-		Spec: v1alpha1.PlatformMeshSpec{},
+		Spec: pmcorev1alpha1.PlatformMeshSpec{},
 	}
 
 	cm := &corev1.ConfigMap{
@@ -651,7 +668,7 @@ components:
 func (s *TemplateVarsTestSuite) Test_buildRuntimeTemplateVars_SpecValuesOverride() {
 	sub, inst := s.newSubroutineWithProfile(minimalProfileYAML, config.RemoteClusterConfig{})
 
-	specValues := map[string]interface{}{"specKey": "fromSpec"}
+	specValues := map[string]any{"specKey": "fromSpec"}
 	raw, err := json.Marshal(specValues)
 	s.Require().NoError(err)
 	inst.Spec.Values = apiextensionsv1.JSON{Raw: raw}
@@ -665,10 +682,10 @@ func (s *TemplateVarsTestSuite) Test_buildRuntimeTemplateVars_SpecValuesOverride
 func (s *TemplateVarsTestSuite) Test_buildRuntimeTemplateVars_OCMConfigMerged() {
 	sub, inst := s.newSubroutineWithProfile(minimalProfileYAML, config.RemoteClusterConfig{})
 
-	inst.Spec.OCM = &v1alpha1.OCMConfig{
-		Repo:      &v1alpha1.RepoConfig{Name: "my-repo"},
-		Component: &v1alpha1.ComponentConfig{Name: "my-component"},
-		ReferencePath: []v1alpha1.ReferencePathElement{
+	inst.Spec.OCM = &pmcorev1alpha1.OCMConfig{
+		Repo:      &pmcorev1alpha1.RepoConfig{Name: "my-repo"},
+		Component: &pmcorev1alpha1.ComponentConfig{Name: "my-component"},
+		ReferencePath: []pmcorev1alpha1.ReferencePathElement{
 			{Name: "path-element"},
 		},
 	}
@@ -676,15 +693,15 @@ func (s *TemplateVarsTestSuite) Test_buildRuntimeTemplateVars_OCMConfigMerged() 
 	result, err := sub.buildRuntimeTemplateVars(context.Background(), inst, apiextensionsv1.JSON{})
 
 	s.Require().NoError(err)
-	ocm, ok := result["ocm"].(map[string]interface{})
+	ocm, ok := result["ocm"].(map[string]any)
 	s.Require().True(ok, "expected ocm key in result")
-	repo, ok := ocm["repo"].(map[string]interface{})
+	repo, ok := ocm["repo"].(map[string]any)
 	s.Require().True(ok, "expected repo in ocm")
 	s.Equal("my-repo", repo["name"])
-	component, ok := ocm["component"].(map[string]interface{})
+	component, ok := ocm["component"].(map[string]any)
 	s.Require().True(ok, "expected component in ocm")
 	s.Equal("my-component", component["name"])
-	refs, ok := ocm["referencePath"].([]interface{})
+	refs, ok := ocm["referencePath"].([]any)
 	s.Require().True(ok, "expected referencePath in ocm")
 	s.Len(refs, 1)
 }
@@ -736,7 +753,7 @@ func (s *TemplateVarsTestSuite) Test_buildRuntimeTemplateVars_MissingConfigMap()
 		cfg:           cfg,
 		cfgOperator:   operatorCfg,
 	}
-	inst := &v1alpha1.PlatformMesh{
+	inst := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-pm", Namespace: "test-ns"},
 	}
 
@@ -758,11 +775,11 @@ components:
 	result, err := sub.buildComponentsTemplateVars(context.Background(), inst, apiextensionsv1.JSON{})
 
 	s.Require().NoError(err)
-	values, ok := result["values"].(map[string]interface{})
+	values, ok := result["values"].(map[string]any)
 	s.Require().True(ok, "expected values key")
-	services, ok := values["services"].(map[string]interface{})
+	services, ok := values["services"].(map[string]any)
 	s.Require().True(ok, "expected services key")
-	myService, ok := services["myservice"].(map[string]interface{})
+	myService, ok := services["myservice"].(map[string]any)
 	s.Require().True(ok, "expected myservice in services")
 	s.Equal(true, myService["enabled"])
 }
@@ -786,9 +803,9 @@ components:
 `
 	sub, inst := s.newSubroutineWithProfile(profileYAML, config.RemoteClusterConfig{})
 
-	specValues := map[string]interface{}{
-		"services": map[string]interface{}{
-			"override": map[string]interface{}{"enabled": true},
+	specValues := map[string]any{
+		"services": map[string]any{
+			"override": map[string]any{"enabled": true},
 		},
 	}
 	raw, err := json.Marshal(specValues)
@@ -798,9 +815,9 @@ components:
 	result, err := sub.buildComponentsTemplateVars(context.Background(), inst, apiextensionsv1.JSON{})
 
 	s.Require().NoError(err)
-	values, ok := result["values"].(map[string]interface{})
+	values, ok := result["values"].(map[string]any)
 	s.Require().True(ok)
-	services, ok := values["services"].(map[string]interface{})
+	services, ok := values["services"].(map[string]any)
 	s.Require().True(ok)
 	// Both base (from profile) and override (from spec.Values) should be present
 	s.Contains(services, "base")
@@ -854,7 +871,7 @@ func (s *TemplateVarsTestSuite) Test_buildComponentsTemplateVars_KubeConfigEnabl
 
 func (s *TemplateVarsTestSuite) Test_buildComponentsTemplateVars_BaseDomainFields() {
 	sub, inst := s.newSubroutineWithProfile(minimalProfileYAML, config.RemoteClusterConfig{})
-	inst.Spec.Exposure = &v1alpha1.ExposureConfig{
+	inst.Spec.Exposure = &pmcorev1alpha1.ExposureConfig{
 		BaseDomain: "my.domain.com",
 		Port:       8443,
 	}
@@ -869,7 +886,7 @@ func (s *TemplateVarsTestSuite) Test_buildComponentsTemplateVars_BaseDomainField
 
 func (s *TemplateVarsTestSuite) Test_buildComponentsTemplateVars_BaseDomainWithDefaultPort() {
 	sub, inst := s.newSubroutineWithProfile(minimalProfileYAML, config.RemoteClusterConfig{})
-	inst.Spec.Exposure = &v1alpha1.ExposureConfig{
+	inst.Spec.Exposure = &pmcorev1alpha1.ExposureConfig{
 		BaseDomain: "my.domain.com",
 	}
 
@@ -886,7 +903,7 @@ func (s *TemplateVarsTestSuite) Test_buildComponentsTemplateVars_BaseDomainWithD
 func (s *DeploymentFuncsTestSuite) Test_loadProfileSections_Success() {
 	scheme := runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = v1alpha1.AddToScheme(scheme)
+	_ = pmcorev1alpha1.AddToScheme(scheme)
 
 	profileYAML := `infra:
   deploymentTechnology: argocd
@@ -903,7 +920,7 @@ components:
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm).Build()
 	sub := &DeploymentSubroutine{clientRuntime: cl}
 
-	inst := &v1alpha1.PlatformMesh{
+	inst := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{Name: "platform-mesh", Namespace: "platform-mesh-system"},
 	}
 
@@ -917,12 +934,12 @@ components:
 func (s *DeploymentFuncsTestSuite) Test_loadProfileSections_MissingConfigMap() {
 	scheme := runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = v1alpha1.AddToScheme(scheme)
+	_ = pmcorev1alpha1.AddToScheme(scheme)
 
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 	sub := &DeploymentSubroutine{clientRuntime: cl}
 
-	inst := &v1alpha1.PlatformMesh{
+	inst := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{Name: "platform-mesh", Namespace: "platform-mesh-system"},
 	}
 
@@ -933,7 +950,7 @@ func (s *DeploymentFuncsTestSuite) Test_loadProfileSections_MissingConfigMap() {
 func (s *DeploymentFuncsTestSuite) Test_loadProfileSections_CustomConfigMapRef() {
 	scheme := runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = v1alpha1.AddToScheme(scheme)
+	_ = pmcorev1alpha1.AddToScheme(scheme)
 
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Name: "custom-profile", Namespace: "other-ns"},
@@ -942,10 +959,10 @@ func (s *DeploymentFuncsTestSuite) Test_loadProfileSections_CustomConfigMapRef()
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm).Build()
 	sub := &DeploymentSubroutine{clientRuntime: cl}
 
-	inst := &v1alpha1.PlatformMesh{
+	inst := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{Name: "platform-mesh", Namespace: "platform-mesh-system"},
-		Spec: v1alpha1.PlatformMeshSpec{
-			ProfileConfigMap: &v1alpha1.ConfigMapReference{Name: "custom-profile", Namespace: "other-ns"},
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			ProfileConfigMap: &pmcorev1alpha1.ConfigMapReference{Name: "custom-profile", Namespace: "other-ns"},
 		},
 	}
 

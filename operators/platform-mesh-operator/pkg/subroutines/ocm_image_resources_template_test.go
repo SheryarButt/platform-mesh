@@ -1,17 +1,34 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package subroutines
 
 import (
 	"path/filepath"
 	"testing"
 
-	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"go.platform-mesh.io/golang-commons/logger"
 )
 
 // renderGotemplateDocs renders a gotemplates/ file through the operator's own
 // renderTemplateFile and returns every YAML document as a generic map.
-func renderGotemplateDocs(t *testing.T, relPath string, data map[string]interface{}) []map[string]interface{} {
+func renderGotemplateDocs(t *testing.T, relPath string, data map[string]any) []map[string]any {
 	t.Helper()
 	path := filepath.Join("..", "..", "gotemplates", filepath.FromSlash(relPath))
 
@@ -23,7 +40,7 @@ func renderGotemplateDocs(t *testing.T, relPath string, data map[string]interfac
 	objs, err := (&DeploymentSubroutine{}).renderTemplateFile(path, data, log)
 	require.NoError(t, err)
 
-	out := make([]map[string]interface{}, len(objs))
+	out := make([]map[string]any, len(objs))
 	for i, obj := range objs {
 		out[i] = obj.Object
 	}
@@ -31,20 +48,20 @@ func renderGotemplateDocs(t *testing.T, relPath string, data map[string]interfac
 }
 
 func Test_OcmImageResourcesTemplate(t *testing.T) {
-	data := map[string]interface{}{
+	data := map[string]any{
 		"releaseNamespace": "platform-mesh-system",
-		"values": map[string]interface{}{
-			"ocm": map[string]interface{}{
-				"component":     map[string]interface{}{"name": "platform-mesh"},
-				"repo":          map[string]interface{}{"name": "platform-mesh"},
-				"referencePath": []interface{}{map[string]interface{}{"name": "github.com/platform-mesh/account-operator"}},
+		"values": map[string]any{
+			"ocm": map[string]any{
+				"component":     map[string]any{"name": "platform-mesh"},
+				"repo":          map[string]any{"name": "platform-mesh"},
+				"referencePath": []any{map[string]any{"name": "github.com/platform-mesh/account-operator"}},
 			},
-			"services": map[string]interface{}{
-				"account-operator": map[string]interface{}{
+			"services": map[string]any{
+				"account-operator": map[string]any{
 					"enabled": true,
-					"imageResources": []interface{}{
-						map[string]interface{}{
-							"annotations": map[string]interface{}{
+					"imageResources": []any{
+						map[string]any{
+							"annotations": map[string]any{
 								"repo":     "oci",
 								"artifact": "image",
 								"for":      "account-operator",
@@ -60,13 +77,13 @@ func Test_OcmImageResourcesTemplate(t *testing.T) {
 	require.Len(t, docs, 1, "one imageResource must render exactly one Resource")
 	obj := docs[0]
 
-	metadata := obj["metadata"].(map[string]interface{})
+	metadata := obj["metadata"].(map[string]any)
 	assert.Equal(t, "account-operator-image", metadata["name"])
-	annotations := metadata["annotations"].(map[string]interface{})
+	annotations := metadata["annotations"].(map[string]any)
 	assert.Equal(t, "account-operator", annotations["for"])
 
-	spec := obj["spec"].(map[string]interface{})
-	asf, ok := spec["additionalStatusFields"].(map[string]interface{})
+	spec := obj["spec"].(map[string]any)
+	asf, ok := spec["additionalStatusFields"].(map[string]any)
 	require.True(t, ok, "spec.additionalStatusFields must be rendered")
 	assert.Equal(t, "resource.access.imageReference.toOCI().registry", asf["registry"])
 	assert.Equal(t, "resource.access.imageReference.toOCI().repository", asf["repository"])

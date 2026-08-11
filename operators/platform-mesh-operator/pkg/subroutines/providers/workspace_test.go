@@ -1,5 +1,5 @@
 /*
-Copyright 2026.
+Copyright The Platform Mesh Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,22 +21,24 @@ import (
 	"errors"
 	"testing"
 
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
-	"github.com/platform-mesh/golang-commons/context/keys"
-	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
+	"go.platform-mesh.io/golang-commons/context/keys"
+	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/mocks"
+
 	corev1 "k8s.io/api/core/v1"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 
-	providersv1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
+	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 )
 
 type WorkspaceTestSuite struct {
@@ -88,8 +90,8 @@ func (s *WorkspaceTestSuite) newCtx() context.Context {
 	return context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 }
 
-func (s *WorkspaceTestSuite) newProvider() *providersv1alpha1.Provider {
-	return &providersv1alpha1.Provider{
+func (s *WorkspaceTestSuite) newProvider() *pmprovidersv1alpha1.Provider {
+	return &pmprovidersv1alpha1.Provider{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "wildwest",
 			Annotations: map[string]string{
@@ -102,7 +104,7 @@ func (s *WorkspaceTestSuite) newProvider() *providersv1alpha1.Provider {
 func (s *WorkspaceTestSuite) mockAdminSecret() {
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "kcp-admin", Namespace: "platform-mesh-system"}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				"ca.crt":  []byte("fake-ca"),
@@ -153,7 +155,7 @@ func (s *WorkspaceTestSuite) TestProcess() {
 				// CreateOrUpdate: Get → NotFound → Create fails
 				s.kcpClientMock.EXPECT().
 					Get(mock.Anything, types.NamespacedName{Name: wsName}, mock.AnythingOfType("*v1alpha1.Workspace")).
-					Return(kerrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, wsName))
+					Return(apierrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, wsName))
 				s.kcpClientMock.EXPECT().
 					Create(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace"), mock.Anything).
 					Return(errors.New("create failed"))
@@ -169,7 +171,7 @@ func (s *WorkspaceTestSuite) TestProcess() {
 				// CreateOrUpdate: Get → NotFound → Create succeeds
 				s.kcpClientMock.EXPECT().
 					Get(mock.Anything, types.NamespacedName{Name: wsName}, mock.AnythingOfType("*v1alpha1.Workspace")).
-					Return(kerrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, wsName)).Once()
+					Return(apierrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, wsName)).Once()
 				s.kcpClientMock.EXPECT().
 					Create(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace"), mock.Anything).
 					Return(nil)
@@ -189,21 +191,21 @@ func (s *WorkspaceTestSuite) TestProcess() {
 				// CreateOrUpdate: Get → NotFound → Create succeeds
 				s.kcpClientMock.EXPECT().
 					Get(mock.Anything, types.NamespacedName{Name: wsName}, mock.AnythingOfType("*v1alpha1.Workspace")).
-					Return(kerrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, wsName)).Once()
+					Return(apierrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, wsName)).Once()
 				s.kcpClientMock.EXPECT().
 					Create(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace"), mock.Anything).
 					Return(nil)
 				// Readiness Get: workspace not ready
 				s.kcpClientMock.EXPECT().
 					Get(mock.Anything, types.NamespacedName{Name: wsName}, mock.AnythingOfType("*v1alpha1.Workspace")).
-					RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+					RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 						ws := obj.(*kcptenancyv1alpha.Workspace)
 						ws.Status.Phase = ""
 						return nil
 					})
 			},
 			wantRequeue: true,
-			wantPhase:   providersv1alpha1.ProviderPhaseProvisioningWorkspace,
+			wantPhase:   pmprovidersv1alpha1.ProviderPhaseProvisioningWorkspace,
 		},
 		{
 			name: "happy path workspace ready",
@@ -214,25 +216,24 @@ func (s *WorkspaceTestSuite) TestProcess() {
 				// CreateOrUpdate: Get → NotFound → Create succeeds
 				s.kcpClientMock.EXPECT().
 					Get(mock.Anything, types.NamespacedName{Name: wsName}, mock.AnythingOfType("*v1alpha1.Workspace")).
-					Return(kerrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, wsName)).Once()
+					Return(apierrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, wsName)).Once()
 				s.kcpClientMock.EXPECT().
 					Create(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace"), mock.Anything).
 					Return(nil)
 				// Readiness Get: workspace Ready
 				s.kcpClientMock.EXPECT().
 					Get(mock.Anything, types.NamespacedName{Name: wsName}, mock.AnythingOfType("*v1alpha1.Workspace")).
-					RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+					RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 						ws := obj.(*kcptenancyv1alpha.Workspace)
 						ws.Status.Phase = "Ready"
 						return nil
 					})
 			},
-			wantPhase: providersv1alpha1.ProviderPhasePending,
+			wantPhase: pmprovidersv1alpha1.ProviderPhasePending,
 		},
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		s.Run(tc.name, func() {
 			s.SetupTest()
 			inst := s.newProvider()
@@ -309,7 +310,7 @@ func (s *WorkspaceTestSuite) TestFinalize() {
 					Return(s.kcpClientMock, nil)
 				s.kcpClientMock.EXPECT().
 					Delete(mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace"), mock.Anything).
-					Return(kerrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, wsName))
+					Return(apierrors.NewNotFound(schema.GroupResource{Resource: "workspaces"}, wsName))
 			},
 		},
 		{
@@ -327,7 +328,6 @@ func (s *WorkspaceTestSuite) TestFinalize() {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		s.Run(tc.name, func() {
 			s.SetupTest()
 			inst := s.newProvider()

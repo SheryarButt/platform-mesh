@@ -1,3 +1,21 @@
+//go:build e2e
+
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package e2e
 
 import (
@@ -7,12 +25,12 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/suite"
+
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
-
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func TestKindSuite(t *testing.T) {
@@ -23,8 +41,8 @@ func (s *KindTestSuite) Test01ResourceReady() {
 	ctx := context.TODO()
 
 	s.Eventually(func() bool {
-		pm := corev1alpha1.PlatformMesh{}
-		err := s.client.Get(ctx, client.ObjectKey{
+		pm := pmcorev1alpha1.PlatformMesh{}
+		err := s.client.Get(ctx, ctrlruntimeclient.ObjectKey{
 			Name:      "platform-mesh",
 			Namespace: "platform-mesh-system",
 		}, &pm)
@@ -41,30 +59,29 @@ func (s *KindTestSuite) Test01ResourceReady() {
 		}
 		return false
 	}, 25*time.Minute, 10*time.Second)
-
 }
 
 func (s *KindTestSuite) Test02ExtraWorkspaces() {
 	ctx := context.TODO()
 
-	pm := corev1alpha1.PlatformMesh{}
-	err := s.client.Get(ctx, client.ObjectKey{
+	pm := pmcorev1alpha1.PlatformMesh{}
+	err := s.client.Get(ctx, ctrlruntimeclient.ObjectKey{
 		Name:      "platform-mesh",
 		Namespace: "platform-mesh-system",
 	}, &pm)
 	s.Assert().NoError(err, "Failed to get Platform Mesh resource")
 
-	pm.Spec.Kcp.ExtraWorkspaces = []corev1alpha1.WorkspaceDeclaration{
+	pm.Spec.Kcp.ExtraWorkspaces = []pmcorev1alpha1.WorkspaceDeclaration{
 		{
 			Path: "root:orgs:extra1",
-			Type: corev1alpha1.WorkspaceTypeReference{
+			Type: pmcorev1alpha1.WorkspaceTypeReference{
 				Name: "org",
 				Path: "root",
 			},
 		},
 	}
 	pm.Spec.Kcp.ExtraProviderConnections = append(pm.Spec.Kcp.ExtraProviderConnections,
-		corev1alpha1.ProviderConnection{
+		pmcorev1alpha1.ProviderConnection{
 			Path:      "root:orgs:extra1",
 			Secret:    "extra1-kubeconfig",
 			External:  true,
@@ -76,8 +93,8 @@ func (s *KindTestSuite) Test02ExtraWorkspaces() {
 	s.Assert().NoError(err, "Failed to update Platform Mesh resource")
 
 	s.Eventually(func() bool {
-		updatedPM := corev1alpha1.PlatformMesh{}
-		err := s.client.Get(ctx, client.ObjectKey{
+		updatedPM := pmcorev1alpha1.PlatformMesh{}
+		err := s.client.Get(ctx, ctrlruntimeclient.ObjectKey{
 			Name:      "platform-mesh",
 			Namespace: "platform-mesh-system",
 		}, &updatedPM)
@@ -95,7 +112,7 @@ func (s *KindTestSuite) Test02ExtraWorkspaces() {
 
 		// get extra1 secret
 		secret := &corev1.Secret{}
-		err = s.client.Get(ctx, client.ObjectKey{
+		err = s.client.Get(ctx, ctrlruntimeclient.ObjectKey{
 			Name:      "extra1-kubeconfig",
 			Namespace: "platform-mesh-system",
 		}, secret)
@@ -106,7 +123,5 @@ func (s *KindTestSuite) Test02ExtraWorkspaces() {
 
 		s.logger.Info().Msg("PlatformMesh resource is ready and extra1-kubeconfig secret exists")
 		return true
-
 	}, 20*time.Minute, 10*time.Second)
-
 }

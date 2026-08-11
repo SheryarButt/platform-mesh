@@ -1,3 +1,21 @@
+//go:build e2e
+
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package e2e
 
 import (
@@ -12,48 +30,46 @@ import (
 
 	certmanager "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	"github.com/creasty/defaults"
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
-	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
-	kcpapisv1alpha2 "github.com/kcp-dev/sdk/apis/apis/v1alpha2"
-	"github.com/platform-mesh/golang-commons/context/keys"
+	fluxcdv2 "github.com/fluxcd/helm-controller/api/v2"
+	fluxcdv1 "github.com/fluxcd/source-controller/api/v1beta2"
+	"github.com/stretchr/testify/suite"
+
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
+	pmconfig "go.platform-mesh.io/golang-commons/config"
+	"go.platform-mesh.io/golang-commons/context/keys"
+	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/internal/controller"
+	providerscontroller "go.platform-mesh.io/platform-mesh-operator/internal/controller/providers"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/kapply"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrl "sigs.k8s.io/controller-runtime"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	mcmultiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
 
-	"github.com/platform-mesh/golang-commons/logger"
-	"github.com/stretchr/testify/suite"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	ctrl "sigs.k8s.io/controller-runtime"
-	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
-
-	providersv1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/kapply"
-
-	fluxcdv2 "github.com/fluxcd/helm-controller/api/v2"
-	fluxcdv1 "github.com/fluxcd/source-controller/api/v1beta2"
-	pmconfig "github.com/platform-mesh/golang-commons/config"
-	"k8s.io/client-go/rest"
-
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
-	providerscontroller "github.com/platform-mesh/platform-mesh-operator/internal/controller/providers"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
-
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
+	kcpapisv1alpha2 "github.com/kcp-dev/sdk/apis/apis/v1alpha2"
 )
 
 type KindTestSuite struct {
 	suite.Suite
-	client client.Client
+	client ctrlruntimeclient.Client
 	config *rest.Config
 	scheme *runtime.Scheme
 	logger *logger.Logger
@@ -73,6 +89,22 @@ var defaultKcpOperatorConfig = config.KCPConfig{
 	FrontProxyName:         "frontproxy",
 	FrontProxyPort:         "8443",
 	ClusterAdminSecretName: "kcp-cluster-admin-client-cert",
+}
+
+func kindBinary() string {
+	if bin := os.Getenv("KIND_BINARY"); bin != "" {
+		return bin
+	}
+
+	return "kind"
+}
+
+func mkcertBinary() string {
+	if bin := os.Getenv("MKCERT_BINARY"); bin != "" {
+		return bin
+	}
+
+	return "mkcert"
 }
 
 // runCommand executes a shell command and returns its output.
@@ -96,7 +128,7 @@ func runCommand(name string, args ...string) ([]byte, error) {
 
 // checkClusterExists checks if a Kind cluster with the given name exists.
 func checkClusterExists(clusterName string) (bool, error) {
-	output, err := runCommand("kind", "get", "clusters")
+	output, err := runCommand(kindBinary(), "get", "clusters")
 	if err != nil {
 		return false, fmt.Errorf("failed to get Kind clusters: %w", err)
 	}
@@ -108,13 +140,13 @@ func checkClusterExists(clusterName string) (bool, error) {
 }
 
 // createKubernetesClient creates a Kubernetes client from the given kubeconfig.
-func createKubernetesClient(kubeconfig []byte, s *runtime.Scheme) (client.Client, *rest.Config, error) {
+func createKubernetesClient(kubeconfig []byte, s *runtime.Scheme) (ctrlruntimeclient.Client, *rest.Config, error) {
 	config, err := clientcmd.RESTConfigFromKubeConfig(kubeconfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create REST config from kubeconfig: %w", err)
 	}
 
-	k8sClient, err := client.New(config, client.Options{
+	k8sClient, err := ctrlruntimeclient.New(config, ctrlruntimeclient.Options{
 		Scheme: s,
 	})
 	if err != nil {
@@ -129,14 +161,16 @@ func (s *KindTestSuite) createLogger() error {
 	logConfig.NoJSON = true
 	logConfig.Level = "debug"
 	logConfig.Name = "KindTestSuite"
-	if log, err := logger.New(logConfig); err != nil {
-		return err
-	} else {
-		s.logger = log
-		ctrl.SetLogger(s.logger.Logr())
-	}
-	return nil
 
+	log, err := logger.New(logConfig)
+	if err != nil {
+		return err
+	}
+
+	s.logger = log
+	ctrl.SetLogger(s.logger.Logr())
+
+	return nil
 }
 
 func (s *KindTestSuite) detectContainerRuntime() error {
@@ -162,9 +196,9 @@ func (s *KindTestSuite) detectContainerRuntime() error {
 func (s *KindTestSuite) createKindCluster() error {
 	// Check if Kind cluster already exists if not create it
 	s.logger.Info().Msg("Checking if Kind cluster exists...")
-	var clusterExists bool
-	var err error
-	if clusterExists, err = checkClusterExists(clusterName); err != nil {
+
+	clusterExists, err := checkClusterExists(clusterName)
+	if err != nil {
 		return err
 	}
 
@@ -180,12 +214,12 @@ func (s *KindTestSuite) createKindCluster() error {
 			return errors.Join(err, errors.New(string(out)))
 		}
 
-		if out, err := runCommand("kind", "--version"); err != nil {
+		if out, err := runCommand(kindBinary(), "--version"); err != nil {
 			return errors.Join(err, errors.New(string(out)))
 		}
 
 		s.logger.Info().Msg("Creating Kind cluster...")
-		if _, err = runCommand("kind", "create", "cluster", "--config", "../../../kind-config.yaml", "--name", clusterName, "--image=kindest/node:v1.30.2"); err != nil {
+		if _, err = runCommand(kindBinary(), "create", "cluster", "--config", "../../../kind-config.yaml", "--name", clusterName, "--image=kindest/node:v1.30.2"); err != nil {
 			return err
 		}
 	}
@@ -193,13 +227,13 @@ func (s *KindTestSuite) createKindCluster() error {
 	// Get kubeconfig for the Kind cluster
 	s.logger.Info().Msg("Retrieving kubeconfig for Kind cluster...")
 	var kubeconfig []byte
-	if kubeconfig, err = runCommand("kind", "get", "kubeconfig", "--name", clusterName); err != nil {
+	if kubeconfig, err = runCommand(kindBinary(), "get", "kubeconfig", "--name", clusterName); err != nil {
 		return err
 	}
 
 	// register scheme
 	s.scheme = runtime.NewScheme()
-	utilruntime.Must(v1alpha1.AddToScheme(s.scheme))
+	utilruntime.Must(pmcorev1alpha1.AddToScheme(s.scheme))
 	utilruntime.Must(fluxcdv2.AddToScheme(s.scheme))
 	utilruntime.Must(corev1.AddToScheme(s.scheme))
 	utilruntime.Must(rbacv1.AddToScheme(s.scheme))
@@ -208,7 +242,7 @@ func (s *KindTestSuite) createKindCluster() error {
 	utilruntime.Must(fluxcdv1.AddToScheme(s.scheme))
 	utilruntime.Must(fluxcdv2.AddToScheme(s.scheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(s.scheme))
-	utilruntime.Must(providersv1alpha1.AddToScheme(s.scheme))
+	utilruntime.Must(pmprovidersv1alpha1.AddToScheme(s.scheme))
 	utilruntime.Must(kcpapisv1alpha1.AddToScheme(s.scheme))
 	utilruntime.Must(kcpapisv1alpha2.AddToScheme(s.scheme))
 	utilruntime.Must(kcptenancyv1alpha.AddToScheme(s.scheme))
@@ -222,15 +256,16 @@ func (s *KindTestSuite) createKindCluster() error {
 
 	// Pass kubeconfig directly to the Kubernetes client
 	s.logger.Info().Msg("Creating Kubernetes client using kubeconfig...")
-	if cl, configClient, err := createKubernetesClient(kubeconfig, s.scheme); err != nil {
+	cl, configClient, err := createKubernetesClient(kubeconfig, s.scheme)
+	if err != nil {
 		return err
-	} else {
-		s.client = cl
-		s.config = configClient
 	}
 
+	s.client = cl
+	s.config = configClient
+
 	pods := &corev1.PodList{}
-	err = s.client.List(context.TODO(), pods, &client.ListOptions{
+	err = s.client.List(context.TODO(), pods, &ctrlruntimeclient.ListOptions{
 		Namespace: "kube-system",
 	})
 	if err != nil {
@@ -246,10 +281,10 @@ func (s *KindTestSuite) createCerts() ([]byte, error) {
 	// mkcert
 	_, err := runCommand("mkdir", "-p", "certs")
 	s.Require().NoError(err, "Error creating certs directory")
-	if _, err = runCommand("../../../bin/mkcert", "-cert-file=certs/cert.crt", "-key-file=certs/cert.key", "portal.localhost", "*.portal.localhost", "localhost"); err != nil {
+	if _, err = runCommand(mkcertBinary(), "-cert-file=certs/cert.crt", "-key-file=certs/cert.key", "portal.localhost", "*.portal.localhost", "localhost"); err != nil {
 		return nil, err
 	}
-	dirRootPath, err := runCommand("../../../bin/mkcert", "-CAROOT")
+	dirRootPath, err := runCommand(mkcertBinary(), "-CAROOT")
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to get mkcert CAROOT")
 		return nil, err
@@ -357,9 +392,9 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		},
 		Type: corev1.SecretTypeOpaque,
 	}
-	createIfNotExists := func(obj client.Object) error {
+	createIfNotExists := func(obj ctrlruntimeclient.Object) error {
 		if err := s.client.Create(ctx, obj); err != nil {
-			if k8serrors.IsAlreadyExists(err) {
+			if apierrors.IsAlreadyExists(err) {
 				return nil
 			}
 			return err
@@ -367,7 +402,7 @@ func (s *KindTestSuite) createSecrets(ctx context.Context, dirRootPath []byte) e
 		return nil
 	}
 
-	secrets := []client.Object{
+	secrets := []ctrlruntimeclient.Object{
 		keycloak_admin,
 		domain_certificate,
 		rbac_webhook_ca,
@@ -391,7 +426,7 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 	avail := s.Eventually(func() bool {
 		deployment := &appsv1.Deployment{}
 
-		err := s.client.Get(ctx, client.ObjectKey{
+		err := s.client.Get(ctx, ctrlruntimeclient.ObjectKey{
 			Name:      "helm-controller",
 			Namespace: "flux-system",
 		}, deployment)
@@ -401,7 +436,7 @@ func (s *KindTestSuite) createReleases(ctx context.Context) error {
 		}
 		helmControllerReady := (deployment.Status.ReadyReplicas > 0)
 
-		err = s.client.Get(ctx, client.ObjectKey{
+		err = s.client.Get(ctx, ctrlruntimeclient.ObjectKey{
 			Name:      "source-controller",
 			Namespace: "flux-system",
 		}, deployment)
@@ -493,8 +528,8 @@ func (s *KindTestSuite) SetupSuite() {
 	}
 
 	avail := s.Eventually(func() bool {
-		pm := v1alpha1.PlatformMesh{}
-		err := s.client.Get(ctx, client.ObjectKey{
+		pm := pmcorev1alpha1.PlatformMesh{}
+		err := s.client.Get(ctx, ctrlruntimeclient.ObjectKey{
 			Name:      "platform-mesh",
 			Namespace: "platform-mesh-system",
 		}, &pm)
@@ -518,9 +553,9 @@ func (s *KindTestSuite) SetupSuite() {
 func (s *KindTestSuite) waitForCRDEstablished(ctx context.Context, crdName string, timeout time.Duration) error {
 	return wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		crd := &apiextensionsv1.CustomResourceDefinition{}
-		err := s.client.Get(ctx, client.ObjectKey{Name: crdName}, crd)
+		err := s.client.Get(ctx, ctrlruntimeclient.ObjectKey{Name: crdName}, crd)
 		if err != nil {
-			return false, nil
+			return false, nil //nolint:nilerr
 		}
 
 		for _, condition := range crd.Status.Conditions {
@@ -548,7 +583,6 @@ func (s *KindTestSuite) applyOCM(ctx context.Context) error {
 }
 
 func (s *KindTestSuite) applyKustomize(ctx context.Context) error {
-
 	clients, err := kapply.NewClients(s.config)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to create kapply clients")
@@ -590,7 +624,6 @@ func (s *KindTestSuite) InstallCRDs(ctx context.Context) error {
 }
 
 func (s *KindTestSuite) runPlatformMeshOperator(ctx context.Context) {
-
 	appConfig := config.NewOperatorConfig()
 
 	err := defaults.Set(&appConfig)

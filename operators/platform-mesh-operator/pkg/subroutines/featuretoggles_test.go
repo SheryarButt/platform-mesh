@@ -1,24 +1,43 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package subroutines
 
 import (
 	"context"
 	"testing"
 
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
-	"github.com/platform-mesh/golang-commons/context/keys"
-	"github.com/platform-mesh/golang-commons/logger"
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
-	"github.com/platform-mesh/subroutines"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	"go.platform-mesh.io/golang-commons/context/keys"
+	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/mocks"
+	"go.platform-mesh.io/subroutines"
+
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+
+	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 )
 
 type FeaturesTestSuite struct {
@@ -88,7 +107,7 @@ users:
 			Name:      operatorCfg.KCP.ClusterAdminSecretName,
 			Namespace: operatorCfg.KCP.Namespace,
 		}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				"ca.crt":     []byte("test-ca-data"),
@@ -111,13 +130,13 @@ users:
 		Maybe()
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			unstructuredObj := obj.(*unstructured.Unstructured)
-			unstructuredObj.Object = map[string]interface{}{
-				"status": map[string]interface{}{
+			unstructuredObj.Object = map[string]any{
+				"status": map[string]any{
 					"phase": "Ready",
-					"conditions": []interface{}{
-						map[string]interface{}{
+					"conditions": []any{
+						map[string]any{
 							"type":   "Available",
 							"status": "True",
 						},
@@ -132,7 +151,7 @@ users:
 
 	mockKcpClient.EXPECT().
 		Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1alpha1.Workspace")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			ws := obj.(*kcptenancyv1alpha.Workspace)
 			ws.Status.Phase = "Ready"
 			return nil
@@ -176,9 +195,9 @@ func (s *FeaturesTestSuite) TestProcess() {
 			s.resetFeatureToggleTest()
 			s.setupFeatureToggleApplyMocks(operatorCfg, 1)
 
-			result, err := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
-				Spec: corev1alpha1.PlatformMeshSpec{
-					FeatureToggles: []corev1alpha1.FeatureToggle{
+			result, err := s.testObj.Process(ctx, &pmcorev1alpha1.PlatformMesh{
+				Spec: pmcorev1alpha1.PlatformMeshSpec{
+					FeatureToggles: []pmcorev1alpha1.FeatureToggle{
 						{Name: tc.toggle, Parameters: map[string]string{}},
 					},
 				},
@@ -191,14 +210,14 @@ func (s *FeaturesTestSuite) TestProcess() {
 	s.Run("all manifest-backed toggles in one reconcile", func() {
 		s.resetFeatureToggleTest()
 		s.setupFeatureToggleApplyMocks(operatorCfg, len(manifestBackedToggles))
-		toggles := make([]corev1alpha1.FeatureToggle, 0, len(manifestBackedToggles))
+		toggles := make([]pmcorev1alpha1.FeatureToggle, 0, len(manifestBackedToggles))
 		for _, tc := range manifestBackedToggles {
-			toggles = append(toggles, corev1alpha1.FeatureToggle{
+			toggles = append(toggles, pmcorev1alpha1.FeatureToggle{
 				Name: tc.toggle, Parameters: map[string]string{},
 			})
 		}
-		result, err := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
-			Spec: corev1alpha1.PlatformMeshSpec{FeatureToggles: toggles},
+		result, err := s.testObj.Process(ctx, &pmcorev1alpha1.PlatformMesh{
+			Spec: pmcorev1alpha1.PlatformMeshSpec{FeatureToggles: toggles},
 		})
 		s.Assert().NoError(err)
 		s.Assert().Equal(subroutines.OK(), result)
@@ -206,9 +225,9 @@ func (s *FeaturesTestSuite) TestProcess() {
 
 	s.Run("feature-disable-email-verification", func() {
 		s.resetFeatureToggleTest()
-		result, err := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
-			Spec: corev1alpha1.PlatformMeshSpec{
-				FeatureToggles: []corev1alpha1.FeatureToggle{
+		result, err := s.testObj.Process(ctx, &pmcorev1alpha1.PlatformMesh{
+			Spec: pmcorev1alpha1.PlatformMeshSpec{
+				FeatureToggles: []pmcorev1alpha1.FeatureToggle{
 					{Name: "feature-disable-email-verification"},
 				},
 			},
@@ -219,9 +238,9 @@ func (s *FeaturesTestSuite) TestProcess() {
 
 	s.Run("unknown feature toggle hits default branch", func() {
 		s.resetFeatureToggleTest()
-		result, err := s.testObj.Process(ctx, &corev1alpha1.PlatformMesh{
-			Spec: corev1alpha1.PlatformMeshSpec{
-				FeatureToggles: []corev1alpha1.FeatureToggle{
+		result, err := s.testObj.Process(ctx, &pmcorev1alpha1.PlatformMesh{
+			Spec: pmcorev1alpha1.PlatformMeshSpec{
+				FeatureToggles: []pmcorev1alpha1.FeatureToggle{
 					{Name: "unknown-toggle-name"},
 				},
 			},

@@ -1,12 +1,29 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package merge
 
 import (
 	"github.com/mitchellh/copystructure"
-	"github.com/platform-mesh/golang-commons/errors"
-	"github.com/platform-mesh/golang-commons/logger"
+
+	"go.platform-mesh.io/golang-commons/errors"
+	"go.platform-mesh.io/golang-commons/logger"
 )
 
-func MergeMaps(base, overwriteMap map[string]interface{}, log *logger.Logger) (map[string]interface{}, error) {
+func MergeMaps(base, overwriteMap map[string]any, log *logger.Logger) (map[string]any, error) {
 	if overwriteMap == nil {
 		return base, nil
 	}
@@ -14,16 +31,16 @@ func MergeMaps(base, overwriteMap map[string]interface{}, log *logger.Logger) (m
 	if err != nil {
 		return nil, err
 	}
-	result, ok := overwriteCopy.(map[string]interface{})
+	result, ok := overwriteCopy.(map[string]any)
 	if !ok {
 		return nil, errors.New("failed to merge maps")
 	}
 
 	for key, val := range base {
 		if value, ok := result[key]; ok {
-			if dest, ok := value.(map[string]interface{}); ok {
+			if dest, ok := value.(map[string]any); ok {
 				// if result[key] is an object, merge overwriteMaps's val object into result[key].
-				src, ok := val.(map[string]interface{})
+				src, ok := val.(map[string]any)
 				if !ok {
 					// If the original value is nil, there is nothing to merge, so we don't print the warning
 					if val != nil {
@@ -41,7 +58,7 @@ func MergeMaps(base, overwriteMap map[string]interface{}, log *logger.Logger) (m
 	return result, nil
 }
 
-func mergeObject(dst, src map[string]interface{}, log *logger.Logger) map[string]interface{} {
+func mergeObject(dst, src map[string]any, log *logger.Logger) map[string]any {
 	if src == nil {
 		return dst
 	}
@@ -56,7 +73,7 @@ func mergeObject(dst, src map[string]interface{}, log *logger.Logger) map[string
 		} else if isObject(val) {
 			if isObject(dv) {
 				// Both are objects, recursively merge (dst has higher precedence)
-				mergeObject(dv.(map[string]interface{}), val.(map[string]interface{}), log)
+				mergeObject(dv.(map[string]any), val.(map[string]any), log)
 			} else {
 				// src is object but dst is not, keep dst (dst has higher precedence)
 				if val != nil {
@@ -73,7 +90,7 @@ func mergeObject(dst, src map[string]interface{}, log *logger.Logger) map[string
 	return dst
 }
 
-func isObject(v interface{}) bool {
-	_, ok := v.(map[string]interface{})
+func isObject(v any) bool {
+	_, ok := v.(map[string]any)
 	return ok
 }

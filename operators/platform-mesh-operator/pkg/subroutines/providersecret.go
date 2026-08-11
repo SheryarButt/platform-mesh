@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package subroutines
 
 import (
@@ -7,46 +23,46 @@ import (
 	"path"
 	"time"
 
-	pmconfig "github.com/platform-mesh/golang-commons/config"
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	pmconfig "go.platform-mesh.io/golang-commons/config"
+	gcerrors "go.platform-mesh.io/golang-commons/errors"
+	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/internal/metrics"
+	"go.platform-mesh.io/subroutines"
+
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/utils/ptr"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
-	gcerrors "github.com/platform-mesh/golang-commons/errors"
-	"github.com/platform-mesh/golang-commons/logger"
-	"github.com/platform-mesh/subroutines"
-	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	"github.com/platform-mesh/platform-mesh-operator/internal/metrics"
 )
 
 // HelmGetter is an interface for getting Helm releases
 type HelmGetter interface {
-	GetRelease(ctx context.Context, client client.Client, name, ns string) (*unstructured.Unstructured, error)
+	GetRelease(ctx context.Context, client ctrlruntimeclient.Client, name, ns string) (*unstructured.Unstructured, error)
 }
 
 // DefaultHelmGetter is the default implementation of HelmGetter
 type DefaultHelmGetter struct{}
 
 // GetRelease implements HelmGetter interface
-func (g DefaultHelmGetter) GetRelease(ctx context.Context, cli client.Client, name, ns string) (*unstructured.Unstructured, error) {
+func (g DefaultHelmGetter) GetRelease(ctx context.Context, cli ctrlruntimeclient.Client, name, ns string) (*unstructured.Unstructured, error) {
 	return getHelmRelease(ctx, cli, name, ns)
 }
 
 func NewProviderSecretSubroutine(
-	client client.Client,
+	client ctrlruntimeclient.Client,
 	helper KcpHelper,
 	helm HelmGetter,
 	kcpUrl string,
@@ -61,7 +77,7 @@ func NewProviderSecretSubroutine(
 }
 
 type ProvidersecretSubroutine struct {
-	client    client.Client
+	client    ctrlruntimeclient.Client
 	kcpHelper KcpHelper
 	kcpUrl    string
 	helm      HelmGetter
@@ -74,13 +90,13 @@ const (
 )
 
 func (r *ProvidersecretSubroutine) Finalize(
-	ctx context.Context, runtimeObj client.Object,
+	ctx context.Context, runtimeObj ctrlruntimeclient.Object,
 ) (subroutines.Result, error) {
 	return subroutines.OK(), nil // TODO: Implement
 }
 
 func (r *ProvidersecretSubroutine) Process(
-	ctx context.Context, runtimeObj client.Object,
+	ctx context.Context, runtimeObj ctrlruntimeclient.Object,
 ) (res subroutines.Result, err error) {
 	start := time.Now()
 	defer func() {
@@ -98,7 +114,7 @@ func (r *ProvidersecretSubroutine) Process(
 		return subroutines.StopWithRequeue(DefaultRequeueInterval, "client scheme is nil"), nil
 	}
 
-	instance := runtimeObj.(*corev1alpha1.PlatformMesh)
+	instance := runtimeObj.(*pmcorev1alpha1.PlatformMesh)
 	log := logger.LoadLoggerFromContext(ctx)
 
 	// Wait for kcp release to be ready before continuing
@@ -122,7 +138,7 @@ func (r *ProvidersecretSubroutine) Process(
 	}
 
 	// Determine which provider connections to use based on configuration:
-	var providers []corev1alpha1.ProviderConnection
+	var providers []pmcorev1alpha1.ProviderConnection
 	hasProv := len(instance.Spec.Kcp.ProviderConnections) > 0
 	hasExtraProv := len(instance.Spec.Kcp.ExtraProviderConnections) > 0
 
@@ -142,7 +158,7 @@ func (r *ProvidersecretSubroutine) Process(
 	}
 
 	if HasFeatureToggle(instance, "feature-enable-terminal-controller-manager") == "true" {
-		providers = append(providers, corev1alpha1.ProviderConnection{
+		providers = append(providers, pmcorev1alpha1.ProviderConnection{
 			Path:      "root:platform-mesh-system",
 			Secret:    "terminal-controller-manager-kubeconfig",
 			AdminAuth: ptr.To(true),
@@ -164,7 +180,7 @@ func (r *ProvidersecretSubroutine) Process(
 	return subroutines.OK(), nil
 }
 
-func (r *ProvidersecretSubroutine) Finalizers(instance client.Object) []string { // coverage-ignore
+func (r *ProvidersecretSubroutine) Finalizers(instance ctrlruntimeclient.Object) []string { // coverage-ignore
 	return []string{ProvidersecretSubroutineFinalizer}
 }
 
@@ -173,7 +189,7 @@ func (r *ProvidersecretSubroutine) GetName() string {
 }
 
 func (r *ProvidersecretSubroutine) HandleProviderConnection(
-	ctx context.Context, instance *corev1alpha1.PlatformMesh, pc corev1alpha1.ProviderConnection, cfg *rest.Config,
+	ctx context.Context, instance *pmcorev1alpha1.PlatformMesh, pc pmcorev1alpha1.ProviderConnection, cfg *rest.Config,
 ) (subroutines.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
@@ -196,7 +212,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 		}
 
 		var slice kcpapiv1alpha.APIExportEndpointSlice
-		err = kcpClient.Get(ctx, client.ObjectKey{Name: *pc.EndpointSliceName}, &slice)
+		err = kcpClient.Get(ctx, ctrlruntimeclient.ObjectKey{Name: *pc.EndpointSliceName}, &slice)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to get APIExportEndpointSlice")
 			return subroutines.OK(), err
@@ -262,7 +278,7 @@ func (r *ProvidersecretSubroutine) HandleProviderConnection(
 }
 
 func (r *ProvidersecretSubroutine) HandleInitializerConnection(
-	ctx context.Context, instance *corev1alpha1.PlatformMesh, ic corev1alpha1.InitializerConnection, restCfg *rest.Config,
+	ctx context.Context, instance *pmcorev1alpha1.PlatformMesh, ic pmcorev1alpha1.InitializerConnection, restCfg *rest.Config,
 ) (subroutines.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx)
 
@@ -330,7 +346,7 @@ func (r *ProvidersecretSubroutine) HandleInitializerConnection(
 
 // loadKcpOperatorAdminKubeconfig reads kubeconfig-kcp-admin from the kcp workspace namespace
 // (PlatformMesh/operator KCP config; same as helm infra .Values.kcp.namespace).
-func loadKcpOperatorAdminKubeconfig(k8sClient client.Client, namespace string) ([]byte, error) {
+func loadKcpOperatorAdminKubeconfig(k8sClient ctrlruntimeclient.Client, namespace string) ([]byte, error) {
 	if namespace == "" {
 		return nil, fmt.Errorf("read %s: kcp namespace is empty", KcpOperatorAdminKubeconfigSecretName)
 	}
@@ -346,7 +362,7 @@ func loadKcpOperatorAdminKubeconfig(k8sClient client.Client, namespace string) (
 
 // buildAdminAuthTrustBundle merges cluster certificate-authority-data from kubeconfig-kcp-admin with PEMs from
 // Secret {RootShardName}-ca (tls.crt, and ca.crt when it differs from tls.crt).
-func buildAdminAuthTrustBundle(ctx context.Context, k8sClient client.Client, adminKubeconfigData []byte, operatorCfg *config.OperatorConfig) ([]byte, error) {
+func buildAdminAuthTrustBundle(ctx context.Context, k8sClient ctrlruntimeclient.Client, adminKubeconfigData []byte, operatorCfg *config.OperatorConfig) ([]byte, error) {
 	apiCfg, err := clientcmd.Load(adminKubeconfigData)
 	if err != nil {
 		return nil, fmt.Errorf("load kubeconfig-kcp-admin for CA: %w", err)
@@ -385,7 +401,7 @@ func buildAdminAuthTrustBundle(ctx context.Context, k8sClient client.Client, adm
 
 func writeProviderSecretFromKcpOperatorAdminKubeconfig(
 	ctx context.Context,
-	k8sClient client.Client,
+	k8sClient ctrlruntimeclient.Client,
 	adminKubeconfigData []byte,
 	targetServerURL string,
 	frontProxyCAData []byte,

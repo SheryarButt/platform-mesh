@@ -37,12 +37,13 @@ tasks:
           PATH: /marketplace/...
           OUTPUT: '{{.CRD_DIRECTORY}}'
   generate:
+    deps: [tools:apigen]
     cmds:
       - task: manifests
       - task: tools:generate-deepcopy
         vars:
           PATH: /marketplace/...
-      - "{{.BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
+      - "{{.APIGEN}} --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
   build:
     cmds:
       - go build ./...
@@ -86,7 +87,7 @@ tasks:
     cmds:
       - |
         set -ex
-        export KUBEBUILDER_ASSETS=$({{.BIN}}/setup-envtest use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.BIN}} -p path)
+        export KUBEBUILDER_ASSETS=$({{.ENVTEST}} use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.BIN}} -p path)
         go test ./... {{.ADDITIONAL_COMMAND_ARGS}}
   test-e2e: # alias to appease the global taskfile
     cmds:

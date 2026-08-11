@@ -1,5 +1,5 @@
 /*
-Copyright 2024.
+Copyright The Platform Mesh Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,25 +24,27 @@ import (
 	"os"
 	"time"
 
-	mcapiexportprovider "github.com/kcp-dev/multicluster-provider/apiexport"
-	pmcontext "github.com/platform-mesh/golang-commons/context"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+	pmcontext "go.platform-mesh.io/golang-commons/context"
+	"go.platform-mesh.io/golang-commons/traces"
+	"go.platform-mesh.io/platform-mesh-operator/internal/controller"
+	"go.platform-mesh.io/platform-mesh-operator/internal/controller/providers"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
+
 	"k8s.io/apimachinery/pkg/util/wait"
-	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	mcmultiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
 
-	"github.com/platform-mesh/golang-commons/traces"
+	mcapiexportprovider "github.com/kcp-dev/multicluster-provider/apiexport"
 
-	"github.com/platform-mesh/platform-mesh-operator/internal/controller"
-	"github.com/platform-mesh/platform-mesh-operator/internal/controller/providers"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
 
 var operatorCmd = &cobra.Command{
@@ -96,7 +98,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	log.Info().Msg("Starting manager")
 
 	restCfg := ctrl.GetConfigOrDie()
-	runtimeClient, err := client.New(restCfg, client.Options{Scheme: subroutines.GetClientScheme()})
+	runtimeClient, err := ctrlruntimeclient.New(restCfg, ctrlruntimeclient.Options{Scheme: subroutines.GetClientScheme()})
 	if err != nil {
 		setupLog.Error(err, "unable to create PlatformMesh client")
 		os.Exit(1)
@@ -152,7 +154,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	restCfgInfra.Wrap(func(rt http.RoundTripper) http.RoundTripper {
 		return otelhttp.NewTransport(rt)
 	})
-	clientInfra, err := client.New(restCfgInfra, client.Options{Scheme: subroutines.GetClientScheme()})
+	clientInfra, err := ctrlruntimeclient.New(restCfgInfra, ctrlruntimeclient.Options{Scheme: subroutines.GetClientScheme()})
 	if err != nil {
 		setupLog.Error(err, "unable to create Infra client")
 		os.Exit(1)
@@ -214,7 +216,7 @@ func RunController(_ *cobra.Command, _ []string) { // coverage-ignore
 	}
 }
 
-func startProvidersOperator(ctx context.Context, runtimeCl client.Client, mgr mcmanager.Manager) {
+func startProvidersOperator(ctx context.Context, runtimeCl ctrlruntimeclient.Client, mgr mcmanager.Manager) {
 	multiProvider := mgr.GetProvider().(*mcmultiprovider.Provider)
 
 	// Wait until we have kcp up, with its kubeconfig available.
@@ -278,7 +280,7 @@ func startProvidersOperator(ctx context.Context, runtimeCl client.Client, mgr mc
 	}
 }
 
-func buildKcpAdminConfigForWorkspace(cl client.Client, wsPath string) (*rest.Config, error) {
+func buildKcpAdminConfigForWorkspace(cl ctrlruntimeclient.Client, wsPath string) (*rest.Config, error) {
 	kcpUrl := operatorCfg.KCP.Url
 	if kcpUrl == "" {
 		kcpUrl = fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)

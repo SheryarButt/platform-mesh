@@ -10,7 +10,7 @@ plugins:
   manifests.sdk.operatorframework.io/v2: {}
   scorecard.sdk.operatorframework.io/v2: {}
 projectName: platform-mesh-operator
-repo: github.com/platform-mesh/platform-mesh-operator
+repo: go.platform-mesh.io/platform-mesh-operator
 resources:
 - api:
     crdVersion: v1
@@ -19,7 +19,7 @@ resources:
   domain: platform-mesh.io
   group: core
   kind: PlatformMesh
-  path: github.com/platform-mesh/platform-mesh-operator/api/v1alpha1
+  path: go.platform-mesh.io/apis/core/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -28,7 +28,7 @@ resources:
   domain: platform-mesh.io
   group: providers
   kind: ManagedProvider
-  path: github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1
+  path: go.platform-mesh.io/apis/providers/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -36,6 +36,6 @@ resources:
   domain: platform-mesh.io
   group: providers
   kind: Provider
-  path: github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1
+  path: go.platform-mesh.io/apis/providers/v1alpha1
   version: v1alpha1
 version: "3"

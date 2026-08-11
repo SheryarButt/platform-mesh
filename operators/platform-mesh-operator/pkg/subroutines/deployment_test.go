@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package subroutines
 
 import (
@@ -6,21 +22,22 @@ import (
 	"path/filepath"
 	"testing"
 
-	pmconfig "github.com/platform-mesh/golang-commons/config"
-	"github.com/platform-mesh/golang-commons/context/keys"
-	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/suite"
+
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	pmconfig "go.platform-mesh.io/golang-commons/config"
+	"go.platform-mesh.io/golang-commons/context/keys"
+	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 )
 
 type DeploymentProcessTestSuite struct {
@@ -37,7 +54,7 @@ func TestDeploymentProcessTestSuite(t *testing.T) {
 func (s *DeploymentProcessTestSuite) SetupSuite() {
 	s.scheme = runtime.NewScheme()
 	s.Require().NoError(clientgoscheme.AddToScheme(s.scheme))
-	s.Require().NoError(corev1alpha1.AddToScheme(s.scheme))
+	s.Require().NoError(pmcorev1alpha1.AddToScheme(s.scheme))
 	logCfg := logger.DefaultConfig()
 	logCfg.Level = "debug"
 	logCfg.NoJSON = true
@@ -218,8 +235,8 @@ func (s *DeploymentProcessTestSuite) newFluxCDReadyCertManager(namespace string)
 	obj.SetGroupVersionKind(schema.GroupVersionKind{Group: "helm.toolkit.fluxcd.io", Version: "v2", Kind: "HelmRelease"})
 	obj.SetName("cert-manager")
 	obj.SetNamespace(namespace)
-	_ = unstructured.SetNestedSlice(obj.Object, []interface{}{
-		map[string]interface{}{"type": "Ready", "status": "True"},
+	_ = unstructured.SetNestedSlice(obj.Object, []any{
+		map[string]any{"type": "Ready", "status": "True"},
 	}, "status", "conditions")
 	return obj
 }
@@ -239,8 +256,8 @@ func (s *DeploymentProcessTestSuite) newReadyRootShard(namespace string) *unstru
 	obj.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "RootShard"})
 	obj.SetName("root")
 	obj.SetNamespace(namespace)
-	_ = unstructured.SetNestedSlice(obj.Object, []interface{}{
-		map[string]interface{}{"type": "Available", "status": "True"},
+	_ = unstructured.SetNestedSlice(obj.Object, []any{
+		map[string]any{"type": "Available", "status": "True"},
 	}, "status", "conditions")
 	return obj
 }
@@ -250,8 +267,8 @@ func (s *DeploymentProcessTestSuite) newReadyFrontProxy(namespace string) *unstr
 	obj.SetGroupVersionKind(schema.GroupVersionKind{Group: "operator.kcp.io", Version: "v1alpha1", Kind: "FrontProxy"})
 	obj.SetName("frontproxy")
 	obj.SetNamespace(namespace)
-	_ = unstructured.SetNestedSlice(obj.Object, []interface{}{
-		map[string]interface{}{"type": "Available", "status": "True"},
+	_ = unstructured.SetNestedSlice(obj.Object, []any{
+		map[string]any{"type": "Available", "status": "True"},
 	}, "status", "conditions")
 	return obj
 }
@@ -260,13 +277,13 @@ func (s *DeploymentProcessTestSuite) newEstablishedCRD(name string) *unstructure
 	obj := &unstructured.Unstructured{}
 	obj.SetGroupVersionKind(schema.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"})
 	obj.SetName(name)
-	_ = unstructured.SetNestedSlice(obj.Object, []interface{}{
-		map[string]interface{}{"type": "Established", "status": "True"},
+	_ = unstructured.SetNestedSlice(obj.Object, []any{
+		map[string]any{"type": "Established", "status": "True"},
 	}, "status", "conditions")
 	return obj
 }
 
-func (s *DeploymentProcessTestSuite) seedCertManagerCRDs(ctx context.Context, cl client.Client) {
+func (s *DeploymentProcessTestSuite) seedCertManagerCRDs(ctx context.Context, cl ctrlruntimeclient.Client) {
 	s.Require().NoError(cl.Create(ctx, s.newEstablishedCRD("issuers.cert-manager.io")))
 	s.Require().NoError(cl.Create(ctx, s.newEstablishedCRD("certificates.cert-manager.io")))
 }
@@ -276,10 +293,10 @@ func (s *DeploymentProcessTestSuite) Test_Process_FluxCD_HappyPath() {
 	operatorCfg := s.newOperatorConfig()
 	ctx := s.newContext(operatorCfg)
 
-	inst := &corev1alpha1.PlatformMesh{
+	inst := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{Name: "platform-mesh", Namespace: ns},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			Exposure: &corev1alpha1.ExposureConfig{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			Exposure: &pmcorev1alpha1.ExposureConfig{
 				BaseDomain: "localhost",
 				Port:       8443,
 				Protocol:   "https",
@@ -325,10 +342,10 @@ func (s *DeploymentProcessTestSuite) Test_Process_ArgoCD_HappyPath() {
 	operatorCfg := s.newOperatorConfig()
 	ctx := s.newContext(operatorCfg)
 
-	inst := &corev1alpha1.PlatformMesh{
+	inst := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{Name: "platform-mesh", Namespace: ns},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			Exposure: &corev1alpha1.ExposureConfig{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			Exposure: &pmcorev1alpha1.ExposureConfig{
 				BaseDomain: "localhost",
 				Port:       8443,
 				Protocol:   "https",
@@ -373,10 +390,10 @@ func (s *DeploymentProcessTestSuite) Test_Process_CertManagerCRDsNotEstablished_
 	operatorCfg := s.newOperatorConfig()
 	ctx := s.newContext(operatorCfg)
 
-	inst := &corev1alpha1.PlatformMesh{
+	inst := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{Name: "platform-mesh", Namespace: ns},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			Exposure: &corev1alpha1.ExposureConfig{BaseDomain: "localhost", Port: 8443, Protocol: "https"},
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			Exposure: &pmcorev1alpha1.ExposureConfig{BaseDomain: "localhost", Port: 8443, Protocol: "https"},
 		},
 	}
 
@@ -416,10 +433,10 @@ func (s *DeploymentProcessTestSuite) Test_Process_MissingProfile() {
 	operatorCfg := s.newOperatorConfig()
 	ctx := s.newContext(operatorCfg)
 
-	inst := &corev1alpha1.PlatformMesh{
+	inst := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{Name: "platform-mesh", Namespace: ns},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			Exposure: &corev1alpha1.ExposureConfig{BaseDomain: "localhost", Port: 8443, Protocol: "https"},
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			Exposure: &pmcorev1alpha1.ExposureConfig{BaseDomain: "localhost", Port: 8443, Protocol: "https"},
 		},
 	}
 
@@ -451,10 +468,10 @@ func (s *DeploymentProcessTestSuite) Test_Process_RootShardNotReady() {
 	operatorCfg := s.newOperatorConfig()
 	ctx := s.newContext(operatorCfg)
 
-	inst := &corev1alpha1.PlatformMesh{
+	inst := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{Name: "platform-mesh", Namespace: ns},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			Exposure: &corev1alpha1.ExposureConfig{BaseDomain: "localhost", Port: 8443, Protocol: "https"},
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			Exposure: &pmcorev1alpha1.ExposureConfig{BaseDomain: "localhost", Port: 8443, Protocol: "https"},
 		},
 	}
 
@@ -493,10 +510,10 @@ func (s *DeploymentProcessTestSuite) Test_Process_DeploymentNamespace() {
 	operatorCfg := s.newOperatorConfig()
 	ctx := s.newContext(operatorCfg)
 
-	inst := &corev1alpha1.PlatformMesh{
+	inst := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{Name: "platform-mesh", Namespace: ns},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			Exposure: &corev1alpha1.ExposureConfig{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			Exposure: &pmcorev1alpha1.ExposureConfig{
 				BaseDomain: "localhost",
 				Port:       8443,
 				Protocol:   "https",
@@ -537,7 +554,7 @@ func (s *DeploymentProcessTestSuite) Test_Process_DeploymentNamespace() {
 
 	// Verify the infra template rendered with helmReleaseNamespace = custom-deploy-ns
 	var cm corev1.ConfigMap
-	err = cl.Get(ctx, client.ObjectKey{Name: "cert-manager-argo-rendered", Namespace: "custom-deploy-ns"}, &cm)
+	err = cl.Get(ctx, ctrlruntimeclient.ObjectKey{Name: "cert-manager-argo-rendered", Namespace: "custom-deploy-ns"}, &cm)
 	s.NoError(err, "ConfigMap should exist in custom-deploy-ns (the deploymentNamespace)")
 	s.Equal("custom-deploy-ns", cm.Namespace)
 }

@@ -33,7 +33,7 @@ tasks:
   mockery:
     deps: [tools:mockery]
     cmds:
-      - "{{.BIN}}/mockery"
+      - "{{.MOCKERY}}"
   manifests:
     cmds:
       - task: tools:generate-crds
@@ -47,7 +47,7 @@ tasks:
       - task: tools:generate-deepcopy
         vars:
           PATH: /core/...
-      - "{{.BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
+      - "{{.APIGEN}} --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
   build:
     cmds:
       - go build ./...
@@ -71,7 +71,7 @@ tasks:
     cmds:
       - |
         set -ex
-        export KUBEBUILDER_ASSETS=$({{.BIN}}/setup-envtest use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.BIN}} -p path)
+        export KUBEBUILDER_ASSETS=$({{.ENVTEST}} use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.BIN}} -p path)
         go test -count=1 {{.TEST_PACKAGES | default "./..."}} {{.ADDITIONAL_COMMAND_ARGS}}
 
   # Integration (envtest) lives in ./internal/test/integration; everything else is unit.
@@ -98,7 +98,7 @@ tasks:
     deps: [tools:go-test-coverage]
     cmds:
       - task: cover
-      - "{{.BIN}}/go-test-coverage --profile cover.out --config ./.testcoverage.yml"
+      - "{{.GO_TEST_COVERAGE}} --profile cover.out --config ./.testcoverage.yml"
   install:
     cmds:
       - kubectl apply -f config/crd/bases

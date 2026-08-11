@@ -34,18 +34,19 @@ tasks:
           PATH: /core/...
           OUTPUT: '{{.CRD_DIRECTORY}}'
   generate:
+    deps: [tools:apigen]
     cmds:
       - task: manifests
       - task: tools:generate-deepcopy
         vars:
           PATH: /core/...
-      - "{{.BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
-      - "{{.BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir {{ .TEST_SETUP_DIRECTORY }} --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
+      - "{{.APIGEN}} --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
+      - "{{.APIGEN}} --input-dir {{.CRD_DIRECTORY}} --output-dir {{ .TEST_SETUP_DIRECTORY }} --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
   generate:mocks:
     desc: Generate mocks using mockery
     deps: [tools:mockery]
     cmds:
-      - "{{.BIN}}/mockery"
+      - "{{.MOCKERY}}"
   build:
     desc: Build the account-operator.
     cmds:
@@ -82,7 +83,7 @@ tasks:
   start-kcp:
     deps: [tools:kcp]
     cmds:
-      - "{{.BIN}}/kcp start"
+      - "{{.KCP}} start"
 
   fuzz:
     desc: "Run fuzz tests with a configurable duration (default 30s per target)"

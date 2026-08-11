@@ -1,5 +1,5 @@
 /*
-Copyright 2026.
+Copyright The Platform Mesh Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,21 +22,22 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/platform-mesh/golang-commons/context/keys"
-	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
+	"go.platform-mesh.io/golang-commons/context/keys"
+	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/mocks"
+
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	providersv1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type DeployTestSuite struct {
@@ -76,15 +77,15 @@ func (s *DeployTestSuite) newCtx() context.Context {
 
 // newManagedProvider returns a ManagedProvider with a single RuntimeDeployment
 // (github.com/platform-mesh/wildwest-controller → resource name "wildwest-controller").
-func (s *DeployTestSuite) newManagedProvider() *providersv1alpha1.ManagedProvider {
-	return &providersv1alpha1.ManagedProvider{
+func (s *DeployTestSuite) newManagedProvider() *pmprovidersv1alpha1.ManagedProvider {
+	return &pmprovidersv1alpha1.ManagedProvider{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "cowboys",
 			Namespace: "providers-wildwest-ns",
 		},
-		Spec: providersv1alpha1.ManagedProviderSpec{
-			RuntimeDeployments: []providersv1alpha1.ProviderComponentSpec{
-				{Flux: &providersv1alpha1.FluxComponentSpec{
+		Spec: pmprovidersv1alpha1.ManagedProviderSpec{
+			RuntimeDeployments: []pmprovidersv1alpha1.ProviderComponentSpec{
+				{Flux: &pmprovidersv1alpha1.FluxComponentSpec{
 					Chart:    "github.com/platform-mesh/wildwest-controller",
 					Version:  "0.1.0",
 					Registry: "ghcr.io/platform-mesh/ocm",
@@ -95,10 +96,10 @@ func (s *DeployTestSuite) newManagedProvider() *providersv1alpha1.ManagedProvide
 }
 
 // newManagedProviderWithPortal returns a ManagedProvider with two RuntimeDeployments.
-func (s *DeployTestSuite) newManagedProviderWithPortal() *providersv1alpha1.ManagedProvider {
+func (s *DeployTestSuite) newManagedProviderWithPortal() *pmprovidersv1alpha1.ManagedProvider {
 	inst := s.newManagedProvider()
-	inst.Spec.RuntimeDeployments = append(inst.Spec.RuntimeDeployments, providersv1alpha1.ProviderComponentSpec{
-		Flux: &providersv1alpha1.FluxComponentSpec{
+	inst.Spec.RuntimeDeployments = append(inst.Spec.RuntimeDeployments, pmprovidersv1alpha1.ProviderComponentSpec{
+		Flux: &pmprovidersv1alpha1.FluxComponentSpec{
 			Chart:    "github.com/platform-mesh/wildwest-portal",
 			Version:  "0.1.0",
 			Registry: "ghcr.io/platform-mesh/ocm",
@@ -110,7 +111,7 @@ func (s *DeployTestSuite) newManagedProviderWithPortal() *providersv1alpha1.Mana
 func (s *DeployTestSuite) mockCreateOrUpdate(name, namespace string) {
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: name, Namespace: namespace}, mock.AnythingOfType("*unstructured.Unstructured")).
-		Return(kerrors.NewNotFound(schema.GroupResource{}, name)).
+		Return(apierrors.NewNotFound(schema.GroupResource{}, name)).
 		Once()
 	s.clientMock.EXPECT().
 		Create(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
@@ -119,18 +120,18 @@ func (s *DeployTestSuite) mockCreateOrUpdate(name, namespace string) {
 }
 
 func (s *DeployTestSuite) mockHelmReleaseReadyCheck(name, namespace string, ready bool) {
-	var conditions []interface{}
+	var conditions []any
 	if ready {
-		conditions = []interface{}{
-			map[string]interface{}{"type": "Ready", "status": "True"},
+		conditions = []any{
+			map[string]any{"type": "Ready", "status": "True"},
 		}
 	}
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: name, Namespace: namespace}, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			u := obj.(*unstructured.Unstructured)
-			u.Object = map[string]interface{}{
-				"status": map[string]interface{}{"conditions": conditions},
+			u.Object = map[string]any{
+				"status": map[string]any{"conditions": conditions},
 			}
 			return nil
 		}).
@@ -140,11 +141,11 @@ func (s *DeployTestSuite) mockHelmReleaseReadyCheck(name, namespace string, read
 // mockExistingNoopOCIRepo simulates an OCIRepository that already exists with a
 // matching spec (OperationResultNone) and whose generation matches observedGeneration,
 // indicating the artifact controller has fully processed the current spec.
-func (s *DeployTestSuite) mockExistingNoopOCIRepo(name, namespace string, flux *providersv1alpha1.FluxComponentSpec) {
+func (s *DeployTestSuite) mockExistingNoopOCIRepo(name, namespace string, flux *pmprovidersv1alpha1.FluxComponentSpec) {
 	ociURL := fmt.Sprintf("oci://%s/%s", flux.Registry, flux.Chart)
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: name, Namespace: namespace}, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			u := obj.(*unstructured.Unstructured)
 			u.SetResourceVersion("1")
 			u.SetGeneration(1)
@@ -153,7 +154,7 @@ func (s *DeployTestSuite) mockExistingNoopOCIRepo(name, namespace string, flux *
 			_ = unstructured.SetNestedField(u.Object, "generic", "spec", "provider")
 			_ = unstructured.SetNestedField(u.Object, "1m0s", "spec", "interval")
 			_ = unstructured.SetNestedField(u.Object, flux.Insecure, "spec", "insecure")
-			_ = unstructured.SetNestedMap(u.Object, map[string]interface{}{
+			_ = unstructured.SetNestedMap(u.Object, map[string]any{
 				"mediaType": "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
 				"operation": "copy",
 			}, "spec", "layerSelector")
@@ -167,7 +168,7 @@ func (s *DeployTestSuite) mockExistingNoopOCIRepo(name, namespace string, flux *
 func (s *DeployTestSuite) mockExistingNoopHelmRelease(name, namespace string) {
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: name, Namespace: namespace}, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			u := obj.(*unstructured.Unstructured)
 			u.SetResourceVersion("1")
 			_ = unstructured.SetNestedField(u.Object, "5m", "spec", "interval")
@@ -181,7 +182,7 @@ func (s *DeployTestSuite) mockExistingNoopHelmRelease(name, namespace string) {
 // mockComponentDeployed sets up mocks for a component already present on the cluster
 // with a matching spec (OperationResultNone, generation reconciled) and the given
 // HelmRelease readiness state. Use this to test the condition-check path.
-func (s *DeployTestSuite) mockComponentDeployed(name, namespace string, flux *providersv1alpha1.FluxComponentSpec, ready bool) {
+func (s *DeployTestSuite) mockComponentDeployed(name, namespace string, flux *pmprovidersv1alpha1.FluxComponentSpec, ready bool) {
 	s.mockExistingNoopOCIRepo(name, namespace, flux)
 	s.mockExistingNoopHelmRelease(name, namespace)
 	s.mockHelmReleaseReadyCheck(name, namespace, ready)
@@ -196,7 +197,7 @@ func (s *DeployTestSuite) TestProcess_OCIRepositoryCreateFails() {
 	// Component name "github.com/platform-mesh/wildwest-controller" → "wildwest-controller"
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: "providers-wildwest-ns"}, mock.AnythingOfType("*unstructured.Unstructured")).
-		Return(kerrors.NewNotFound(schema.GroupResource{}, "wildwest-controller")).
+		Return(apierrors.NewNotFound(schema.GroupResource{}, "wildwest-controller")).
 		Once()
 	s.clientMock.EXPECT().
 		Create(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
@@ -218,7 +219,7 @@ func (s *DeployTestSuite) TestProcess_HelmReleaseCreateFails() {
 	// HelmRelease Get → NotFound, Create → error
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: "providers-wildwest-ns"}, mock.AnythingOfType("*unstructured.Unstructured")).
-		Return(kerrors.NewNotFound(schema.GroupResource{}, "wildwest-controller")).
+		Return(apierrors.NewNotFound(schema.GroupResource{}, "wildwest-controller")).
 		Once()
 	s.clientMock.EXPECT().
 		Create(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
@@ -263,7 +264,7 @@ func (s *DeployTestSuite) TestProcess_ControllerNotReady() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
 }
 
 func (s *DeployTestSuite) TestProcess_ControllerReady_NoPortal() {
@@ -277,7 +278,7 @@ func (s *DeployTestSuite) TestProcess_ControllerReady_NoPortal() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsContinue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseReady, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhaseReady, inst.Status.Phase)
 }
 
 func (s *DeployTestSuite) TestProcess_ControllerReady_PortalNotReady() {
@@ -293,7 +294,7 @@ func (s *DeployTestSuite) TestProcess_ControllerReady_PortalNotReady() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
 }
 
 func (s *DeployTestSuite) TestProcess_ControllerReady_PortalReady() {
@@ -309,7 +310,7 @@ func (s *DeployTestSuite) TestProcess_ControllerReady_PortalReady() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsContinue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseReady, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhaseReady, inst.Status.Phase)
 }
 
 func (s *DeployTestSuite) TestProcess_HelmReleaseNotFoundDuringReadyCheck() {
@@ -322,14 +323,14 @@ func (s *DeployTestSuite) TestProcess_HelmReleaseNotFoundDuringReadyCheck() {
 	// helmReleaseReady: NotFound → treated as not ready, no error
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: "providers-wildwest-ns"}, mock.AnythingOfType("*unstructured.Unstructured")).
-		Return(kerrors.NewNotFound(schema.GroupResource{}, "wildwest-controller")).
+		Return(apierrors.NewNotFound(schema.GroupResource{}, "wildwest-controller")).
 		Once()
 
 	result, err := s.testObj.Process(ctx, inst)
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
 }
 
 func (s *DeployTestSuite) TestProcess_WithHelmValues() {
@@ -344,11 +345,11 @@ func (s *DeployTestSuite) TestProcess_WithHelmValues() {
 	s.mockCreateOrUpdate("wildwest-controller", "providers-wildwest-ns") // OCIRepository
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: "providers-wildwest-ns"}, mock.AnythingOfType("*unstructured.Unstructured")).
-		Return(kerrors.NewNotFound(schema.GroupResource{}, "wildwest-controller")).
+		Return(apierrors.NewNotFound(schema.GroupResource{}, "wildwest-controller")).
 		Once()
 	s.clientMock.EXPECT().
 		Create(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
-		RunAndReturn(func(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+		RunAndReturn(func(ctx context.Context, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.CreateOption) error {
 			capturedHR = obj.(*unstructured.Unstructured).DeepCopy()
 			return nil
 		}).
@@ -358,7 +359,7 @@ func (s *DeployTestSuite) TestProcess_WithHelmValues() {
 	// Both resources were Created → immediate requeue without checking HelmRelease conditions.
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
 	s.Require().NotNil(capturedHR)
 	vals, found, _ := unstructured.NestedMap(capturedHR.Object, "spec", "values")
 	s.Assert().True(found)
@@ -372,7 +373,7 @@ func (s *DeployTestSuite) TestProcess_ExistingResourcesUpdated() {
 	// OCIRepository already exists → Update
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: "providers-wildwest-ns"}, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			u := obj.(*unstructured.Unstructured)
 			u.SetResourceVersion("1")
 			return nil
@@ -385,7 +386,7 @@ func (s *DeployTestSuite) TestProcess_ExistingResourcesUpdated() {
 	// HelmRelease already exists → Update
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: "providers-wildwest-ns"}, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			u := obj.(*unstructured.Unstructured)
 			u.SetResourceVersion("2")
 			return nil
@@ -401,7 +402,7 @@ func (s *DeployTestSuite) TestProcess_ExistingResourcesUpdated() {
 	// Both resources were Updated → immediate requeue, HelmRelease conditions not checked.
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
 }
 
 func (s *DeployTestSuite) TestProcess_ResourcesCreated_ImmediateRequeue() {
@@ -416,7 +417,7 @@ func (s *DeployTestSuite) TestProcess_ResourcesCreated_ImmediateRequeue() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
 }
 
 func (s *DeployTestSuite) TestProcess_GenerationMismatch_Requeue() {
@@ -429,7 +430,7 @@ func (s *DeployTestSuite) TestProcess_GenerationMismatch_Requeue() {
 	// fully processed the current spec yet.
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: "providers-wildwest-ns"}, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			u := obj.(*unstructured.Unstructured)
 			u.SetResourceVersion("1")
 			u.SetGeneration(2)
@@ -438,7 +439,7 @@ func (s *DeployTestSuite) TestProcess_GenerationMismatch_Requeue() {
 			_ = unstructured.SetNestedField(u.Object, "generic", "spec", "provider")
 			_ = unstructured.SetNestedField(u.Object, "1m0s", "spec", "interval")
 			_ = unstructured.SetNestedField(u.Object, flux.Insecure, "spec", "insecure")
-			_ = unstructured.SetNestedMap(u.Object, map[string]interface{}{
+			_ = unstructured.SetNestedMap(u.Object, map[string]any{
 				"mediaType": "application/vnd.cncf.helm.chart.content.v1.tar+gzip",
 				"operation": "copy",
 			}, "spec", "layerSelector")
@@ -451,7 +452,7 @@ func (s *DeployTestSuite) TestProcess_GenerationMismatch_Requeue() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
 }
 
 // --- Finalize tests ---
@@ -498,7 +499,7 @@ func (s *DeployTestSuite) TestFinalize_AllAlreadyGone() {
 	// Both resources already gone → allGone = true → OK
 	s.clientMock.EXPECT().
 		Delete(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
-		Return(kerrors.NewNotFound(schema.GroupResource{}, "wildwest-controller")).
+		Return(apierrors.NewNotFound(schema.GroupResource{}, "wildwest-controller")).
 		Times(2)
 
 	result, err := s.testObj.Finalize(ctx, inst)
@@ -548,11 +549,11 @@ func (s *DeployTestSuite) TestFinalize_OCIRepoDeleteFails() {
 
 // newManagedProviderHelmRepo returns a ManagedProvider with a single type=helm
 // RuntimeDeployment sourced from a classic HTTP(S) Helm repository.
-func (s *DeployTestSuite) newManagedProviderHelmRepo() *providersv1alpha1.ManagedProvider {
+func (s *DeployTestSuite) newManagedProviderHelmRepo() *pmprovidersv1alpha1.ManagedProvider {
 	inst := s.newManagedProvider()
-	inst.Spec.RuntimeDeployments = []providersv1alpha1.ProviderComponentSpec{
-		{Flux: &providersv1alpha1.FluxComponentSpec{
-			Type:     providersv1alpha1.FluxSourceTypeHelm,
+	inst.Spec.RuntimeDeployments = []pmprovidersv1alpha1.ProviderComponentSpec{
+		{Flux: &pmprovidersv1alpha1.FluxComponentSpec{
+			Type:     pmprovidersv1alpha1.FluxSourceTypeHelm,
 			Registry: "https://charts.jetstack.io",
 			Chart:    "cert-manager",
 			Version:  "v1.14.0",
@@ -569,11 +570,11 @@ func (s *DeployTestSuite) TestProcess_HelmRepo_CreatesHelmRepositoryAndRelease()
 	// Both HelmRepository and HelmRelease are absent → Get NotFound, then Create.
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "cert-manager", Namespace: "providers-wildwest-ns"}, mock.AnythingOfType("*unstructured.Unstructured")).
-		Return(kerrors.NewNotFound(schema.GroupResource{}, "cert-manager")).
+		Return(apierrors.NewNotFound(schema.GroupResource{}, "cert-manager")).
 		Times(2)
 	s.clientMock.EXPECT().
 		Create(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
-		RunAndReturn(func(_ context.Context, obj client.Object, _ ...client.CreateOption) error {
+		RunAndReturn(func(_ context.Context, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.CreateOption) error {
 			created = append(created, obj.(*unstructured.Unstructured).DeepCopy())
 			return nil
 		}).
@@ -584,7 +585,7 @@ func (s *DeployTestSuite) TestProcess_HelmRepo_CreatesHelmRepositoryAndRelease()
 	// Both resources Created → immediate requeue without checking conditions.
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
 	s.Require().Len(created, 2)
 
 	// First object is the HelmRepository pointing at the HTTP repo URL.
@@ -614,7 +615,7 @@ func (s *DeployTestSuite) TestFinalize_HelmRepo_DeletesHelmRepository() {
 	var deletedKinds []string
 	s.clientMock.EXPECT().
 		Delete(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
-		RunAndReturn(func(_ context.Context, obj client.Object, _ ...client.DeleteOption) error {
+		RunAndReturn(func(_ context.Context, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.DeleteOption) error {
 			deletedKinds = append(deletedKinds, obj.(*unstructured.Unstructured).GetKind())
 			return nil
 		}).
@@ -645,17 +646,17 @@ func (s *DeployTestSuite) TestOCMResolvedOCIURL() {
 }
 
 func (s *DeployTestSuite) TestOCMDeploymentName() {
-	s.Equal("explicit", ocmDeploymentName(&providersv1alpha1.OCMComponentSpec{
+	s.Equal("explicit", ocmDeploymentName(&pmprovidersv1alpha1.OCMComponentSpec{
 		Name: "explicit", Component: "github.com/x/comp",
 	}))
-	s.Equal("controller-chart", ocmDeploymentName(&providersv1alpha1.OCMComponentSpec{
+	s.Equal("controller-chart", ocmDeploymentName(&pmprovidersv1alpha1.OCMComponentSpec{
 		ResourceName: "controller-chart", Component: "github.com/x/comp",
 	}))
-	s.Equal("last-ref", ocmDeploymentName(&providersv1alpha1.OCMComponentSpec{
-		ReferencePath: []providersv1alpha1.OCMReferencePathElement{{Name: "first"}, {Name: "last-ref"}},
+	s.Equal("last-ref", ocmDeploymentName(&pmprovidersv1alpha1.OCMComponentSpec{
+		ReferencePath: []pmprovidersv1alpha1.OCMReferencePathElement{{Name: "first"}, {Name: "last-ref"}},
 		Component:     "github.com/x/comp",
 	}))
-	s.Equal("comp", ocmDeploymentName(&providersv1alpha1.OCMComponentSpec{
+	s.Equal("comp", ocmDeploymentName(&pmprovidersv1alpha1.OCMComponentSpec{
 		Component: "github.com/platform-mesh/comp",
 	}))
 }
@@ -675,10 +676,10 @@ func (s *DeployTestSuite) TestSplitRegistry() {
 // newManagedProviderOCM returns a ManagedProvider with a single self-contained ocm
 // RuntimeDeployment; the deployment name is explicit ("wildwest-controller") and the
 // operator generates Repository + Component + Resource from the inline coordinates.
-func (s *DeployTestSuite) newManagedProviderOCM() *providersv1alpha1.ManagedProvider {
+func (s *DeployTestSuite) newManagedProviderOCM() *pmprovidersv1alpha1.ManagedProvider {
 	inst := s.newManagedProvider()
-	inst.Spec.RuntimeDeployments = []providersv1alpha1.ProviderComponentSpec{
-		{OCM: &providersv1alpha1.OCMComponentSpec{
+	inst.Spec.RuntimeDeployments = []pmprovidersv1alpha1.ProviderComponentSpec{
+		{OCM: &pmprovidersv1alpha1.OCMComponentSpec{
 			Name:         "wildwest-controller",
 			Registry:     "ghcr.io/platform-mesh",
 			Component:    "github.com/platform-mesh/provider-quickstart",
@@ -697,12 +698,12 @@ func (s *DeployTestSuite) TestProcess_OCM_CreatesOCMObjects() {
 	// Repository, Component and Resource all absent → Get NotFound then Create.
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: ns}, mock.AnythingOfType("*unstructured.Unstructured")).
-		Return(kerrors.NewNotFound(schema.GroupResource{}, "wildwest-controller")).
+		Return(apierrors.NewNotFound(schema.GroupResource{}, "wildwest-controller")).
 		Times(3)
 	created := map[string]*unstructured.Unstructured{}
 	s.clientMock.EXPECT().
 		Create(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
-		RunAndReturn(func(_ context.Context, obj client.Object, _ ...client.CreateOption) error {
+		RunAndReturn(func(_ context.Context, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.CreateOption) error {
 			u := obj.(*unstructured.Unstructured).DeepCopy()
 			created[u.GetKind()] = u
 			return nil
@@ -714,7 +715,7 @@ func (s *DeployTestSuite) TestProcess_OCM_CreatesOCMObjects() {
 	// OCM objects just created → requeue for resolution; no Flux objects yet.
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
 
 	repo := created["Repository"]
 	s.Require().NotNil(repo, "operator must create the Repository")
@@ -742,7 +743,7 @@ func (s *DeployTestSuite) TestProcess_OCM_CreatesOCMObjects() {
 	s.Assert().Equal("controller-chart", resName)
 	ocmConfig, _, _ := unstructured.NestedSlice(res.Object, "spec", "ocmConfig")
 	s.Require().Len(ocmConfig, 1)
-	s.Assert().Equal("wildwest-controller", ocmConfig[0].(map[string]interface{})["name"])
+	s.Assert().Equal("wildwest-controller", ocmConfig[0].(map[string]any)["name"])
 }
 
 func (s *DeployTestSuite) TestProcess_OCM_Resolved_DeploysChart() {
@@ -750,7 +751,7 @@ func (s *DeployTestSuite) TestProcess_OCM_Resolved_DeploysChart() {
 	inst := s.newManagedProviderOCM()
 	const ns = "providers-wildwest-ns"
 
-	repoRef := []interface{}{map[string]interface{}{
+	repoRef := []any{map[string]any{
 		"apiVersion": "delivery.ocm.software/v1alpha1", "kind": "Repository", "name": "wildwest-controller", "namespace": ns, "policy": "Propagate",
 	}}
 
@@ -758,17 +759,17 @@ func (s *DeployTestSuite) TestProcess_OCM_Resolved_DeploysChart() {
 	// (CreateOrUpdate → None); the Resource also carries a resolved status.
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: ns}, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			u := obj.(*unstructured.Unstructured)
 			u.SetResourceVersion("1")
 			_ = unstructured.SetNestedField(u.Object, "1m0s", "spec", "interval")
-			_ = unstructured.SetNestedMap(u.Object, map[string]interface{}{"type": "OCIRegistry", "baseUrl": "ghcr.io", "subPath": "platform-mesh"}, "spec", "repositorySpec")
+			_ = unstructured.SetNestedMap(u.Object, map[string]any{"type": "OCIRegistry", "baseUrl": "ghcr.io", "subPath": "platform-mesh"}, "spec", "repositorySpec")
 			return nil
 		}).
 		Once()
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: ns}, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			u := obj.(*unstructured.Unstructured)
 			u.SetResourceVersion("1")
 			_ = unstructured.SetNestedField(u.Object, "github.com/platform-mesh/provider-quickstart", "spec", "component")
@@ -782,7 +783,7 @@ func (s *DeployTestSuite) TestProcess_OCM_Resolved_DeploysChart() {
 		Once()
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: ns}, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			u := obj.(*unstructured.Unstructured)
 			u.SetResourceVersion("1")
 			u.SetLabels(map[string]string{"artifact": "chart", "repo": "oci"})
@@ -797,13 +798,13 @@ func (s *DeployTestSuite) TestProcess_OCM_Resolved_DeploysChart() {
 	// OCIRepository + HelmRelease both absent → Get NotFound then Create.
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "wildwest-controller", Namespace: ns}, mock.AnythingOfType("*unstructured.Unstructured")).
-		Return(kerrors.NewNotFound(schema.GroupResource{}, "wildwest-controller")).
+		Return(apierrors.NewNotFound(schema.GroupResource{}, "wildwest-controller")).
 		Times(2)
 	var createdKinds []string
 	var ociRepo *unstructured.Unstructured
 	s.clientMock.EXPECT().
 		Create(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
-		RunAndReturn(func(_ context.Context, obj client.Object, _ ...client.CreateOption) error {
+		RunAndReturn(func(_ context.Context, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.CreateOption) error {
 			u := obj.(*unstructured.Unstructured).DeepCopy()
 			createdKinds = append(createdKinds, u.GetKind())
 			if u.GetKind() == "OCIRepository" {
@@ -818,7 +819,7 @@ func (s *DeployTestSuite) TestProcess_OCM_Resolved_DeploysChart() {
 	// Both Flux objects Created → immediate requeue.
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhaseDeploying, inst.Status.Phase)
 	s.Assert().Contains(createdKinds, "OCIRepository")
 	s.Assert().Contains(createdKinds, "HelmRelease")
 	s.Require().NotNil(ociRepo, "OCIRepository should have been created from the resolved status")
@@ -835,7 +836,7 @@ func (s *DeployTestSuite) TestFinalize_OCM_DeletesOCMAndFluxObjects() {
 	var deletedKinds []string
 	s.clientMock.EXPECT().
 		Delete(mock.Anything, mock.AnythingOfType("*unstructured.Unstructured"), mock.Anything).
-		RunAndReturn(func(_ context.Context, obj client.Object, _ ...client.DeleteOption) error {
+		RunAndReturn(func(_ context.Context, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.DeleteOption) error {
 			deletedKinds = append(deletedKinds, obj.(*unstructured.Unstructured).GetKind())
 			return nil
 		}).

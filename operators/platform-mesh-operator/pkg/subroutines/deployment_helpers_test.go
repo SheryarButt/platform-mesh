@@ -1,15 +1,33 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package subroutines
 
 import (
 	"context"
 	"testing"
 
-	pmconfig "github.com/platform-mesh/golang-commons/config"
-	"github.com/platform-mesh/golang-commons/logger"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
 	"github.com/stretchr/testify/suite"
+
+	pmconfig "go.platform-mesh.io/golang-commons/config"
+	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -42,18 +60,18 @@ func (s *DeploymentHelpersTestSuite) Test_updateObjectMetadata() {
 		{
 			name: "update labels and annotations",
 			existing: &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"metadata": map[string]interface{}{
-						"labels":      map[string]interface{}{"existing": "label"},
-						"annotations": map[string]interface{}{"existing": "annotation"},
+				Object: map[string]any{
+					"metadata": map[string]any{
+						"labels":      map[string]any{"existing": "label"},
+						"annotations": map[string]any{"existing": "annotation"},
 					},
 				},
 			},
 			desired: &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"metadata": map[string]interface{}{
-						"labels":      map[string]interface{}{"desired": "label"},
-						"annotations": map[string]interface{}{"desired": "annotation"},
+				Object: map[string]any{
+					"metadata": map[string]any{
+						"labels":      map[string]any{"desired": "label"},
+						"annotations": map[string]any{"desired": "annotation"},
 					},
 				},
 			},
@@ -70,14 +88,14 @@ func (s *DeploymentHelpersTestSuite) Test_updateObjectMetadata() {
 		{
 			name: "desired has no metadata",
 			existing: &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"metadata": map[string]interface{}{
-						"labels": map[string]interface{}{"existing": "label"},
+				Object: map[string]any{
+					"metadata": map[string]any{
+						"labels": map[string]any{"existing": "label"},
 					},
 				},
 			},
 			desired: &unstructured.Unstructured{
-				Object: map[string]interface{}{},
+				Object: map[string]any{},
 			},
 			validate: func(obj *unstructured.Unstructured) {
 				// Existing labels should remain if desired has none
@@ -101,7 +119,7 @@ func (s *DeploymentHelpersTestSuite) Test_updateObjectMetadata() {
 func (s *DeploymentHelpersTestSuite) Test_isZeroValue() {
 	tests := []struct {
 		name     string
-		value    interface{}
+		value    any
 		expected bool
 	}{
 		{
@@ -121,22 +139,22 @@ func (s *DeploymentHelpersTestSuite) Test_isZeroValue() {
 		},
 		{
 			name:     "empty slice",
-			value:    []interface{}{},
+			value:    []any{},
 			expected: true,
 		},
 		{
 			name:     "non-empty slice",
-			value:    []interface{}{"a"},
+			value:    []any{"a"},
 			expected: false,
 		},
 		{
 			name:     "empty map",
-			value:    map[string]interface{}{},
+			value:    map[string]any{},
 			expected: true,
 		},
 		{
 			name:     "non-empty map",
-			value:    map[string]interface{}{"key": "value"},
+			value:    map[string]any{"key": "value"},
 			expected: false,
 		},
 		{
@@ -181,13 +199,13 @@ func (s *DeploymentHelpersTestSuite) Test_isZeroValue() {
 
 func (s *DeploymentHelpersTestSuite) Test_templateFuncMap_default() {
 	funcMap := templateFuncMap()
-	defaultFunc := funcMap["default"].(func(interface{}, interface{}) interface{})
+	defaultFunc := funcMap["default"].(func(any, any) any)
 
 	tests := []struct {
 		name         string
-		defaultValue interface{}
-		actualValue  interface{}
-		expected     interface{}
+		defaultValue any
+		actualValue  any
+		expected     any
 	}{
 		{
 			name:         "use default when value is nil",
@@ -210,7 +228,7 @@ func (s *DeploymentHelpersTestSuite) Test_templateFuncMap_default() {
 		{
 			name:         "use default when value is empty slice",
 			defaultValue: []string{"default"},
-			actualValue:  []interface{}{},
+			actualValue:  []any{},
 			expected:     []string{"default"},
 		},
 	}
@@ -225,22 +243,22 @@ func (s *DeploymentHelpersTestSuite) Test_templateFuncMap_default() {
 
 func (s *DeploymentHelpersTestSuite) Test_templateFuncMap_toYaml() {
 	funcMap := templateFuncMap()
-	toYamlFunc := funcMap["toYaml"].(func(interface{}) (string, error))
+	toYamlFunc := funcMap["toYaml"].(func(any) (string, error))
 
 	tests := []struct {
 		name        string
-		value       interface{}
+		value       any
 		expected    string
 		expectError bool
 	}{
 		{
 			name:     "simple map",
-			value:    map[string]interface{}{"key": "value"},
+			value:    map[string]any{"key": "value"},
 			expected: "key: value\n",
 		},
 		{
 			name:     "nested map",
-			value:    map[string]interface{}{"outer": map[string]interface{}{"inner": "value"}},
+			value:    map[string]any{"outer": map[string]any{"inner": "value"}},
 			expected: "outer:\n  inner: value\n",
 		},
 		{
@@ -326,13 +344,13 @@ func (s *DeploymentHelpersTestSuite) Test_templateFuncMap_nindent() {
 
 func (s *DeploymentHelpersTestSuite) Test_templateFuncMap_or() {
 	funcMap := templateFuncMap()
-	orFunc := funcMap["or"].(func(interface{}, interface{}) interface{})
+	orFunc := funcMap["or"].(func(any, any) any)
 
 	tests := []struct {
 		name     string
-		a        interface{}
-		b        interface{}
-		expected interface{}
+		a        any
+		b        any
+		expected any
 	}{
 		{
 			name:     "first non-zero",
@@ -370,12 +388,12 @@ func (s *DeploymentHelpersTestSuite) Test_templateFuncMap_or() {
 
 func (s *DeploymentHelpersTestSuite) Test_templateFuncMap_and() {
 	funcMap := templateFuncMap()
-	andFunc := funcMap["and"].(func(interface{}, interface{}) bool)
+	andFunc := funcMap["and"].(func(any, any) bool)
 
 	tests := []struct {
 		name     string
-		a        interface{}
-		b        interface{}
+		a        any
+		b        any
 		expected bool
 	}{
 		{
@@ -414,11 +432,11 @@ func (s *DeploymentHelpersTestSuite) Test_templateFuncMap_and() {
 
 func (s *DeploymentHelpersTestSuite) Test_templateFuncMap_not() {
 	funcMap := templateFuncMap()
-	notFunc := funcMap["not"].(func(interface{}) bool)
+	notFunc := funcMap["not"].(func(any) bool)
 
 	tests := []struct {
 		name     string
-		value    interface{}
+		value    any
 		expected bool
 	}{
 		{
@@ -460,16 +478,16 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields() {
 	tests := []struct {
 		name                   string
 		existingApp            *unstructured.Unstructured
-		objMap                 map[string]interface{}
+		objMap                 map[string]any
 		expectedRepoURL        string
 		expectedTargetRevision string
 	}{
 		{
 			name:        "app does not exist - nothing to preserve",
 			existingApp: nil,
-			objMap: map[string]interface{}{
-				"spec": map[string]interface{}{
-					"source": map[string]interface{}{
+			objMap: map[string]any{
+				"spec": map[string]any{
+					"source": map[string]any{
 						"repoURL":        "https://new-repo.git",
 						"targetRevision": "v1.0.0",
 					},
@@ -481,24 +499,24 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields() {
 		{
 			name: "existing app has placeholder values - should not preserve",
 			existingApp: &unstructured.Unstructured{
-				Object: map[string]interface{}{
+				Object: map[string]any{
 					"apiVersion": "argoproj.io/v1alpha1",
 					"kind":       "Application",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name":      "test-app",
 						"namespace": "argocd",
 					},
-					"spec": map[string]interface{}{
-						"source": map[string]interface{}{
+					"spec": map[string]any{
+						"source": map[string]any{
 							"repoURL":        argoPlaceholderRepoURL,
 							"targetRevision": argoPlaceholderRepoURL,
 						},
 					},
 				},
 			},
-			objMap: map[string]interface{}{
-				"spec": map[string]interface{}{
-					"source": map[string]interface{}{
+			objMap: map[string]any{
+				"spec": map[string]any{
+					"source": map[string]any{
 						"repoURL":        "https://new-repo.git",
 						"targetRevision": "v1.0.0",
 					},
@@ -510,24 +528,24 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields() {
 		{
 			name: "existing app has real values different from new - should preserve",
 			existingApp: &unstructured.Unstructured{
-				Object: map[string]interface{}{
+				Object: map[string]any{
 					"apiVersion": "argoproj.io/v1alpha1",
 					"kind":       "Application",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name":      "test-app",
 						"namespace": "argocd",
 					},
-					"spec": map[string]interface{}{
-						"source": map[string]interface{}{
+					"spec": map[string]any{
+						"source": map[string]any{
 							"repoURL":        "https://existing-repo.git",
 							"targetRevision": "v0.9.0",
 						},
 					},
 				},
 			},
-			objMap: map[string]interface{}{
-				"spec": map[string]interface{}{
-					"source": map[string]interface{}{
+			objMap: map[string]any{
+				"spec": map[string]any{
+					"source": map[string]any{
 						"repoURL":        "https://new-repo.git",
 						"targetRevision": "v1.0.0",
 					},
@@ -539,24 +557,24 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields() {
 		{
 			name: "existing app has same values as new - no preservation needed",
 			existingApp: &unstructured.Unstructured{
-				Object: map[string]interface{}{
+				Object: map[string]any{
 					"apiVersion": "argoproj.io/v1alpha1",
 					"kind":       "Application",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name":      "test-app",
 						"namespace": "argocd",
 					},
-					"spec": map[string]interface{}{
-						"source": map[string]interface{}{
+					"spec": map[string]any{
+						"source": map[string]any{
 							"repoURL":        "https://same-repo.git",
 							"targetRevision": "v1.0.0",
 						},
 					},
 				},
 			},
-			objMap: map[string]interface{}{
-				"spec": map[string]interface{}{
-					"source": map[string]interface{}{
+			objMap: map[string]any{
+				"spec": map[string]any{
+					"source": map[string]any{
 						"repoURL":        "https://same-repo.git",
 						"targetRevision": "v1.0.0",
 					},
@@ -568,24 +586,24 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields() {
 		{
 			name: "existing app has empty repoURL - should not preserve",
 			existingApp: &unstructured.Unstructured{
-				Object: map[string]interface{}{
+				Object: map[string]any{
 					"apiVersion": "argoproj.io/v1alpha1",
 					"kind":       "Application",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name":      "test-app",
 						"namespace": "argocd",
 					},
-					"spec": map[string]interface{}{
-						"source": map[string]interface{}{
+					"spec": map[string]any{
+						"source": map[string]any{
 							"repoURL":        "",
 							"targetRevision": "",
 						},
 					},
 				},
 			},
-			objMap: map[string]interface{}{
-				"spec": map[string]interface{}{
-					"source": map[string]interface{}{
+			objMap: map[string]any{
+				"spec": map[string]any{
+					"source": map[string]any{
 						"repoURL":        "https://new-repo.git",
 						"targetRevision": "v1.0.0",
 					},
@@ -600,7 +618,7 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields() {
 		s.Run(tt.name, func() {
 			ctx := context.Background()
 
-			var fakeClient client.Client
+			var fakeClient ctrlruntimeclient.Client
 			if tt.existingApp != nil {
 				fakeClient = fake.NewClientBuilder().
 					WithObjects(tt.existingApp).
@@ -622,8 +640,8 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields() {
 
 			sub.preserveExistingArgoSourceFields(ctx, tt.objMap, "test-app", "argocd", s.log)
 
-			spec := tt.objMap["spec"].(map[string]interface{})
-			source := spec["source"].(map[string]interface{})
+			spec := tt.objMap["spec"].(map[string]any)
+			source := spec["source"].(map[string]any)
 
 			s.Equal(tt.expectedRepoURL, source["repoURL"])
 
@@ -654,9 +672,9 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields_GetEr
 		cfgOperator: &operatorCfg,
 	}
 
-	objMap := map[string]interface{}{
-		"spec": map[string]interface{}{
-			"source": map[string]interface{}{
+	objMap := map[string]any{
+		"spec": map[string]any{
+			"source": map[string]any{
 				"repoURL":        "https://new-repo.git",
 				"targetRevision": "v1.0.0",
 			},
@@ -665,8 +683,8 @@ func (s *DeploymentHelpersTestSuite) Test_preserveExistingArgoSourceFields_GetEr
 
 	sub.preserveExistingArgoSourceFields(ctx, objMap, "nonexistent-app", "argocd", s.log)
 
-	spec := objMap["spec"].(map[string]interface{})
-	source := spec["source"].(map[string]interface{})
+	spec := objMap["spec"].(map[string]any)
+	source := spec["source"].(map[string]any)
 	s.Equal("https://new-repo.git", source["repoURL"])
 	s.Equal("v1.0.0", source["targetRevision"])
 }
@@ -675,8 +693,8 @@ func (s *DeploymentHelpersTestSuite) Test_mergeImageVersionsIntoHelmReleaseValue
 	tests := []struct {
 		name          string
 		isUnsuspended bool
-		specSuspend   *bool       // nil = field absent from template
-		expectSuspend interface{} // nil = key absent
+		specSuspend   *bool // nil = field absent from template
+		expectSuspend any   // nil = key absent
 	}{
 		{
 			name:          "unsuspended in store → suspend overridden to false",
@@ -712,20 +730,20 @@ func (s *DeploymentHelpersTestSuite) Test_mergeImageVersionsIntoHelmReleaseValue
 				cfgOperator:       &config.OperatorConfig{WorkspaceDir: "../../"},
 			}
 
-			spec := map[string]interface{}{"values": map[string]interface{}{}}
+			spec := map[string]any{"values": map[string]any{}}
 			if tt.specSuspend != nil {
 				spec["suspend"] = *tt.specSuspend
 			}
-			obj := &unstructured.Unstructured{Object: map[string]interface{}{
+			obj := &unstructured.Unstructured{Object: map[string]any{
 				"apiVersion": "helm.toolkit.fluxcd.io/v2",
 				"kind":       "HelmRelease",
-				"metadata":   map[string]interface{}{"name": "openfga", "namespace": "platform-mesh-system"},
+				"metadata":   map[string]any{"name": "openfga", "namespace": "platform-mesh-system"},
 				"spec":       spec,
 			}}
 
 			sub.mergeImageVersionsIntoHelmReleaseValues(obj, "openfga", "platform-mesh-system", s.log)
 
-			resultSpec := obj.Object["spec"].(map[string]interface{})
+			resultSpec := obj.Object["spec"].(map[string]any)
 			resultSuspend, hasSuspend := resultSpec["suspend"]
 			if tt.expectSuspend == nil {
 				s.False(hasSuspend, "expected suspend key to be absent")
@@ -746,12 +764,12 @@ func (s *DeploymentHelpersTestSuite) Test_mergeImageVersionsIntoHelmReleaseValue
 
 	sub := &DeploymentSubroutine{imageVersionStore: store}
 
-	obj := &unstructured.Unstructured{Object: map[string]interface{}{
+	obj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "helm.toolkit.fluxcd.io/v2",
 		"kind":       "HelmRelease",
-		"metadata":   map[string]interface{}{"name": "keycloak", "namespace": "platform-mesh-system"},
-		"spec": map[string]interface{}{"values": map[string]interface{}{
-			"image": map[string]interface{}{
+		"metadata":   map[string]any{"name": "keycloak", "namespace": "platform-mesh-system"},
+		"spec": map[string]any{"values": map[string]any{
+			"image": map[string]any{
 				"registry":   "ghcr.io/platform-mesh",
 				"repository": "upstream-images/keycloak",
 				"tag":        "0.0.0",

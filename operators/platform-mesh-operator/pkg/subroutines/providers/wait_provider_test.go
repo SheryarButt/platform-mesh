@@ -1,5 +1,5 @@
 /*
-Copyright 2026.
+Copyright The Platform Mesh Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,19 +20,20 @@ import (
 	"context"
 	"testing"
 
-	"github.com/platform-mesh/golang-commons/context/keys"
-	"github.com/platform-mesh/golang-commons/logger"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
+	"go.platform-mesh.io/golang-commons/context/keys"
+	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/mocks"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	providersv1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type WaitProviderTestSuite struct {
@@ -80,8 +81,8 @@ func (s *WaitProviderTestSuite) newCtx() context.Context {
 	return context.WithValue(context.Background(), keys.LoggerCtxKey, s.log)
 }
 
-func (s *WaitProviderTestSuite) newManagedProvider() *providersv1alpha1.ManagedProvider {
-	return &providersv1alpha1.ManagedProvider{
+func (s *WaitProviderTestSuite) newManagedProvider() *pmprovidersv1alpha1.ManagedProvider {
+	return &pmprovidersv1alpha1.ManagedProvider{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "cowboys",
 			Namespace: "providers-wildwest-ns",
@@ -92,7 +93,7 @@ func (s *WaitProviderTestSuite) newManagedProvider() *providersv1alpha1.ManagedP
 func (s *WaitProviderTestSuite) mockAdminSecret() {
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "kcp-admin", Namespace: "platform-mesh-system"}, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			secret := obj.(*corev1.Secret)
 			secret.Data = map[string][]byte{
 				"ca.crt":  []byte("fake-ca"),
@@ -118,8 +119,8 @@ func (s *WaitProviderTestSuite) TestProcess_ProviderNotReady() {
 		Return(s.kcpClientMock, nil)
 	s.kcpClientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "cowboys"}, mock.AnythingOfType("*v1alpha1.Provider")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			obj.(*providersv1alpha1.Provider).Status.Phase = "Pending"
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
+			obj.(*pmprovidersv1alpha1.Provider).Status.Phase = "Pending"
 			return nil
 		})
 
@@ -127,7 +128,7 @@ func (s *WaitProviderTestSuite) TestProcess_ProviderNotReady() {
 
 	s.Require().NoError(err)
 	s.Assert().True(result.IsStopWithRequeue())
-	s.Assert().Equal(providersv1alpha1.ManagedProviderPhaseWaitingForProvider, inst.Status.Phase)
+	s.Assert().Equal(pmprovidersv1alpha1.ManagedProviderPhaseWaitingForProvider, inst.Status.Phase)
 }
 
 func (s *WaitProviderTestSuite) TestProcess_ProviderReady() {
@@ -140,8 +141,8 @@ func (s *WaitProviderTestSuite) TestProcess_ProviderReady() {
 		Return(s.kcpClientMock, nil)
 	s.kcpClientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "cowboys"}, mock.AnythingOfType("*v1alpha1.Provider")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			obj.(*providersv1alpha1.Provider).Status.Phase = "Ready"
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
+			obj.(*pmprovidersv1alpha1.Provider).Status.Phase = "Ready"
 			return nil
 		})
 
@@ -154,7 +155,7 @@ func (s *WaitProviderTestSuite) TestProcess_ProviderReady() {
 func (s *WaitProviderTestSuite) TestProcess_CustomProviderReference() {
 	ctx := s.newCtx()
 	inst := s.newManagedProvider()
-	inst.Spec.ProviderReference = &providersv1alpha1.ProviderReferenceSpec{
+	inst.Spec.ProviderReference = &pmprovidersv1alpha1.ProviderReferenceSpec{
 		Path: "root:custom:cowboys",
 		Name: "my-provider",
 	}
@@ -165,8 +166,8 @@ func (s *WaitProviderTestSuite) TestProcess_CustomProviderReference() {
 		Return(s.kcpClientMock, nil)
 	s.kcpClientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "my-provider"}, mock.AnythingOfType("*v1alpha1.Provider")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
-			obj.(*providersv1alpha1.Provider).Status.Phase = "Ready"
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
+			obj.(*pmprovidersv1alpha1.Provider).Status.Phase = "Ready"
 			return nil
 		})
 

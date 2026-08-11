@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package subroutines
 
 import (
@@ -6,25 +22,26 @@ import (
 	"net/url"
 	"strings"
 
-	kcpapiv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
-	kcpapiv1alpha2 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha2"
-	pmconfig "github.com/platform-mesh/golang-commons/config"
-	"github.com/platform-mesh/golang-commons/errors"
-	"github.com/platform-mesh/golang-commons/logger"
-	authv1 "k8s.io/api/authentication/v1"
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	pmconfig "go.platform-mesh.io/golang-commons/config"
+	"go.platform-mesh.io/golang-commons/errors"
+	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+
+	authenticationv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/utils/ptr"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
+	kcpapiv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
+	kcpapiv1alpha2 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha2"
 )
 
 const (
@@ -51,7 +68,7 @@ func resolveAPIExport(ctx context.Context, kcpHelper KcpHelper, cfg *rest.Config
 	}
 
 	var export kcpapiv1alpha2.APIExport
-	if err := kcpClient.Get(ctx, client.ObjectKey{Name: apiExportName}, &export); err != nil {
+	if err := kcpClient.Get(ctx, ctrlruntimeclient.ObjectKey{Name: apiExportName}, &export); err != nil {
 		return nil, fmt.Errorf("get APIExport %s in workspace %s: %w", apiExportName, apiExportPath, err)
 	}
 	return &export, nil
@@ -102,11 +119,11 @@ func getPolicyRulesFromAPIExport(export *kcpapiv1alpha2.APIExport) ([]rbacv1.Pol
 		}
 	}
 
-	if export.ObjectMeta.Name != "" {
+	if export.Name != "" {
 		rules = append(rules, rbacv1.PolicyRule{
 			APIGroups:     []string{"apis.kcp.io"},
 			Resources:     []string{"apiexports/content"},
-			ResourceNames: []string{export.ObjectMeta.Name},
+			ResourceNames: []string{export.Name},
 			Verbs:         []string{"*"},
 		})
 	}
@@ -161,7 +178,7 @@ type ScopedRBACSpec struct {
 // - Workspace access ClusterRoleBinding for the ServiceAccount
 func ensureScopedProviderServiceAccountAndRBAC(
 	ctx context.Context,
-	kcpClient client.Client,
+	kcpClient ctrlruntimeclient.Client,
 	providerSuffix string,
 	rbacSpecs []ScopedRBACSpec,
 ) (saName string, err error) {
@@ -187,7 +204,7 @@ func ensureScopedProviderServiceAccountAndRBAC(
 		},
 	}
 	if err := kcpClient.Create(ctx, sa); err != nil {
-		if !kerrors.IsAlreadyExists(err) {
+		if !apierrors.IsAlreadyExists(err) {
 			return "", fmt.Errorf("create ServiceAccount %s: %w", saName, err)
 		}
 	}
@@ -254,20 +271,20 @@ func ensureScopedProviderServiceAccountAndRBAC(
 	return saName, nil
 }
 
-func ensureScopedNamespaceExists(ctx context.Context, kcpClient client.Client, namespace string) error {
+func ensureScopedNamespaceExists(ctx context.Context, kcpClient ctrlruntimeclient.Client, namespace string) error {
 	if namespace == "" {
 		return fmt.Errorf("namespace is empty")
 	}
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{Name: namespace},
 	}
-	if err := kcpClient.Create(ctx, ns); err != nil && !kerrors.IsAlreadyExists(err) {
+	if err := kcpClient.Create(ctx, ns); err != nil && !apierrors.IsAlreadyExists(err) {
 		return err
 	}
 	return nil
 }
 
-func createTokenForSA(ctx context.Context, kcpWorkspaceClient client.Client, namespace, saName string, expirationSeconds int64) (string, error) {
+func createTokenForSA(ctx context.Context, kcpWorkspaceClient ctrlruntimeclient.Client, namespace, saName string, expirationSeconds int64) (string, error) {
 	expSec := expirationSeconds
 	if expSec <= 0 {
 		expSec = defaultTokenExpirationSeconds
@@ -278,8 +295,8 @@ func createTokenForSA(ctx context.Context, kcpWorkspaceClient client.Client, nam
 			Name:      saName,
 		},
 	}
-	tr := &authv1.TokenRequest{
-		Spec: authv1.TokenRequestSpec{
+	tr := &authenticationv1.TokenRequest{
+		Spec: authenticationv1.TokenRequestSpec{
 			ExpirationSeconds: &expSec,
 		},
 	}
@@ -362,14 +379,14 @@ func resolveAPIExportVirtualWorkspaceRawPath(ctx context.Context, kcpHelper KcpH
 		return "", fmt.Errorf("kcp client for APIExportEndpointSlice workspace: %w", err)
 	}
 	var endpointSlice kcpapiv1alpha1.APIExportEndpointSlice
-	if err := sliceClient.Get(ctx, client.ObjectKey{Name: name}, &endpointSlice); err != nil {
+	if err := sliceClient.Get(ctx, ctrlruntimeclient.ObjectKey{Name: name}, &endpointSlice); err != nil {
 		return "", fmt.Errorf("get APIExportEndpointSlice %q in %s: %w", name, sliceWorkspacePath, err)
 	}
 	return virtualWorkspacePathFromSlice(&endpointSlice)
 }
 
 // parseScopedKubeconfigExportSource validates that exactly one of endpointSliceName or apiExportNames is set.
-func parseScopedKubeconfigExportSource(pc corev1alpha1.ProviderConnection) (endpointSliceName string, apiExportNames []string, err error) {
+func parseScopedKubeconfigExportSource(pc pmcorev1alpha1.ProviderConnection) (endpointSliceName string, apiExportNames []string, err error) {
 	endpointSliceName = ptr.Deref(pc.EndpointSliceName, "")
 	apiExportNames = pc.APIExportNames
 
@@ -382,7 +399,7 @@ func parseScopedKubeconfigExportSource(pc corev1alpha1.ProviderConnection) (endp
 	return endpointSliceName, apiExportNames, nil
 }
 
-func createScopedKubeconfigURLForAPIExportName(operatorCfg config.OperatorConfig, instance *corev1alpha1.PlatformMesh, pcPath string, external bool) (string, error) {
+func createScopedKubeconfigURLForAPIExportName(operatorCfg config.OperatorConfig, instance *pmcorev1alpha1.PlatformMesh, pcPath string, external bool) (string, error) {
 	hostPort := fmt.Sprintf("https://%s-front-proxy.%s:%s", operatorCfg.KCP.FrontProxyName, operatorCfg.KCP.Namespace, operatorCfg.KCP.FrontProxyPort)
 	if external {
 		hostPort = fmt.Sprintf("https://kcp.api.%s:%d", instance.Spec.Exposure.BaseDomain, instance.Spec.Exposure.Port)
@@ -397,7 +414,7 @@ func createScopedKubeconfigURLForAPIExportName(operatorCfg config.OperatorConfig
 // rewriteScopedVirtualWorkspaceURLToFrontProxy replaces the host from KCP's APIExportEndpointSlice status URL
 // with the same base URL used for admin provider kubeconfigs (in-cluster front-proxy Service DNS, or exposure URL when pc.External),
 // preserving path and raw query. This matches HandleProviderConnection's url.JoinPath(hostPort, address.Path) behavior.
-func rewriteScopedVirtualWorkspaceURLToFrontProxy(hostURL string, operatorCfg config.OperatorConfig, instance *corev1alpha1.PlatformMesh, pcExternal bool) (string, error) {
+func rewriteScopedVirtualWorkspaceURLToFrontProxy(hostURL string, operatorCfg config.OperatorConfig, instance *pmcorev1alpha1.PlatformMesh, pcExternal bool) (string, error) {
 	u, err := url.Parse(hostURL)
 	if err != nil {
 		return "", fmt.Errorf("parse virtual workspace URL: %w", err)
@@ -426,11 +443,11 @@ func rewriteScopedVirtualWorkspaceURLToFrontProxy(hostURL string, operatorCfg co
 // writeScopedKubeconfigToSecret builds a scoped kubeconfig: ServiceAccount token in pc.Path, RBAC from APIExports; server is virtual workspace when endpointSliceName is set, else workspace cluster URL when apiExportNames is set.
 func writeScopedKubeconfigToSecret(
 	ctx context.Context,
-	k8sClient client.Client,
+	k8sClient ctrlruntimeclient.Client,
 	kcpHelper KcpHelper,
 	cfg *rest.Config,
-	instance *corev1alpha1.PlatformMesh,
-	pc corev1alpha1.ProviderConnection,
+	instance *pmcorev1alpha1.PlatformMesh,
+	pc pmcorev1alpha1.ProviderConnection,
 ) error {
 	log := logger.LoadLoggerFromContext(ctx)
 	operatorCfg := pmconfig.LoadConfigFromContext(ctx).(config.OperatorConfig)
@@ -453,7 +470,7 @@ func writeScopedKubeconfigToSecret(
 	var hostURL string
 	var saName string
 
-	caData := cfg.TLSClientConfig.CAData
+	caData := cfg.CAData
 	if caData == nil {
 		caData = []byte{}
 	}
@@ -461,7 +478,7 @@ func writeScopedKubeconfigToSecret(
 
 	if endpointSliceName != "" {
 		var endpointSlice kcpapiv1alpha1.APIExportEndpointSlice
-		if err := kcpWorkspaceClient.Get(ctx, client.ObjectKey{Name: endpointSliceName}, &endpointSlice); err != nil {
+		if err := kcpWorkspaceClient.Get(ctx, ctrlruntimeclient.ObjectKey{Name: endpointSliceName}, &endpointSlice); err != nil {
 			return fmt.Errorf("get APIExportEndpointSlice %q in %s: %w", endpointSliceName, pcPath, err)
 		}
 		hostURL, err = virtualWorkspaceServerURLFromSlice(&endpointSlice)

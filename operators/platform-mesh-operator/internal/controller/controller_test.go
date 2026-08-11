@@ -1,5 +1,5 @@
 /*
-Copyright 2025.
+Copyright The Platform Mesh Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,8 +22,13 @@ import (
 	"testing"
 
 	"github.com/go-logr/logr"
-	pmconfig "github.com/platform-mesh/golang-commons/config"
 	"github.com/stretchr/testify/suite"
+
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	pmconfig "go.platform-mesh.io/golang-commons/config"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,7 +39,7 @@ import (
 	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/config"
@@ -45,30 +50,26 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/conversion"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
-
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
 )
 
 // fakeCtrlManager implements sigs.k8s.io/controller-runtime/pkg/manager.Manager for unit tests.
 // Only GetClient and GetScheme are functional; all other methods panic if called.
 type fakeCtrlManager struct {
-	client client.Client
+	client ctrlruntimeclient.Client
 	scheme *runtime.Scheme
 }
 
-func (f *fakeCtrlManager) GetClient() client.Client             { return f.client }
-func (f *fakeCtrlManager) GetScheme() *runtime.Scheme           { return f.scheme }
-func (f *fakeCtrlManager) GetConfig() *rest.Config              { panic("not implemented") }
-func (f *fakeCtrlManager) GetCache() cache.Cache                { panic("not implemented") }
-func (f *fakeCtrlManager) GetFieldIndexer() client.FieldIndexer { panic("not implemented") }
+func (f *fakeCtrlManager) GetClient() ctrlruntimeclient.Client             { return f.client }
+func (f *fakeCtrlManager) GetScheme() *runtime.Scheme                      { return f.scheme }
+func (f *fakeCtrlManager) GetConfig() *rest.Config                         { panic("not implemented") }
+func (f *fakeCtrlManager) GetCache() cache.Cache                           { panic("not implemented") }
+func (f *fakeCtrlManager) GetFieldIndexer() ctrlruntimeclient.FieldIndexer { panic("not implemented") }
 func (f *fakeCtrlManager) GetEventRecorderFor(_ string) record.EventRecorder {
 	panic("not implemented")
 }
 func (f *fakeCtrlManager) GetEventRecorder(_ string) events.EventRecorder { panic("not implemented") }
 func (f *fakeCtrlManager) GetRESTMapper() meta.RESTMapper                 { panic("not implemented") }
-func (f *fakeCtrlManager) GetAPIReader() client.Reader                    { panic("not implemented") }
+func (f *fakeCtrlManager) GetAPIReader() ctrlruntimeclient.Reader         { panic("not implemented") }
 func (f *fakeCtrlManager) GetHTTPClient() *http.Client                    { panic("not implemented") }
 func (f *fakeCtrlManager) Add(_ ctrlmanager.Runnable) error               { return nil }
 func (f *fakeCtrlManager) Elected() <-chan struct{}                       { panic("not implemented") }
@@ -90,7 +91,7 @@ type fakeManager struct {
 	*fakeCtrlManager
 }
 
-func newFakeManager(c client.Client, s *runtime.Scheme) *fakeManager {
+func newFakeManager(c ctrlruntimeclient.Client, s *runtime.Scheme) *fakeManager {
 	return &fakeManager{fakeCtrlManager: &fakeCtrlManager{client: c, scheme: s}}
 }
 
@@ -124,12 +125,12 @@ func TestMapConfigMapTestSuite(t *testing.T) {
 func (s *MapConfigMapTestSuite) SetupSuite() {
 	s.scheme = runtime.NewScheme()
 	s.Require().NoError(clientgoscheme.AddToScheme(s.scheme))
-	s.Require().NoError(corev1alpha1.AddToScheme(s.scheme))
+	s.Require().NoError(pmcorev1alpha1.AddToScheme(s.scheme))
 }
 
 // newReconcilerWithClient builds a PlatformMeshReconciler whose client field
 // is backed by the provided fake client (used by mapConfigMapToPlatformMesh).
-func (s *MapConfigMapTestSuite) newReconcilerWithClient(c client.Client) *PlatformMeshReconciler {
+func (s *MapConfigMapTestSuite) newReconcilerWithClient(c ctrlruntimeclient.Client) *PlatformMeshReconciler {
 	return &PlatformMeshReconciler{client: c}
 }
 
@@ -172,7 +173,7 @@ func (s *MapConfigMapTestSuite) Test_noPlatformMeshes_returnsEmpty() {
 }
 
 func (s *MapConfigMapTestSuite) Test_configMapMatchesDefaultName_returnsRequest() {
-	pm := &corev1alpha1.PlatformMesh{
+	pm := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-pm", Namespace: "default"},
 	}
 	fakeClient := fake.NewClientBuilder().
@@ -194,10 +195,10 @@ func (s *MapConfigMapTestSuite) Test_configMapMatchesDefaultName_returnsRequest(
 }
 
 func (s *MapConfigMapTestSuite) Test_configMapMatchesExplicitRef_sameNamespace() {
-	pm := &corev1alpha1.PlatformMesh{
+	pm := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-pm", Namespace: "ns-a"},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			ProfileConfigMap: &corev1alpha1.ConfigMapReference{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			ProfileConfigMap: &pmcorev1alpha1.ConfigMapReference{
 				Name: "custom-profile",
 				// No namespace set — should default to the PlatformMesh namespace.
 			},
@@ -219,10 +220,10 @@ func (s *MapConfigMapTestSuite) Test_configMapMatchesExplicitRef_sameNamespace()
 }
 
 func (s *MapConfigMapTestSuite) Test_configMapMatchesExplicitRef_crossNamespace() {
-	pm := &corev1alpha1.PlatformMesh{
+	pm := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-pm", Namespace: "ns-a"},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			ProfileConfigMap: &corev1alpha1.ConfigMapReference{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			ProfileConfigMap: &pmcorev1alpha1.ConfigMapReference{
 				Name:      "shared-profile",
 				Namespace: "shared-ns",
 			},
@@ -244,10 +245,10 @@ func (s *MapConfigMapTestSuite) Test_configMapMatchesExplicitRef_crossNamespace(
 }
 
 func (s *MapConfigMapTestSuite) Test_configMapDoesNotMatchAny_returnsEmpty() {
-	pm := &corev1alpha1.PlatformMesh{
+	pm := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-pm", Namespace: "default"},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			ProfileConfigMap: &corev1alpha1.ConfigMapReference{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			ProfileConfigMap: &pmcorev1alpha1.ConfigMapReference{
 				Name: "expected-profile",
 			},
 		},
@@ -268,14 +269,14 @@ func (s *MapConfigMapTestSuite) Test_configMapDoesNotMatchAny_returnsEmpty() {
 
 func (s *MapConfigMapTestSuite) Test_multipleMatches_returnsAllMatchingRequests() {
 	// pm1 uses default name "pm-one-profile" in "ns-one".
-	pm1 := &corev1alpha1.PlatformMesh{
+	pm1 := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{Name: "pm-one", Namespace: "ns-one"},
 	}
 	// pm2 explicitly references the same ConfigMap across namespaces.
-	pm2 := &corev1alpha1.PlatformMesh{
+	pm2 := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{Name: "pm-two", Namespace: "ns-two"},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			ProfileConfigMap: &corev1alpha1.ConfigMapReference{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			ProfileConfigMap: &pmcorev1alpha1.ConfigMapReference{
 				Name:      "pm-one-profile",
 				Namespace: "ns-one",
 			},
@@ -296,7 +297,7 @@ func (s *MapConfigMapTestSuite) Test_multipleMatches_returnsAllMatchingRequests(
 }
 
 func (s *MapConfigMapTestSuite) Test_defaultNameWrongNamespace_doesNotMatch() {
-	pm := &corev1alpha1.PlatformMesh{
+	pm := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-pm", Namespace: "ns-a"},
 		// No explicit profileConfigMap — default is "my-pm-profile" in "ns-a".
 	}
@@ -328,7 +329,7 @@ func TestNewResourceReconcilerTestSuite(t *testing.T) {
 func (s *NewResourceReconcilerTestSuite) SetupSuite() {
 	s.scheme = runtime.NewScheme()
 	s.Require().NoError(clientgoscheme.AddToScheme(s.scheme))
-	s.Require().NoError(corev1alpha1.AddToScheme(s.scheme))
+	s.Require().NoError(pmcorev1alpha1.AddToScheme(s.scheme))
 }
 
 func (s *NewResourceReconcilerTestSuite) Test_nilClientInfra_usesManagerClient() {
@@ -369,7 +370,7 @@ func TestNewPlatformMeshReconcilerTestSuite(t *testing.T) {
 func (s *NewPlatformMeshReconcilerTestSuite) SetupSuite() {
 	s.scheme = runtime.NewScheme()
 	s.Require().NoError(clientgoscheme.AddToScheme(s.scheme))
-	s.Require().NoError(corev1alpha1.AddToScheme(s.scheme))
+	s.Require().NoError(pmcorev1alpha1.AddToScheme(s.scheme))
 }
 
 func (s *NewPlatformMeshReconcilerTestSuite) Test_allSubroutinesDisabled_returnsValidReconciler() {

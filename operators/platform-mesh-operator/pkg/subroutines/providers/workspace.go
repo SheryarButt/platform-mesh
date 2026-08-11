@@ -1,5 +1,5 @@
 /*
-Copyright 2026.
+Copyright The Platform Mesh Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,21 +20,22 @@ import (
 	"context"
 	"fmt"
 
-	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
-	"github.com/platform-mesh/golang-commons/controller/lifecycle/ratelimiter"
-	gcerrors "github.com/platform-mesh/golang-commons/errors"
-	"github.com/platform-mesh/golang-commons/logger"
-	"github.com/platform-mesh/subroutines"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	pmprovidersv1alpha1 "go.platform-mesh.io/apis/providers/v1alpha1"
+	"go.platform-mesh.io/golang-commons/controller/lifecycle/ratelimiter"
+	gcerrors "go.platform-mesh.io/golang-commons/errors"
+	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	pmsubs "go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
+	"go.platform-mesh.io/subroutines"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	providersv1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/providers/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	pmsubs "github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
+	kcptenancyv1alpha "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
 )
 
 const (
@@ -46,18 +47,18 @@ const (
 	providerWorkspaceTypePath = "root"
 )
 
-func providerWorkspaceName(provider *providersv1alpha1.Provider) string {
+func providerWorkspaceName(provider *pmprovidersv1alpha1.Provider) string {
 	return provider.Name + "-" + provider.Annotations["kcp.io/cluster"]
 }
 
-func providerWorkspacePath(provider *providersv1alpha1.Provider) string {
+func providerWorkspacePath(provider *pmprovidersv1alpha1.Provider) string {
 	return defaultWorkspaceParent + ":" + providerWorkspaceName(provider)
 }
 
 // ProviderWorkspaceSubroutine creates the provider workspace in kcp under
 // root:providers:<provider.Name>-<provider.Annotations["kcp.io/cluster"]>.
 type ProviderWorkspaceSubroutine struct {
-	localClient client.Client
+	localClient ctrlruntimeclient.Client
 	kcpHelper   pmsubs.KcpHelper
 	kcpCfg      config.KCPConfig
 	kcpUrl      string
@@ -65,7 +66,7 @@ type ProviderWorkspaceSubroutine struct {
 	limiter workqueue.TypedRateLimiter[*kcptenancyv1alpha.Workspace]
 }
 
-func NewProviderWorkspaceSubroutine(localClient client.Client, kcpHelper pmsubs.KcpHelper, kcpCfg config.KCPConfig, kcpUrl string) (*ProviderWorkspaceSubroutine, error) {
+func NewProviderWorkspaceSubroutine(localClient ctrlruntimeclient.Client, kcpHelper pmsubs.KcpHelper, kcpCfg config.KCPConfig, kcpUrl string) (*ProviderWorkspaceSubroutine, error) {
 	rl, err := ratelimiter.NewStaticThenExponentialRateLimiter[*kcptenancyv1alpha.Workspace](
 		ratelimiter.NewConfig())
 	if err != nil {
@@ -84,12 +85,12 @@ func (r *ProviderWorkspaceSubroutine) GetName() string {
 	return ProviderWorkspaceSubroutineName
 }
 
-func (r *ProviderWorkspaceSubroutine) Process(ctx context.Context, obj client.Object) (subroutines.Result, error) {
+func (r *ProviderWorkspaceSubroutine) Process(ctx context.Context, obj ctrlruntimeclient.Object) (subroutines.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
-	inst := obj.(*providersv1alpha1.Provider)
+	inst := obj.(*pmprovidersv1alpha1.Provider)
 
 	if inst.Status.Phase == "" {
-		inst.Status.Phase = providersv1alpha1.ProviderPhasePending
+		inst.Status.Phase = pmprovidersv1alpha1.ProviderPhasePending
 	}
 
 	providerWsName := providerWorkspaceName(inst)
@@ -129,7 +130,7 @@ func (r *ProviderWorkspaceSubroutine) Process(ctx context.Context, obj client.Ob
 	}
 	if ws.Status.Phase != "Ready" {
 		log.Info().Str("workspace", providerWsPath).Str("phase", string(ws.Status.Phase)).Msg("Workspace not Ready yet, requeuing")
-		inst.Status.Phase = providersv1alpha1.ProviderPhaseProvisioningWorkspace
+		inst.Status.Phase = pmprovidersv1alpha1.ProviderPhaseProvisioningWorkspace
 		return subroutines.StopWithRequeue(r.limiter.When(&ws), "Waiting for workspace to become Ready"), nil
 	}
 
@@ -138,16 +139,16 @@ func (r *ProviderWorkspaceSubroutine) Process(ctx context.Context, obj client.Ob
 	return subroutines.OK(), nil
 }
 
-func (r *ProviderWorkspaceSubroutine) Finalize(ctx context.Context, obj client.Object) (subroutines.Result, error) {
+func (r *ProviderWorkspaceSubroutine) Finalize(ctx context.Context, obj ctrlruntimeclient.Object) (subroutines.Result, error) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
-	inst := obj.(*providersv1alpha1.Provider)
+	inst := obj.(*pmprovidersv1alpha1.Provider)
 
 	providerWsName := providerWorkspaceName(inst)
 	providerWsPath := providerWorkspacePath(inst)
 
 	log.Debug().Str("parentPath", defaultWorkspaceParent).Str("workspaceName", providerWsName).Msg("Deleting provider workspace")
 
-	inst.Status.Phase = providersv1alpha1.ProviderPhaseDeleting
+	inst.Status.Phase = pmprovidersv1alpha1.ProviderPhaseDeleting
 
 	restCfg, err := pmsubs.BuildKubeconfigFromConfig(r.localClient, &r.kcpCfg, r.kcpUrl)
 	if err != nil {
@@ -165,7 +166,7 @@ func (r *ProviderWorkspaceSubroutine) Finalize(ctx context.Context, obj client.O
 		},
 	}
 	if err = scopedKcpClient.Delete(ctx, &ws); err != nil {
-		if kerrors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			log.Info().Str("parentPath", defaultWorkspaceParent).Str("workspaceName", providerWsName).Msg("Deleted provider workspace")
 			r.limiter.Forget(&ws)
 			return subroutines.OK(), nil
@@ -176,6 +177,6 @@ func (r *ProviderWorkspaceSubroutine) Finalize(ctx context.Context, obj client.O
 	return subroutines.StopWithRequeue(r.limiter.When(&ws), "Waiting for provider workspace to be deleted"), nil
 }
 
-func (r *ProviderWorkspaceSubroutine) Finalizers(_ client.Object) []string {
+func (r *ProviderWorkspaceSubroutine) Finalizers(_ ctrlruntimeclient.Object) []string {
 	return []string{ProviderWorkspaceSubroutineFinalizer}
 }

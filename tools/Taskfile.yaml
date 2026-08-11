@@ -35,18 +35,57 @@ vars:
     sh: echo "$(git rev-parse --show-toplevel)"
   BIN: '{{.TOPLEVEL}}/bin'
   HACK: '{{.TOPLEVEL}}/hack'
-  CONTROLLER_TOOLS_VERSION: v0.21.0
+
+  # To update any of these versions, first change them here and then run any
+  # command that uses the tool, but with UGET_UPDATE=true set, for example for
+  # bumping golangci-lint, run `UGET_UPDATE=true task lint`.
+
+  # also used for kcp's apigen
+  APIGEN: '{{.BIN}}/apigen-{{.KCP_VERSION}}'
+
+  CONTROLLER_GEN_VERSION: v0.21.0
+  CONTROLLER_GEN: '{{.BIN}}/controller-gen-{{.CONTROLLER_GEN_VERSION}}'
+
+  DOCKER_COMPOSE_VERSION: v5.4.0
+  DOCKER_COMPOSE: '{{.BIN}}/docker-compose-{{.DOCKER_COMPOSE_VERSION}}'
+
   ENVTEST_K8S_VERSION: "1.36.0"
-  ENVTEST_VERSION: release-0.24
+  ENVTEST_VERSION: v0.24.1
+  ENVTEST: '{{.BIN}}/setup-envtest-{{.ENVTEST_VERSION}}'
+
   GOLANGCI_LINT_VERSION: 2.12.2
-  GO_TEST_COVERAGE_VERSION: v2.18.8
-  MOCKERY_VERSION: v3.7.0
-  OAPI_VERSION: v2.7.1
-  KCP_APIGEN_VERSION: v0.32.3
-  OPENAPI_GEN_VERSION: latest
+  GOLANGCI_LINT: '{{.BIN}}/golangci-lint-{{.GOLANGCI_LINT_VERSION}}'
+
+  GO_TEST_COVERAGE_VERSION: v2.18.9
+  GO_TEST_COVERAGE: '{{.BIN}}/go-test-coverage-{{.GO_TEST_COVERAGE_VERSION}}'
 
   # kcp release used by the operators' envtest suites (see component test-e2e).
   KCP_VERSION: 0.32.3
+  KCP: '{{.BIN}}/kcp-{{.KCP_VERSION}}'
+
+  KIND_VERSION: v0.29.0
+  KIND: '{{.BIN}}/kind-{{.KIND_VERSION}}'
+
+  KUSTOMIZE_VERSION: v5.4.3
+  KUSTOMIZE: '{{.BIN}}/kustomize-{{.KUSTOMIZE_VERSION}}'
+
+  MKCERT_VERSION: v1.4.4
+  MKCERT: '{{.BIN}}/mkcert-{{.MKCERT_VERSION}}'
+
+  MOCKERY_VERSION: 3.7.0
+  MOCKERY: '{{.BIN}}/mockery-{{.MOCKERY_VERSION}}'
+
+  OAPI_CODEGEN_VERSION: v2.7.1
+  OAPI_CODEGEN: '{{.BIN}}/oapi-codegen-{{.OAPI_CODEGEN_VERSION}}'
+
+  OCM_VERSION: 0.24.0
+  OCM: '{{.BIN}}/ocm-{{.OCM_VERSION}}'
+
+  OPENAPI_GEN_VERSION: d427ff9ee9ad05f5da435abbb7c5929cb713ac56 # most recent commit as of writing this
+  OPENAPI_GEN: '{{.BIN}}/openapi-gen-{{.OPENAPI_GEN_VERSION}}'
+
+  YAML_PATCH_VERSION: v0.0.11
+  YAML_PATCH: '{{.BIN}}/yaml-patch-{{.YAML_PATCH_VERSION}}'
 
 env:
   UGET_DIRECTORY: '{{.BIN}}'
@@ -65,15 +104,169 @@ tasks:
   controller-gen:
     desc: Install controller-gen into the root bin.
     cmds:
-      - GOBIN={{.BIN}} GOWORK=off go install sigs.k8s.io/controller-tools/cmd/controller-gen@{{.CONTROLLER_TOOLS_VERSION}}
-    status:
-      - test -s {{.BIN}}/controller-gen
-      - '{{.BIN}}/controller-gen --version | grep -qw {{.CONTROLLER_TOOLS_VERSION}}'
+      - task: uget
+        vars:
+          tool: controller-gen
+          source: 'https://github.com/kubernetes-sigs/controller-tools/releases/download/{VERSION}/controller-gen-{GOOS}-{GOARCH}'
+          version: '{{ .CONTROLLER_GEN_VERSION }}'
+          uncompressed: true
+          extractArg: 'controller-gen-*'
   golangci-lint:
-    silent: true
     desc: Install golangci-lint into the root bin.
+    # internal: true
     cmds:
-      - "{{.HACK}}/uget.sh https://github.com/golangci/golangci-lint/releases/download/v{VERSION}/golangci-lint-{VERSION}-{GOOS}-{GOARCH}.tar.gz golangci-lint {{.GOLANGCI_LINT_VERSION}}"
+      - task: uget
+        vars:
+          tool: golangci-lint
+          source: 'https://github.com/golangci/golangci-lint/releases/download/v{VERSION}/golangci-lint-{VERSION}-{GOOS}-{GOARCH}.tar.gz'
+          version: '{{ .GOLANGCI_LINT_VERSION }}'
+  mockery:
+    desc: Install mockery into the root bin.
+    internal: true
+    cmds:
+      - task: uget
+        vars:
+          tool: mockery
+          source: 'https://github.com/vektra/mockery/releases/download/v{VERSION}/mockery_{VERSION}_{ENV:MY_OS}_{ENV:MY_ARCH}.tar.gz'
+          version: '{{ .MOCKERY_VERSION }}'
+          extractArg: mockery
+  apigen:
+    desc: Install kcp apigen into the root bin.
+    internal: true
+    cmds:
+      - task: uget
+        vars:
+          tool: apigen
+          source: github.com/kcp-dev/sdk/cmd/apigen
+          version: '{{ .KCP_VERSION }}' # yes, re-use the shared kcp version for apigen
+          goModule: true
+  kcp:
+    desc: Install kcp into the root bin (shared by the operators' envtest suites).
+    internal: true
+    cmds:
+      - task: uget
+        vars:
+          tool: kcp
+          source: 'https://github.com/kcp-dev/kcp/releases/download/v{VERSION}/kcp_{VERSION}_{GOOS}_{GOARCH}.tar.gz'
+          version: '{{ .KCP_VERSION }}'
+      # kcp's sharded envtest needs a binary called "kcp"
+      - 'ln -sf {{.KCP}} {{.BIN}}/kcp'
+  envtest:
+    internal: true
+    cmds:
+      - task: uget
+        vars:
+          tool: setup-envtest
+          source: 'https://github.com/kubernetes-sigs/controller-runtime/releases/download/{VERSION}/setup-envtest-{GOOS}-{GOARCH}'
+          version: '{{ .ENVTEST_VERSION }}'
+          extractArg: 'setup-envtest-*'
+          uncompressed: true
+  go-test-coverage:
+    internal: true
+    cmds:
+      - task: uget
+        vars:
+          tool: go-test-coverage
+          source: 'https://github.com/vladopajic/go-test-coverage/releases/download/{VERSION}/go-test-coverage_{VERSION}_{GOOS}_{GOARCH}.tar.gz'
+          version: '{{ .GO_TEST_COVERAGE_VERSION }}'
+          extractArg: 'go-test-coverage'
+  docker-compose:
+    internal: true
+    cmds:
+      - task: uget
+        vars:
+          tool: docker-compose
+          source: 'https://github.com/docker/compose/releases/download/{VERSION}/docker-compose-{UOS}-{UARCH}'
+          version: '{{ .DOCKER_COMPOSE_VERSION }}'
+          extractArg: 'docker-compose-*'
+          uncompressed: true
+  oapi-codegen:
+    internal: true
+    cmds:
+      - task: uget
+        vars:
+          tool: oapi-codegen
+          source: github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
+          version: '{{ .OAPI_CODEGEN_VERSION }}'
+          goModule: true
+  openapi-gen:
+    desc: Install openapi-gen into the root bin.
+    internal: true
+    cmds:
+      - task: uget
+        vars:
+          tool: openapi-gen
+          source: k8s.io/kube-openapi/cmd/openapi-gen
+          version: '{{ .OPENAPI_GEN_VERSION }}'
+          goModule: true
+  kustomize:
+    internal: true
+    cmds:
+      - task: uget
+        vars:
+          tool: kustomize
+          source: 'https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F{VERSION}/kustomize_{VERSION}_{GOOS}_{GOARCH}.tar.gz'
+          version: '{{ .KUSTOMIZE_VERSION }}'
+          extractArg: kustomize
+  ocm:
+    internal: true
+    cmds:
+      - task: uget
+        vars:
+          tool: ocm
+          source: 'https://github.com/open-component-model/ocm/releases/download/v{VERSION}/ocm-{VERSION}-{GOOS}-{GOARCH}.tar.gz'
+          version: '{{ .OCM_VERSION }}'
+          extractArg: ocm
+  mkcert:
+    internal: true
+    cmds:
+      - task: uget
+        vars:
+          tool: mkcert
+          source: 'https://github.com/FiloSottile/mkcert/releases/download/{VERSION}/mkcert-{VERSION}-{GOOS}-{GOARCH}'
+          version: '{{ .MKCERT_VERSION }}'
+          extractArg: 'mkcert-*'
+          uncompressed: true
+  kind:
+    internal: true
+    cmds:
+      - task: uget
+        vars:
+          tool: kind
+          source: 'https://github.com/kubernetes-sigs/kind/releases/download/{VERSION}/kind-{GOOS}-{GOARCH}'
+          version: '{{ .KIND_VERSION }}'
+          extractArg: 'kind-*'
+          uncompressed: true
+  yaml-patch:
+    internal: true
+    cmds:
+      - task: uget
+        vars:
+          tool: yaml-patch
+          source: github.com/pivotal-cf/yaml-patch/cmd/yaml-patch
+          version: '{{ .YAML_PATCH_VERSION }}'
+          goModule: true
+
+  # µget downloads necessary tools for working with Platform Mesh. It's a dedicated, silent task
+  # to keep the CLI output from being so noisy.
+  uget:
+    silent: true
+    vars:
+      tool: '{{ .tool }}'
+      source: '{{ .source }}'
+      version: '{{ .version }}'
+      extractArg: '{{ .extractArg | default "" }}'
+      goModule: '{{ .goModule | default "false" }}'
+      uncompressed: '{{ .uncompressed | default "false" }}'
+    env:
+      # µget's default UOS/OARCH are lowercased, but we need the uppercased version
+      # for mockery. Taskfiles do not allow envs to be inherited by subtasks, so we
+      # have to declare these here globally.
+      MY_OS: { sh: uname -s }
+      MY_ARCH: { sh: uname -m }
+    cmds:
+      - "UNCOMPRESSED={{ .uncompressed }} GO_MODULE={{ .goModule }} {{.HACK}}/uget.sh {{ .source }} {{ .tool }} {{ .version }} '{{ .extractArg }}'"
+
   lint:
     desc: Lint all Go code in the repository using golangci-lint.
     internal: true
@@ -87,69 +280,6 @@ tasks:
       # and then again with per-component settings, if there are any
       - if: test -s .golangci.yaml
         cmd: '{{.GOLANGCI_LINT}} run --timeout 15m ./...'
-  mockery:
-    desc: Install mockery into the root bin.
-    cmds:
-      - GOBIN={{.BIN}} GOWORK=off go install github.com/vektra/mockery/v3@{{.MOCKERY_VERSION}}
-      - rm -f {{.BIN}}/.mockery.*.stamp
-      - touch {{.BIN}}/.mockery.{{.MOCKERY_VERSION}}.stamp
-    status:
-      - test -s {{.BIN}}/mockery
-      - test -f {{.BIN}}/.mockery.{{.MOCKERY_VERSION}}.stamp
-  apigen:
-    desc: Install kcp apigen into the root bin.
-    cmds:
-      - GOBIN={{.BIN}} GOWORK=off go install github.com/kcp-dev/sdk/cmd/apigen@{{.KCP_APIGEN_VERSION}}
-      - rm -f {{.BIN}}/.apigen.*.stamp
-      - touch {{.BIN}}/.apigen.{{.KCP_APIGEN_VERSION}}.stamp
-    status:
-      - test -s {{.BIN}}/apigen
-      - test -f {{.BIN}}/.apigen.{{.KCP_APIGEN_VERSION}}.stamp
-  kcp:
-    silent: true
-    desc: Install kcp into the root bin (shared by the operators' envtest suites).
-    cmds:
-      - UGET_VERSIONED_BINARIES=false {{.HACK}}/uget.sh https://github.com/kcp-dev/kcp/releases/download/v{VERSION}/kcp_{VERSION}_{GOOS}_{GOARCH}.tar.gz kcp {{.KCP_VERSION}}
-  envtest:
-    internal: true
-    status:
-      - test -s {{.BIN}}/setup-envtest
-      - test -f {{.BIN}}/.setup-envtest.{{.ENVTEST_VERSION}}.stamp
-    cmds:
-      - GOBIN={{.BIN}} GOWORK=off go install sigs.k8s.io/controller-runtime/tools/setup-envtest@{{.ENVTEST_VERSION}}
-      - rm -f {{.BIN}}/.setup-envtest.*.stamp
-      - touch {{.BIN}}/.setup-envtest.{{.ENVTEST_VERSION}}.stamp
-  go-test-coverage:
-    internal: true
-    status:
-      - test -s {{.BIN}}/go-test-coverage
-      - test -f {{.BIN}}/.go-test-coverage.{{.GO_TEST_COVERAGE_VERSION}}.stamp
-    cmds:
-      - GOBIN={{.BIN}} GOWORK=off go install github.com/vladopajic/go-test-coverage/v2@{{.GO_TEST_COVERAGE_VERSION}}
-      - rm -f {{.BIN}}/.go-test-coverage.*.stamp
-      - touch {{.BIN}}/.go-test-coverage.{{.GO_TEST_COVERAGE_VERSION}}.stamp
-  docker-compose:
-    internal: true
-    status:
-      - test -s {{.BIN}}/docker-compose
-    cmds:
-      - GOBIN={{.BIN}} GOWORK=off go install github.com/docker/compose/v2/cmd@latest && mv {{.BIN}}/cmd {{.BIN}}/docker-compose
-  oapi-codegen:
-    internal: true
-    status:
-      - test -s {{.BIN}}/oapi-codegen
-      - test -f {{.BIN}}/.oapi-codegen.{{.OAPI_VERSION}}.stamp
-    cmds:
-      - GOBIN={{.BIN}} GOWORK=off go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@{{.OAPI_VERSION}}
-      - rm -f {{.BIN}}/.oapi-codegen.*.stamp
-      - touch {{.BIN}}/.oapi-codegen.{{.OAPI_VERSION}}.stamp
-
-  openapi-gen:
-    desc: Install openapi-gen into the root bin.
-    cmds:
-      - GOBIN={{.BIN}} GOWORK=off go install k8s.io/kube-openapi/cmd/openapi-gen@{{.OPENAPI_GEN_VERSION}}
-    status:
-      - test -s {{.BIN}}/openapi-gen
 
   # OpenAPI models for types served by a virtual workspace. The generic apiserver
   # resolves a model for every type it serves and refuses to start without one, so
@@ -165,7 +295,7 @@ tasks:
       # resolves a model for EVERY referenced type. Generating only our package
       # yields definitions with dangling references and the server refuses to
       # start. This is the same input set the upstream projects use.
-      - '{{.BIN}}/openapi-gen --output-dir {{.BASEDIR}}/{{.PATH}} --output-pkg {{.PKG}} --output-file zz_generated.openapi.go --go-header-file {{.HACK}}/boilerplate/boilerplate.go.txt {{.PKG}} k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/runtime k8s.io/apimachinery/pkg/version'
+      - '{{.OAPI_CODEGEN}} --output-dir {{.BASEDIR}}/{{.PATH}} --output-pkg {{.PKG}} --output-file zz_generated.openapi.go --go-header-file {{.HACK}}/boilerplate/boilerplate.go.txt {{.PKG}} k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/runtime k8s.io/apimachinery/pkg/version'
 
   generate-crds:
     internal: true
@@ -174,7 +304,7 @@ tasks:
       # CRDs are usually generated based off the global apis module
       BASEDIR: '{{ .BASEDIR | default (print .TOPLEVEL "/apis") }}'
     cmds:
-      - '{{.BIN}}/controller-gen crd:headerFile={{.HACK}}/boilerplate/boilerplate.yaml.txt paths={{.BASEDIR}}{{.PATH}} output:crd:artifacts:config={{.OUTPUT}}'
+      - '{{.CONTROLLER_GEN}} crd:headerFile={{.HACK}}/boilerplate/boilerplate.yaml.txt paths={{.BASEDIR}}{{.PATH}} output:crd:artifacts:config={{.OUTPUT}}'
 
   generate-rbac:
     internal: true
@@ -182,7 +312,7 @@ tasks:
     vars:
       ROLE: '{{ .ROLE | default "manager-role" }}'
     cmds:
-      - '{{.BIN}}/controller-gen rbac:roleName={{.ROLE}},headerFile={{.HACK}}/boilerplate/boilerplate.yaml.txt paths={{.PATHS}} output:rbac:artifacts:config={{.OUTPUT}}'
+      - '{{.CONTROLLER_GEN}} rbac:roleName={{.ROLE}},headerFile={{.HACK}}/boilerplate/boilerplate.yaml.txt paths={{.PATHS}} output:rbac:artifacts:config={{.OUTPUT}}'
 
   generate-deepcopy:
     internal: true
@@ -191,4 +321,4 @@ tasks:
       # deepcopy funcs are usually generated based off the global apis module
       BASEDIR: '{{ .BASEDIR | default (print .TOPLEVEL "/apis") }}'
     cmds:
-      - "{{.BIN}}/controller-gen object:headerFile={{.HACK}}/boilerplate/boilerplate.go.txt paths={{.BASEDIR}}{{.PATH}}"
+      - '{{.CONTROLLER_GEN}} object:headerFile={{.HACK}}/boilerplate/boilerplate.go.txt paths={{.BASEDIR}}{{.PATH}}'

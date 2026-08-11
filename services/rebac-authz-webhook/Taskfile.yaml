@@ -78,11 +78,11 @@ tasks:
     deps: [tools:go-test-coverage]
     cmds:
       - task: cover
-      - "{{.BIN}}/go-test-coverage --profile cover.out --config ./.testcoverage.yml"
+      - "{{.GO_TEST_COVERAGE}} --profile cover.out --config ./.testcoverage.yml"
   mockery:
     deps: [tools:mockery]
     cmds:
-      - "{{.BIN}}/mockery"
+      - "{{.MOCKERY}}"
   docker:kind:load:
     desc: "Build container image with current tag from kind cluster and load it into kind"
     vars:

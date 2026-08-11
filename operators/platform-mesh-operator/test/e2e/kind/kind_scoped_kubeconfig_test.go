@@ -1,3 +1,21 @@
+//go:build e2e
+
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package e2e
 
 import (
@@ -9,17 +27,18 @@ import (
 	"strings"
 	"time"
 
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines"
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
+
 	corev1 "k8s.io/api/core/v1"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/utils/ptr"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Matches suite_kind_test runOperator KCP.Url and Kind object keys used elsewhere in this package.
@@ -69,14 +88,14 @@ func (s *KindTestSuite) TestScoped01KubeconfigKcpPrereq() {
 }
 
 func (s *KindTestSuite) ensureScopedE2EProviderConnections(ctx context.Context) {
-	pm := &corev1alpha1.PlatformMesh{}
-	err := s.client.Get(ctx, client.ObjectKey{
+	pm := &pmcorev1alpha1.PlatformMesh{}
+	err := s.client.Get(ctx, ctrlruntimeclient.ObjectKey{
 		Name:      e2ePlatformMeshName,
 		Namespace: e2ePlatformMeshNamespace,
 	}, pm)
 	s.Require().NoError(err, "get PlatformMesh for scoped e2e provider connections")
 
-	desired := []corev1alpha1.ProviderConnection{
+	desired := []pmcorev1alpha1.ProviderConnection{
 		{
 			Path:              e2eScopedKubeconfigProvider1Path,
 			Secret:            e2eScopedKubeconfigProvider1SecretName,
@@ -131,7 +150,7 @@ func (s *KindTestSuite) ensureScopedE2EProviderConnections(ctx context.Context) 
 		Msg("scoped e2e provider connections updated")
 }
 
-func providerConnectionEquivalent(a, b corev1alpha1.ProviderConnection) bool {
+func providerConnectionEquivalent(a, b pmcorev1alpha1.ProviderConnection) bool {
 	if a.Path != b.Path ||
 		a.Secret != b.Secret ||
 		a.External != b.External ||
@@ -154,7 +173,7 @@ func (s *KindTestSuite) waitScopedProviderConnectionSecretsReady(ctx context.Con
 		name := secretName
 		s.Eventually(func() bool {
 			sec := &corev1.Secret{}
-			if err := s.client.Get(ctx, client.ObjectKey{Name: name, Namespace: e2ePlatformMeshNamespace}, sec); err != nil {
+			if err := s.client.Get(ctx, ctrlruntimeclient.ObjectKey{Name: name, Namespace: e2ePlatformMeshNamespace}, sec); err != nil {
 				s.logger.Info().Str("secret", name).Msg("scoped prereq wait: provider secret not yet present")
 				return false
 			}
@@ -250,9 +269,9 @@ func (s *KindTestSuite) TestScoped04ExtraProviderAdminKubeconfigProvider3() {
 	s.logger.Info().Str("kind_e2e", "TestScoped04ExtraProviderAdminKubeconfigProvider3").Str("secret", e2eAdminKubeconfigProvider3SecretName).Msg("done")
 }
 
-func scopedTryLoadKcpClusterAdminClientCert(s *KindTestSuite, ctx context.Context, sec *corev1.Secret) (namespace string, ok bool) {
+func scopedTryLoadKcpClusterAdminClientCert(ctx context.Context, s *KindTestSuite, sec *corev1.Secret) (namespace string, ok bool) {
 	for _, ns := range scopedE2EKcpClusterAdminCertSearchNamespaces {
-		err := s.client.Get(ctx, client.ObjectKey{
+		err := s.client.Get(ctx, ctrlruntimeclient.ObjectKey{
 			Name:      e2eKcpClusterAdminClientCertSecretName,
 			Namespace: ns,
 		}, sec)
@@ -274,7 +293,7 @@ func scopedTryLoadKcpClusterAdminClientCert(s *KindTestSuite, ctx context.Contex
 // Call only after scopedWaitPlatformMeshReady: Ready implies ProvidersecretSubroutine has populated these secrets.
 func (s *KindTestSuite) requireE2EProviderKubeconfigSecret(ctx context.Context, secretName string) *corev1.Secret {
 	sec := &corev1.Secret{}
-	err := s.client.Get(ctx, client.ObjectKey{
+	err := s.client.Get(ctx, ctrlruntimeclient.ObjectKey{
 		Name:      secretName,
 		Namespace: e2ePlatformMeshNamespace,
 	}, sec)
@@ -304,7 +323,7 @@ func (s *KindTestSuite) kcpAdminKubeconfigBytes(ctx context.Context) ([]byte, er
 	var ok bool
 	if scopedE2EKcpAdminCertSecretNamespace != "" {
 		ns = scopedE2EKcpAdminCertSecretNamespace
-		err := s.client.Get(ctx, client.ObjectKey{
+		err := s.client.Get(ctx, ctrlruntimeclient.ObjectKey{
 			Name:      e2eKcpClusterAdminClientCertSecretName,
 			Namespace: ns,
 		}, sec)
@@ -314,7 +333,7 @@ func (s *KindTestSuite) kcpAdminKubeconfigBytes(ctx context.Context) ([]byte, er
 		ok = sec.Data != nil && len(sec.Data["ca.crt"]) > 0 && len(sec.Data["tls.crt"]) > 0 && len(sec.Data["tls.key"]) > 0
 	}
 	if !ok {
-		ns, ok = scopedTryLoadKcpClusterAdminClientCert(s, ctx, sec)
+		ns, ok = scopedTryLoadKcpClusterAdminClientCert(ctx, s, sec)
 		if !ok {
 			return nil, fmt.Errorf("secret %s not found with TLS data in namespaces %v",
 				e2eKcpClusterAdminClientCertSecretName, scopedE2EKcpClusterAdminCertSearchNamespaces)
@@ -351,7 +370,7 @@ func (s *KindTestSuite) restConfigForLocalKCPFrontProxy(kubeconfigBytes []byte) 
 	return out, nil
 }
 
-func (s *KindTestSuite) kcpClientForWorkspace(ctx context.Context, workspacePath string) (client.Client, error) {
+func (s *KindTestSuite) kcpClientForWorkspace(ctx context.Context, workspacePath string) (ctrlruntimeclient.Client, error) {
 	raw, err := s.kcpAdminKubeconfigBytes(ctx)
 	if err != nil {
 		return nil, err
@@ -363,12 +382,12 @@ func (s *KindTestSuite) kcpClientForWorkspace(ctx context.Context, workspacePath
 	return (&subroutines.Helper{}).NewKcpClient(cfg, workspacePath)
 }
 
-func (s *KindTestSuite) kcpClientForWorkspaceWithScheme(ctx context.Context, scheme *runtime.Scheme, workspacePath string) client.Client {
+func (s *KindTestSuite) kcpClientForWorkspaceWithScheme(ctx context.Context, scheme *runtime.Scheme, workspacePath string) ctrlruntimeclient.Client {
 	kcpAdminCfg, err := subroutines.BuildKubeconfigFromConfig(s.client, &defaultKcpOperatorConfig, defaultKcpOperatorConfig.Url)
 	s.Require().NoError(err, "getting kcp admin rest config should succeed")
 	kcpAdminCfg.Host += "/clusters/" + workspacePath
 
-	scopedKcpAdminClient, err := client.New(kcpAdminCfg, client.Options{
+	scopedKcpAdminClient, err := ctrlruntimeclient.New(kcpAdminCfg, ctrlruntimeclient.Options{
 		Scheme: scheme,
 	})
 	s.Require().NoError(err, "creating scoped kcp admin client should succeed")
@@ -379,7 +398,7 @@ func (s *KindTestSuite) kcpClientForWorkspaceWithScheme(ctx context.Context, sch
 func (s *KindTestSuite) waitForKcpClusterAdminClientCert(ctx context.Context) {
 	sec := &corev1.Secret{}
 	s.Eventually(func() bool {
-		ns, ok := scopedTryLoadKcpClusterAdminClientCert(s, ctx, sec)
+		ns, ok := scopedTryLoadKcpClusterAdminClientCert(ctx, s, sec)
 		if !ok {
 			s.logger.Warn().
 				Str("secret", e2eKcpClusterAdminClientCertSecretName).
@@ -457,7 +476,7 @@ func (s *KindTestSuite) waitAPIExportEndpointSliceEndpointsReady(ctx context.Con
 		slice := &unstructured.Unstructured{}
 		slice.SetAPIVersion("apis.kcp.io/v1alpha1")
 		slice.SetKind("APIExportEndpointSlice")
-		if err := cl.Get(ctx, client.ObjectKey{Name: sliceName}, slice); err != nil {
+		if err := cl.Get(ctx, ctrlruntimeclient.ObjectKey{Name: sliceName}, slice); err != nil {
 			return false
 		}
 		endpoints, foundEndpoints, _ := unstructured.NestedSlice(slice.Object, "status", "endpoints")
@@ -473,48 +492,48 @@ func (s *KindTestSuite) waitAPIExportEndpointSliceEndpointsReady(ctx context.Con
 	}, 6*time.Minute, 10*time.Second, "APIExportEndpointSlice %s in %s has no endpoints", sliceName, workspacePath)
 }
 
-func (s *KindTestSuite) ensureProvider1EndpointSliceBootstrapAPIBinding(ctx context.Context, provider1Client client.Client) {
+func (s *KindTestSuite) ensureProvider1EndpointSliceBootstrapAPIBinding(ctx context.Context, provider1Client ctrlruntimeclient.Client) {
 	binding := &unstructured.Unstructured{}
 	binding.SetAPIVersion("apis.kcp.io/v1alpha2")
 	binding.SetKind("APIBinding")
 	binding.SetName("e2e-provider1-endpoint-bootstrap")
-	binding.Object["spec"] = map[string]interface{}{
-		"reference": map[string]interface{}{
-			"export": map[string]interface{}{
+	binding.Object["spec"] = map[string]any{
+		"reference": map[string]any{
+			"export": map[string]any{
 				"path": e2eScopedKubeconfigProvider1Path,
 				"name": e2eKindScopedProviderExportName,
 			},
 		},
 	}
 	err := provider1Client.Create(ctx, binding)
-	if err != nil && !kerrors.IsAlreadyExists(err) {
+	if err != nil && !apierrors.IsAlreadyExists(err) {
 		s.Require().NoError(err, "create provider1 bootstrap APIBinding")
 	}
 }
 
-func (s *KindTestSuite) ensureProvider2ExportBootstrapAPIBindingReady(ctx context.Context, provider2Client client.Client) {
+func (s *KindTestSuite) ensureProvider2ExportBootstrapAPIBindingReady(ctx context.Context, provider2Client ctrlruntimeclient.Client) {
 	const bindingName = "e2e-provider2-export-bootstrap"
 	binding := &unstructured.Unstructured{}
 	binding.SetAPIVersion("apis.kcp.io/v1alpha2")
 	binding.SetKind("APIBinding")
 	binding.SetName(bindingName)
-	binding.Object["spec"] = map[string]interface{}{
-		"reference": map[string]interface{}{
-			"export": map[string]interface{}{
+	binding.Object["spec"] = map[string]any{
+		"reference": map[string]any{
+			"export": map[string]any{
 				"path": e2eScopedKubeconfigProvider2Path,
 				"name": e2eKindScopedProviderExportName,
 			},
 		},
 	}
 	err := provider2Client.Create(ctx, binding)
-	if err != nil && !kerrors.IsAlreadyExists(err) {
+	if err != nil && !apierrors.IsAlreadyExists(err) {
 		s.Require().NoError(err, "create provider2 bootstrap APIBinding")
 	}
 	s.Eventually(func() bool {
 		current := &unstructured.Unstructured{}
 		current.SetAPIVersion("apis.kcp.io/v1alpha2")
 		current.SetKind("APIBinding")
-		if err := provider2Client.Get(ctx, client.ObjectKey{Name: bindingName}, current); err != nil {
+		if err := provider2Client.Get(ctx, ctrlruntimeclient.ObjectKey{Name: bindingName}, current); err != nil {
 			return false
 		}
 		phase, _, _ := unstructured.NestedString(current.Object, "status", "phase")
@@ -532,7 +551,7 @@ func (s *KindTestSuite) runKubectlWithRawKubeconfig(kubeconfigBytes []byte, kube
 	if err != nil {
 		return nil, err
 	}
-	defer os.Remove(tmp.Name())
+	defer os.Remove(tmp.Name()) //nolint:errcheck
 	if _, err := tmp.Write(normalizedKubeconfigBytes); err != nil {
 		_ = tmp.Close()
 		return nil, err
@@ -575,12 +594,12 @@ func normalizeScopedKubeconfigServerForLocalRun(kubeconfigBytes []byte) ([]byte,
 }
 
 // logWorkspaceObservedAfterApply helps CI debug: confirms whether the Workspace object is visible right after SSA apply.
-func (s *KindTestSuite) logWorkspaceObservedAfterApply(ctx context.Context, cl client.Client, workspaceName string) {
+func (s *KindTestSuite) logWorkspaceObservedAfterApply(ctx context.Context, cl ctrlruntimeclient.Client, workspaceName string) {
 	ws := &unstructured.Unstructured{}
 	ws.SetAPIVersion("tenancy.kcp.io/v1alpha1")
 	ws.SetKind("Workspace")
-	if err := cl.Get(ctx, client.ObjectKey{Name: workspaceName}, ws); err != nil {
-		if kerrors.IsNotFound(err) {
+	if err := cl.Get(ctx, ctrlruntimeclient.ObjectKey{Name: workspaceName}, ws); err != nil {
+		if apierrors.IsNotFound(err) {
 			s.logger.Warn().Str("workspace", workspaceName).
 				Msg("workspace not visible immediately after apply (apiserver may lag); wait loop will retry")
 			return
@@ -599,7 +618,7 @@ func (s *KindTestSuite) logWorkspacePhaseAndConditionMessages(ws *unstructured.U
 	conditions, ok, _ := unstructured.NestedSlice(ws.Object, "status", "conditions")
 	if ok {
 		for _, raw := range conditions {
-			cm, ok := raw.(map[string]interface{})
+			cm, ok := raw.(map[string]any)
 			if !ok {
 				continue
 			}
@@ -633,12 +652,12 @@ func (s *KindTestSuite) logWorkspacePhaseAndConditionMessages(ws *unstructured.U
 	evt.Msg(msg)
 }
 
-func (s *KindTestSuite) waitWorkspaceReady(ctx context.Context, cl client.Client, workspaceName string) {
+func (s *KindTestSuite) waitWorkspaceReady(ctx context.Context, cl ctrlruntimeclient.Client, workspaceName string) {
 	s.Eventually(func() bool {
 		ws := &unstructured.Unstructured{}
 		ws.SetAPIVersion("tenancy.kcp.io/v1alpha1")
 		ws.SetKind("Workspace")
-		if err := cl.Get(ctx, client.ObjectKey{Name: workspaceName}, ws); err != nil {
+		if err := cl.Get(ctx, ctrlruntimeclient.ObjectKey{Name: workspaceName}, ws); err != nil {
 			s.logger.Warn().Err(err).Str("workspace", workspaceName).Msg("workspace not ready yet")
 			return false
 		}
@@ -655,8 +674,8 @@ func (s *KindTestSuite) waitWorkspaceReady(ctx context.Context, cl client.Client
 // On each unsuccessful poll it also logs status.conditions at Debug (turn on debug log level to see in CI).
 func (s *KindTestSuite) scopedWaitPlatformMeshReady(ctx context.Context) {
 	s.Eventually(func() bool {
-		pm := corev1alpha1.PlatformMesh{}
-		err := s.client.Get(ctx, client.ObjectKey{
+		pm := pmcorev1alpha1.PlatformMesh{}
+		err := s.client.Get(ctx, ctrlruntimeclient.ObjectKey{
 			Name:      e2ePlatformMeshName,
 			Namespace: e2ePlatformMeshNamespace,
 		}, &pm)
@@ -676,7 +695,7 @@ func (s *KindTestSuite) scopedWaitPlatformMeshReady(ctx context.Context) {
 	}, 25*time.Minute, 10*time.Second)
 }
 
-func (s *KindTestSuite) logPlatformMeshNotReadyDebug(pm *corev1alpha1.PlatformMesh) {
+func (s *KindTestSuite) logPlatformMeshNotReadyDebug(pm *pmcorev1alpha1.PlatformMesh) {
 	if len(pm.Status.Conditions) == 0 {
 		s.logger.Debug().
 			Msg("PlatformMesh not Ready: status.conditions is empty")

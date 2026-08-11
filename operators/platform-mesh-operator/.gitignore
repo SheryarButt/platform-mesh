@@ -1,51 +1,12 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
 *.crt
 *.key
 *.srl
 
-# Test binary, built with `go test -c`
-*.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
-*.out
-
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
-go.work
-go.work.sum
-
-# env file
-.env
-bin/*
-.kcp/
-kcp.log
-.vscode/*
-.idea
-.secret
-.claude
-
-# OS files
-.DS_Store
 test/e2e/kind/certs/
-*.srl
-*.crt
-*.key
+test/e2e/kind/kind-testcluster.kubeconfig
 **/__debug_bin*
 gha-logs.txt
 *.kubeconfig
-debug
-.cursor/*
-test/e2e/kind/kind-testcluster.kubeconfig
 
 config/crd/apigen/crds/
 config/crd/apigen/out/

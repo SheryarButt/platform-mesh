@@ -1,12 +1,28 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package subroutines
 
 import (
 	"time"
 
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
 
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 const DefaultRequeueInterval = 5 * time.Second
@@ -22,7 +38,7 @@ var SecurityOperatorWebhookCASecretName = "security-operator-ca-secret"
 var IdentityProviderValidatingWebhookName = "identityproviderconfiguration-validator.webhooks.core.platform-mesh.io"
 var AccountOperatorWorkspace = "root:platform-mesh-system"
 
-var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
+var DefaultProviderConnections = []pmcorev1alpha1.ProviderConnection{
 	{
 		Path:      "root:platform-mesh-system",
 		Secret:    "account-operator-kubeconfig",
@@ -89,13 +105,13 @@ var DefaultProviderConnections = []corev1alpha1.ProviderConnection{
 	},
 }
 
-var DEFAULT_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{
-	SecretRef: corev1alpha1.SecretReference{
+var DEFAULT_WEBHOOK_CONFIGURATION = pmcorev1alpha1.WebhookConfiguration{
+	SecretRef: pmcorev1alpha1.SecretReference{
 		Name:      AccountOperatorWebhookSecretName,
 		Namespace: AccountOperatorWebhookSecretNamespace,
 	},
 	SecretData: DefaultCASecretKey,
-	WebhookRef: corev1alpha1.KCPAPIVersionKindRef{
+	WebhookRef: pmcorev1alpha1.KCPAPIVersionKindRef{
 		ApiVersion: "admissionregistration.k8s.io/v1",
 		Kind:       "MutatingWebhookConfiguration",
 		Name:       AccountOperatorMutatingWebhookName,
@@ -103,13 +119,13 @@ var DEFAULT_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{
 	},
 }
 
-var DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{
-	SecretRef: corev1alpha1.SecretReference{
+var DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION = pmcorev1alpha1.WebhookConfiguration{
+	SecretRef: pmcorev1alpha1.SecretReference{
 		Name:      AccountOperatorWebhookSecretName,
 		Namespace: AccountOperatorWebhookSecretNamespace,
 	},
 	SecretData: DefaultCASecretKey,
-	WebhookRef: corev1alpha1.KCPAPIVersionKindRef{
+	WebhookRef: pmcorev1alpha1.KCPAPIVersionKindRef{
 		ApiVersion: "admissionregistration.k8s.io/v1",
 		Kind:       "ValidatingWebhookConfiguration",
 		Name:       AccountOperatorValidatingWebhookName,
@@ -117,13 +133,13 @@ var DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration
 	},
 }
 
-var DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION = corev1alpha1.WebhookConfiguration{
-	SecretRef: corev1alpha1.SecretReference{
+var DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION = pmcorev1alpha1.WebhookConfiguration{
+	SecretRef: pmcorev1alpha1.SecretReference{
 		Name:      SecurityOperatorWebhookCASecretName,
 		Namespace: AccountOperatorWebhookSecretNamespace,
 	},
 	SecretData: DefaultCASecretKey,
-	WebhookRef: corev1alpha1.KCPAPIVersionKindRef{
+	WebhookRef: pmcorev1alpha1.KCPAPIVersionKindRef{
 		ApiVersion: "admissionregistration.k8s.io/v1",
 		Kind:       "ValidatingWebhookConfiguration",
 		Name:       IdentityProviderValidatingWebhookName,
@@ -131,25 +147,25 @@ var DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION = corev1alpha1.We
 	},
 }
 
-var DEFAULT_WAIT_CONFIG = corev1alpha1.WaitConfig{
-	ResourceTypes: []corev1alpha1.ResourceType{
+var DEFAULT_WAIT_CONFIG = pmcorev1alpha1.WaitConfig{
+	ResourceTypes: []pmcorev1alpha1.ResourceType{
 		{
-			GroupVersionKind: v1.GroupVersionKind{
+			GroupVersionKind: metav1.GroupVersionKind{
 				Group:   "helm.toolkit.fluxcd.io",
 				Version: "v2",
 				Kind:    "HelmRelease",
 			},
 			Namespace: "default",
-			LabelSelector: v1.LabelSelector{
-				MatchExpressions: []v1.LabelSelectorRequirement{
+			LabelSelector: metav1.LabelSelector{
+				MatchExpressions: []metav1.LabelSelectorRequirement{
 					{
 						Key:      "core.platform-mesh.io/operator-created",
-						Operator: v1.LabelSelectorOpIn,
+						Operator: metav1.LabelSelectorOpIn,
 						Values:   []string{"true"},
 					},
 				},
 			},
-			ConditionStatus:  v1.ConditionTrue,
+			ConditionStatus:  metav1.ConditionTrue,
 			RowConditionType: "Ready",
 		},
 	},

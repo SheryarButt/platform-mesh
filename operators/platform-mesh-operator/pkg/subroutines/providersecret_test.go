@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package subroutines
 
 import (
@@ -9,43 +25,44 @@ import (
 	"strings"
 	"testing"
 
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/utils/ptr"
-
-	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
-	"github.com/platform-mesh/golang-commons/context/keys"
-	"github.com/platform-mesh/golang-commons/logger"
-	"github.com/platform-mesh/subroutines"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
+	"go.platform-mesh.io/golang-commons/context/keys"
+	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/platform-mesh-operator/internal/config"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines/mocks"
+	"go.platform-mesh.io/subroutines"
+
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"k8s.io/utils/ptr"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	corev1alpha1 "github.com/platform-mesh/platform-mesh-operator/api/v1alpha1"
-	"github.com/platform-mesh/platform-mesh-operator/internal/config"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/subroutines/mocks"
+	kcpapiv1alpha "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
 )
 
 var secretKubeconfigData, _ = os.ReadFile("test/kubeconfig.yaml")
 
 type fakeHelm struct{ ready bool }
 
-func (f fakeHelm) GetRelease(ctx context.Context, cli client.Client, name, ns string) (*unstructured.Unstructured, error) {
-	u := &unstructured.Unstructured{Object: map[string]interface{}{
-		"status": map[string]interface{}{"ready": f.ready},
+func (f fakeHelm) GetRelease(ctx context.Context, cli ctrlruntimeclient.Client, name, ns string) (*unstructured.Unstructured, error) {
+	u := &unstructured.Unstructured{Object: map[string]any{
+		"status": map[string]any{"ready": f.ready},
 	}}
 	return u, nil
 }
 
-func wantProviderKubeconfigServer(t *testing.T, inst *corev1alpha1.PlatformMesh, op config.OperatorConfig, pc corev1alpha1.ProviderConnection, kcpURL string) string {
+func wantProviderKubeconfigServer(t *testing.T, inst *pmcorev1alpha1.PlatformMesh, op config.OperatorConfig, pc pmcorev1alpha1.ProviderConnection, kcpURL string) string {
 	t.Helper()
 	scheme := "https"
 	if inst.Spec.Exposure != nil && inst.Spec.Exposure.Protocol != "" {
@@ -102,35 +119,35 @@ func TestProvidersecretTestSuite(t *testing.T) {
 	suite.Run(t, new(ProvidersecretTestSuite))
 }
 
-func (suite *ProvidersecretTestSuite) SetupTest() {
+func (s *ProvidersecretTestSuite) SetupTest() {
 	cfg := logger.DefaultConfig()
 	cfg.Level = "debug"
 	cfg.NoJSON = true
 	cfg.Name = "ProvidersecretTestSuite"
-	suite.log, _ = logger.New(cfg)
+	s.log, _ = logger.New(cfg)
 
-	suite.clientMock = new(mocks.Client)
+	s.clientMock = new(mocks.Client)
 
-	suite.scheme = runtime.NewScheme()
-	_ = corev1.AddToScheme(suite.scheme)
-	_ = corev1alpha1.AddToScheme(suite.scheme)
-	_ = kcpapiv1alpha.AddToScheme(suite.scheme)
+	s.scheme = runtime.NewScheme()
+	_ = corev1.AddToScheme(s.scheme)
+	_ = pmcorev1alpha1.AddToScheme(s.scheme)
+	_ = kcpapiv1alpha.AddToScheme(s.scheme)
 
-	suite.clientMock.EXPECT().Scheme().Return(suite.scheme).Maybe()
+	s.clientMock.EXPECT().Scheme().Return(s.scheme).Maybe()
 
-	suite.testObj = NewProviderSecretSubroutine(suite.clientMock, &Helper{}, fakeHelm{ready: true}, "")
+	s.testObj = NewProviderSecretSubroutine(s.clientMock, &Helper{}, fakeHelm{ready: true}, "")
 }
 
-func (suite *ProvidersecretTestSuite) TearDownTest() {
+func (s *ProvidersecretTestSuite) TearDownTest() {
 	// clear mocks
-	suite.clientMock = nil
+	s.clientMock = nil
 
 	// clear test object
-	suite.testObj = nil
+	s.testObj = nil
 }
 
 func (s *ProvidersecretTestSuite) TestProcess() {
-	instance := &corev1alpha1.PlatformMesh{
+	instance := &pmcorev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PlatformMesh",
 			APIVersion: "core.platform-mesh.io/v1alpha1",
@@ -139,9 +156,9 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 			Name:      "test",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			Kcp: corev1alpha1.Kcp{
-				ProviderConnections: []corev1alpha1.ProviderConnection{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			Kcp: pmcorev1alpha1.Kcp{
+				ProviderConnections: []pmcorev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
@@ -150,8 +167,8 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 				},
 			},
 		},
-		Status: corev1alpha1.PlatformMeshStatus{
-			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
+		Status: pmcorev1alpha1.PlatformMeshStatus{
+			KcpWorkspaces: []pmcorev1alpha1.KcpWorkspace{
 				{Name: "root:platform-mesh-system", Phase: "Ready"},
 				{Name: "root:orgs", Phase: "Ready"},
 			},
@@ -192,7 +209,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 	s.clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key types.NamespacedName) bool {
 		return key.Name == "test-secret" && key.Namespace == "default"
 	}), mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*corev1.Secret) = secret
 			return nil
 		}).Once()
@@ -207,7 +224,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 
 	s.clientMock.EXPECT().Create(
 		mock.Anything,
-		mock.MatchedBy(func(obj client.Object) bool {
+		mock.MatchedBy(func(obj ctrlruntimeclient.Object) bool {
 			secret, ok := obj.(*corev1.Secret)
 			if !ok {
 				s.log.Error().Msg("Object is not a Secret")
@@ -248,7 +265,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 		}),
 		mock.Anything,
 	).
-		RunAndReturn(func(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+		RunAndReturn(func(ctx context.Context, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.CreateOption) error {
 			providerSecret := obj.(*corev1.Secret)
 			err := controllerutil.SetOwnerReference(instance, providerSecret, s.clientMock.Scheme())
 			s.NoError(err)
@@ -257,7 +274,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 		Once()
 
 	scheme := runtime.NewScheme()
-	err = corev1alpha1.AddToScheme(scheme)
+	err = pmcorev1alpha1.AddToScheme(scheme)
 	s.Require().NoError(err)
 	s.clientMock.EXPECT().Scheme().Return(scheme).Once()
 
@@ -271,7 +288,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 
 	mockKcpClient := new(mocks.Client)
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
 			return nil
 		}).Once()
@@ -279,7 +296,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 	mockedKcpHelper := new(mocks.KcpHelper)
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil).Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
-		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*corev1.Secret) = corev1.Secret{
 				Data: map[string][]byte{
@@ -304,7 +321,7 @@ func (s *ProvidersecretTestSuite) TestProcess() {
 }
 
 func (s *ProvidersecretTestSuite) TestWrongScheme() {
-	instance := &corev1alpha1.PlatformMesh{
+	instance := &pmcorev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PlatformMesh",
 			APIVersion: "core.platform-mesh.io/v1alpha1",
@@ -313,9 +330,9 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 			Name:      "test",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			Kcp: corev1alpha1.Kcp{
-				ProviderConnections: []corev1alpha1.ProviderConnection{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			Kcp: pmcorev1alpha1.Kcp{
+				ProviderConnections: []pmcorev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
@@ -324,8 +341,8 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 				},
 			},
 		},
-		Status: corev1alpha1.PlatformMeshStatus{
-			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
+		Status: pmcorev1alpha1.PlatformMeshStatus{
+			KcpWorkspaces: []pmcorev1alpha1.KcpWorkspace{
 				{
 					Name:  "root:platform-mesh-system",
 					Phase: "Ready",
@@ -356,7 +373,7 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 	}
 
 	mockK8sClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			switch obj := o.(type) {
 			case *kcpapiv1alpha.APIExportEndpointSlice:
 				*obj = *slice
@@ -374,7 +391,7 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 		Return(mockK8sClient, nil).Once()
 	mockK8sClient.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).Return(nil)
 	mockK8sClient.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
-		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*corev1.Secret) = corev1.Secret{
 				Data: map[string][]byte{
@@ -401,7 +418,7 @@ func (s *ProvidersecretTestSuite) TestWrongScheme() {
 }
 
 func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
-	instance := &corev1alpha1.PlatformMesh{
+	instance := &pmcorev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PlatformMesh",
 			APIVersion: "core.platform-mesh.io/v1alpha1",
@@ -410,9 +427,9 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 			Name:      "test",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			Kcp: corev1alpha1.Kcp{
-				ProviderConnections: []corev1alpha1.ProviderConnection{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			Kcp: pmcorev1alpha1.Kcp{
+				ProviderConnections: []pmcorev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
@@ -421,8 +438,8 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 				},
 			},
 		},
-		Status: corev1alpha1.PlatformMeshStatus{
-			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
+		Status: pmcorev1alpha1.PlatformMeshStatus{
+			KcpWorkspaces: []pmcorev1alpha1.KcpWorkspace{
 				{Name: "root:platform-mesh-system", Phase: "Ready"},
 			},
 		},
@@ -462,7 +479,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 
 	// Simulate that secret doesn't exist, so Create is triggered
 	mockClient.EXPECT().
-		Get(mock.Anything, mock.MatchedBy(func(key client.ObjectKey) bool {
+		Get(mock.Anything, mock.MatchedBy(func(key ctrlruntimeclient.ObjectKey) bool {
 			return key.Name == "test-secret"
 		}), mock.Anything).
 		Return(apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "Secret"}, "test-secret")).
@@ -472,12 +489,12 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 		Get(mock.Anything,
 			mock.Anything,
 			mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			rootShard := &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{
+				Object: map[string]any{
+					"status": map[string]any{
+						"conditions": []any{
+							map[string]any{
 								"type":   "Available",
 								"status": "True",
 							},
@@ -507,7 +524,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 				return false
 			}),
 			mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*corev1.Secret) = *secret
 			return nil
 		})
@@ -521,11 +538,11 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 	// Mock KCP client and its Get call for EndpointSlice
 	mockedKcpClient := new(mocks.Client)
 	mockedKcpClient.EXPECT().
-		Get(mock.Anything, mock.Anything, mock.MatchedBy(func(obj client.Object) bool {
+		Get(mock.Anything, mock.Anything, mock.MatchedBy(func(obj ctrlruntimeclient.Object) bool {
 			_, ok := obj.(*kcpapiv1alpha.APIExportEndpointSlice)
 			return ok
 		})).
-		RunAndReturn(func(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, key ctrlruntimeclient.ObjectKey, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
 			return nil
 		}).
@@ -537,7 +554,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 		Return(mockedKcpClient, nil).Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).Return(nil)
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
-		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*corev1.Secret) = corev1.Secret{
 				Data: map[string][]byte{
@@ -569,7 +586,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingSecret() {
 }
 
 func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
-	instance := &corev1alpha1.PlatformMesh{
+	instance := &pmcorev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PlatformMesh",
 			APIVersion: "core.platform-mesh.io/v1alpha1",
@@ -578,9 +595,9 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 			Name:      "test",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			Kcp: corev1alpha1.Kcp{
-				ProviderConnections: []corev1alpha1.ProviderConnection{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			Kcp: pmcorev1alpha1.Kcp{
+				ProviderConnections: []pmcorev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
@@ -589,8 +606,8 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 				},
 			},
 		},
-		Status: corev1alpha1.PlatformMeshStatus{
-			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
+		Status: pmcorev1alpha1.PlatformMeshStatus{
+			KcpWorkspaces: []pmcorev1alpha1.KcpWorkspace{
 				{
 					Name:  "root:platform-mesh-system",
 					Phase: "Ready",
@@ -607,12 +624,12 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 		Get(mock.Anything,
 			mock.Anything,
 			mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			rootShard := &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{
+				Object: map[string]any{
+					"status": map[string]any{
+						"conditions": []any{
+							map[string]any{
 								"type":   "Available",
 								"status": "True",
 							},
@@ -638,7 +655,7 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 
 	mockKcpClient := new(mocks.Client)
 	mockKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
 			return nil
 		}).Once()
@@ -647,7 +664,7 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).Return(mockKcpClient, nil).Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*unstructured.Unstructured")).Return(nil)
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
-		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*corev1.Secret) = corev1.Secret{
 				Data: map[string][]byte{
@@ -678,7 +695,7 @@ func (s *ProvidersecretTestSuite) TestFailedBuilidingKubeconfig() {
 }
 
 func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
-	instance := &corev1alpha1.PlatformMesh{
+	instance := &pmcorev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PlatformMesh",
 			APIVersion: "core.platform-mesh.io/v1alpha1",
@@ -687,9 +704,9 @@ func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 			Name:      "test",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			Kcp: corev1alpha1.Kcp{
-				ProviderConnections: []corev1alpha1.ProviderConnection{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			Kcp: pmcorev1alpha1.Kcp{
+				ProviderConnections: []pmcorev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
@@ -698,8 +715,8 @@ func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 				},
 			},
 		},
-		Status: corev1alpha1.PlatformMeshStatus{
-			KcpWorkspaces: []corev1alpha1.KcpWorkspace{
+		Status: pmcorev1alpha1.PlatformMeshStatus{
+			KcpWorkspaces: []pmcorev1alpha1.KcpWorkspace{
 				{
 					Name:  "root:platform-mesh-system",
 					Phase: "Ready",
@@ -724,7 +741,7 @@ func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 
 	s.clientMock.EXPECT().Get(
 		mock.Anything, mock.Anything, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*corev1.Secret) = secret
 			return errors.New("error getting secret")
@@ -734,12 +751,12 @@ func (s *ProvidersecretTestSuite) TestErrorGettingSecret() {
 		Get(mock.Anything,
 			mock.Anything,
 			mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			rootShard := &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{
+				Object: map[string]any{
+					"status": map[string]any{
+						"conditions": []any{
+							map[string]any{
 								"type":   "Available",
 								"status": "True",
 							},
@@ -775,9 +792,9 @@ func (s *ProvidersecretTestSuite) TestGetName() {
 	s.Assert().Equal(res, ProvidersecretSubroutineName)
 }
 
-func (suite *ProvidersecretTestSuite) TestConstructor() {
+func (s *ProvidersecretTestSuite) TestConstructor() {
 	helper := &Helper{}
-	suite.testObj = NewProviderSecretSubroutine(suite.clientMock, helper, fakeHelm{ready: true}, "")
+	s.testObj = NewProviderSecretSubroutine(s.clientMock, helper, fakeHelm{ready: true}, "")
 }
 
 func (s *ProvidersecretTestSuite) TestFinalize() {
@@ -786,8 +803,8 @@ func (s *ProvidersecretTestSuite) TestFinalize() {
 	s.Assert().Equal(res, subroutines.OK())
 }
 
-func (s *ProvidersecretTestSuite) getBaseInstance() *corev1alpha1.PlatformMesh {
-	return &corev1alpha1.PlatformMesh{
+func (s *ProvidersecretTestSuite) getBaseInstance() *pmcorev1alpha1.PlatformMesh {
+	return &pmcorev1alpha1.PlatformMesh{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PlatformMesh",
 			APIVersion: "core.platform-mesh.io/v1alpha1",
@@ -796,9 +813,9 @@ func (s *ProvidersecretTestSuite) getBaseInstance() *corev1alpha1.PlatformMesh {
 			Name:      "test",
 			Namespace: "default",
 		},
-		Spec: corev1alpha1.PlatformMeshSpec{
-			Kcp: corev1alpha1.Kcp{
-				ProviderConnections: []corev1alpha1.ProviderConnection{
+		Spec: pmcorev1alpha1.PlatformMeshSpec{
+			Kcp: pmcorev1alpha1.Kcp{
+				ProviderConnections: []pmcorev1alpha1.ProviderConnection{
 					{
 						EndpointSliceName: ptr.To("test-endpoint"),
 						Path:              "root:platform-mesh-system",
@@ -825,7 +842,7 @@ func (s *ProvidersecretTestSuite) TestInvalidKubeconfig() {
 	s.clientMock.EXPECT().Get(mock.Anything, mock.MatchedBy(func(key types.NamespacedName) bool {
 		return key.Name == "test-secret" && key.Namespace == "default"
 	}), mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*corev1.Secret) = secret
 			return nil
 		}).Once()
@@ -834,12 +851,12 @@ func (s *ProvidersecretTestSuite) TestInvalidKubeconfig() {
 		Get(mock.Anything,
 			mock.Anything,
 			mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			rootShard := &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{
+				Object: map[string]any{
+					"status": map[string]any{
+						"conditions": []any{
+							map[string]any{
 								"type":   "Available",
 								"status": "True",
 							},
@@ -854,7 +871,7 @@ func (s *ProvidersecretTestSuite) TestInvalidKubeconfig() {
 
 	mockedKcpHelper := new(mocks.KcpHelper)
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
-		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*corev1.Secret) = secret
 			return nil
@@ -916,7 +933,7 @@ func (s *ProvidersecretTestSuite) TestErrorLoadingKubeconfig() {
 				return false
 			}),
 			mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*corev1.Secret) = *secret
 			return nil
 		})
@@ -924,7 +941,7 @@ func (s *ProvidersecretTestSuite) TestErrorLoadingKubeconfig() {
 		Get(mock.Anything,
 			mock.Anything,
 			mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*corev1.Secret) = *badSecret
 			return nil
 		})
@@ -933,12 +950,12 @@ func (s *ProvidersecretTestSuite) TestErrorLoadingKubeconfig() {
 		Get(mock.Anything,
 			mock.Anything,
 			mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			rootShard := &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{
+				Object: map[string]any{
+					"status": map[string]any{
+						"conditions": []any{
+							map[string]any{
 								"type":   "Available",
 								"status": "True",
 							},
@@ -1005,13 +1022,13 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 				return false
 			}),
 			mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*corev1.Secret) = *secret
 			return nil
 		})
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*corev1.Secret) = *badKubeconfigSecret
 			return nil
 		}).Once()
@@ -1020,12 +1037,12 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 		Get(mock.Anything,
 			mock.Anything,
 			mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			rootShard := &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{
+				Object: map[string]any{
+					"status": map[string]any{
+						"conditions": []any{
+							map[string]any{
 								"type":   "Available",
 								"status": "True",
 							},
@@ -1042,7 +1059,7 @@ func (s *ProvidersecretTestSuite) TestErrorCreatingKCPClient() {
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(nil, errors.New("failed to create KCP client")).Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
-		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*corev1.Secret) = *badKubeconfigSecret
 			return nil
@@ -1083,12 +1100,12 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 		Get(mock.Anything,
 			mock.Anything,
 			mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			rootShard := &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{
+				Object: map[string]any{
+					"status": map[string]any{
+						"conditions": []any{
+							map[string]any{
 								"type":   "Available",
 								"status": "True",
 							},
@@ -1118,13 +1135,13 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 				return false
 			}),
 			mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			// *obj.(*corev1.Secret) = *secret
 			return nil
 		})
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*corev1.Secret) = *secret
 			return nil
 		}).Once()
@@ -1139,7 +1156,7 @@ func (s *ProvidersecretTestSuite) TestErrorGettingAPIExportEndpointSlice() {
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(mockedKcpClient, nil).Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
-		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*corev1.Secret) = *secret
 			return nil
@@ -1180,12 +1197,12 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 		Get(mock.Anything,
 			mock.Anything,
 			mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			rootShard := &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{
+				Object: map[string]any{
+					"status": map[string]any{
+						"conditions": []any{
+							map[string]any{
 								"type":   "Available",
 								"status": "True",
 							},
@@ -1215,13 +1232,13 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 				return false
 			}),
 			mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			// *obj.(*corev1.Secret) = *secret
 			return nil
 		})
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*corev1.Secret) = *secret
 			return nil
 		}).Once()
@@ -1236,7 +1253,7 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 
 	mockedKcpClient := new(mocks.Client)
 	mockedKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
 			return nil
 		}).Once()
@@ -1245,7 +1262,7 @@ func (s *ProvidersecretTestSuite) TestEmptyAPIExportEndpoints() {
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(mockedKcpClient, nil).Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
-		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*corev1.Secret) = *secret
 			return nil
@@ -1285,12 +1302,12 @@ func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
 		Get(mock.Anything,
 			mock.Anything,
 			mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			rootShard := &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{
+				Object: map[string]any{
+					"status": map[string]any{
+						"conditions": []any{
+							map[string]any{
 								"type":   "Available",
 								"status": "True",
 							},
@@ -1320,13 +1337,13 @@ func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
 				return false
 			}),
 			mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			// *obj.(*corev1.Secret) = *secret
 			return nil
 		})
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*corev1.Secret) = *secret
 			return nil
 		}).Once()
@@ -1343,7 +1360,7 @@ func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
 
 	mockedKcpClient := new(mocks.Client)
 	mockedKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
 			return nil
 		}).Once()
@@ -1352,7 +1369,7 @@ func (s *ProvidersecretTestSuite) TestInvalidEndpointURL() {
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(mockedKcpClient, nil).Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
-		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*corev1.Secret) = *secret
 			return nil
@@ -1405,7 +1422,7 @@ func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
 	}
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*corev1.Secret) = *secret
 			return nil
 		}).Once()
@@ -1414,12 +1431,12 @@ func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
 		Get(mock.Anything,
 			mock.Anything,
 			mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			rootShard := &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{
+				Object: map[string]any{
+					"status": map[string]any{
+						"conditions": []any{
+							map[string]any{
 								"type":   "Available",
 								"status": "True",
 							},
@@ -1449,7 +1466,7 @@ func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
 				return false
 			}),
 			mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			// *obj.(*corev1.Secret) = *secret
 			return nil
 		})
@@ -1464,7 +1481,7 @@ func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
 
 	mockedKcpClient := new(mocks.Client)
 	mockedKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
 			return nil
 		}).Once()
@@ -1473,7 +1490,7 @@ func (s *ProvidersecretTestSuite) TestContextNotFoundInKubeconfig() {
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(mockedKcpClient, nil).Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
-		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*corev1.Secret) = *secret
 			return nil
@@ -1529,12 +1546,12 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 	// Mock the Helm release lookup
 	s.clientMock.EXPECT().
 		Get(mock.Anything, types.NamespacedName{Name: "kcp", Namespace: "default"}, mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+		RunAndReturn(func(ctx context.Context, nn types.NamespacedName, obj ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 			release := obj.(*unstructured.Unstructured)
-			release.Object = map[string]interface{}{
-				"status": map[string]interface{}{
-					"conditions": []interface{}{
-						map[string]interface{}{
+			release.Object = map[string]any{
+				"status": map[string]any{
+					"conditions": []any{
+						map[string]any{
 							"type":   "Ready",
 							"status": "True",
 						},
@@ -1545,7 +1562,7 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 		})
 
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*corev1.Secret) = *secret
 			return nil
 		}).Once()
@@ -1554,12 +1571,12 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 		Get(mock.Anything,
 			mock.Anything,
 			mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			rootShard := &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{
+				Object: map[string]any{
+					"status": map[string]any{
+						"conditions": []any{
+							map[string]any{
 								"type":   "Available",
 								"status": "True",
 							},
@@ -1589,7 +1606,7 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 				return false
 			}),
 			mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			// *obj.(*corev1.Secret) = *secret
 			return nil
 		})
@@ -1604,7 +1621,7 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 
 	mockedKcpClient := new(mocks.Client)
 	mockedKcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
 			return nil
 		}).Once()
@@ -1613,7 +1630,7 @@ func (s *ProvidersecretTestSuite) TestClusterNotFoundInKubeconfig() {
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(mockedKcpClient, nil).Once()
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
-		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*corev1.Secret) = *secret
 			return nil
@@ -1638,14 +1655,13 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 	// Setup test instance
 	instance := s.getBaseInstance()
 	// Exercise admin kubeconfig wiring only: defaults may use scoped kubeconfig for some secrets.
-	adminDefaults := make([]corev1alpha1.ProviderConnection, len(DefaultProviderConnections))
+	adminDefaults := make([]pmcorev1alpha1.ProviderConnection, len(DefaultProviderConnections))
 	for i, pc := range DefaultProviderConnections {
-		pc := pc
 		pc.AdminAuth = ptr.To(true)
 		adminDefaults[i] = pc
 	}
 	instance.Spec.Kcp.ProviderConnections = adminDefaults
-	instance.Spec.Kcp.ExtraProviderConnections = []corev1alpha1.ProviderConnection{
+	instance.Spec.Kcp.ExtraProviderConnections = []pmcorev1alpha1.ProviderConnection{
 		{
 			AdminAuth:         ptr.To(true),
 			EndpointSliceName: ptr.To(""),
@@ -1655,7 +1671,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 			Namespace:         ptr.To("test"),
 		},
 	}
-	instance.Spec.Exposure = &corev1alpha1.ExposureConfig{
+	instance.Spec.Exposure = &pmcorev1alpha1.ExposureConfig{
 		BaseDomain: "example.com",
 		Port:       8443,
 		Protocol:   "https",
@@ -1685,7 +1701,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 			}),
 			mock.Anything,
 		).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*corev1.Secret) = *secret
 			return nil
 		}).
@@ -1695,12 +1711,12 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 		Get(mock.Anything,
 			mock.Anything,
 			mock.AnythingOfType("*unstructured.Unstructured")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			rootShard := &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"status": map[string]interface{}{
-						"conditions": []interface{}{
-							map[string]interface{}{
+				Object: map[string]any{
+					"status": map[string]any{
+						"conditions": []any{
+							map[string]any{
 								"type":   "Available",
 								"status": "True",
 							},
@@ -1730,13 +1746,13 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 				return expectedSecretKeys[key]
 			}),
 			mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			return nil
 		})
 	s.clientMock.EXPECT().
 		Update(mock.Anything,
 			mock.Anything).
-		RunAndReturn(func(_ context.Context, obj client.Object, _ ...client.UpdateOption) error {
+		RunAndReturn(func(_ context.Context, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.UpdateOption) error {
 			sec := obj.(*corev1.Secret)
 			if sec.Name == "external-kubeconfig" {
 				if data, ok := sec.Data["kubeconfig"]; ok {
@@ -1771,7 +1787,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 	mockedKcpClient.
 		EXPECT().
 		Get(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*kcpapiv1alpha.APIExportEndpointSlice) = *slice
 			return nil
 		}).
@@ -1785,7 +1801,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 		Return(mockedKcpClient, nil).
 		Times(len(DefaultProviderConnections))
 	s.clientMock.EXPECT().Get(mock.Anything, mock.Anything, &corev1.Secret{}).RunAndReturn(
-		func(ctx context.Context, nn types.NamespacedName, o client.Object, opts ...client.GetOption,
+		func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption,
 		) error {
 			*o.(*corev1.Secret) = *secret
 			return nil
@@ -1801,7 +1817,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 	s.clientMock.EXPECT().Get(mock.Anything,
 		types.NamespacedName{Name: KcpOperatorAdminKubeconfigSecretName, Namespace: opCfg.KCP.Namespace},
 		mock.AnythingOfType("*v1.Secret")).
-		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj client.Object, _ ...client.GetOption) error {
+		RunAndReturn(func(_ context.Context, _ types.NamespacedName, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.GetOption) error {
 			*obj.(*corev1.Secret) = corev1.Secret{Data: map[string][]byte{"kubeconfig": secretKubeconfigData}}
 			return nil
 		}).Times(len(DefaultProviderConnections) + 1)
@@ -1825,7 +1841,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 			EXPECT().
 			Create(
 				mock.Anything,
-				mock.MatchedBy(func(obj client.Object) bool {
+				mock.MatchedBy(func(obj ctrlruntimeclient.Object) bool {
 					sec, ok := obj.(*corev1.Secret)
 					if !ok {
 						s.log.Error().Msgf("expected a *corev1.Secret, got %T", obj)
@@ -1858,7 +1874,7 @@ func (s *ProvidersecretTestSuite) TestHandleProviderConnections() {
 				}),
 				mock.Anything,
 			).
-			RunAndReturn(func(ctx context.Context, obj client.Object, _ ...client.CreateOption) error {
+			RunAndReturn(func(ctx context.Context, obj ctrlruntimeclient.Object, _ ...ctrlruntimeclient.CreateOption) error {
 				providerSecret := obj.(*corev1.Secret)
 				err := controllerutil.SetOwnerReference(instance, providerSecret, s.clientMock.Scheme())
 				s.NoError(err)

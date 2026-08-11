@@ -42,12 +42,13 @@ tasks:
           PATHS: ./...
           OUTPUT: '{{.RBAC_DIRECTORY}}'
   generate:
+    deps: [tools:apigen]
     cmds:
       - task: manifests
       - task: tools:generate-deepcopy
         vars:
           PATH: /search/...
-      - "{{.BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
+      - "{{.APIGEN}} --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
   build:
     cmds:
       - go build ./...
@@ -68,7 +69,7 @@ tasks:
     cmds:
       - |
         set -ex
-        export KUBEBUILDER_ASSETS=$({{.BIN}}/setup-envtest use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.BIN}} -p path)
+        export KUBEBUILDER_ASSETS=$({{.ENVTEST}} use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.BIN}} -p path)
         go test ./... {{.ADDITIONAL_COMMAND_ARGS}}
   test-e2e: # alias to appease the global taskfile
     cmds:
@@ -86,7 +87,7 @@ tasks:
     deps: [tools:go-test-coverage]
     cmds:
       - task: cover
-      - "{{.BIN}}/go-test-coverage --profile cover.out --config ./.testcoverage.yml"
+      - "{{.GO_TEST_COVERAGE}} --profile cover.out --config ./.testcoverage.yml"
   install:
     cmds:
       - kubectl apply -f config/crd/bases
