@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	pmcorev1alpha1 "go.platform-mesh.io/apis/core/v1alpha1"
@@ -583,10 +584,23 @@ func (s *TemplateVarsTestSuite) SetupSuite() {
 // newSubroutineWithProfile creates a DeploymentSubroutine backed by a fake
 // clientRuntime that already contains a profile ConfigMap for the given inst.
 func (s *TemplateVarsTestSuite) newSubroutineWithProfile(profileYAML string, remoteRuntime config.RemoteClusterConfig) (*DeploymentSubroutine, *pmcorev1alpha1.PlatformMesh) {
+	return newSubroutineWithProfile(s.T(), profileYAML, "test-pm", "test-ns", remoteRuntime)
+}
+
+// newSubroutineWithProfile creates a DeploymentSubroutine backed by a fake clientRuntime
+// that already contains a profile ConfigMap for the instance it returns. Package-level so
+// both the suite and plain Test_ functions can stand up the same subroutine.
+func newSubroutineWithProfile(t *testing.T, profileYAML, name, namespace string, remoteRuntime config.RemoteClusterConfig) (*DeploymentSubroutine, *pmcorev1alpha1.PlatformMesh) {
+	t.Helper()
+
+	scheme := runtime.NewScheme()
+	require.NoError(t, clientgoscheme.AddToScheme(scheme))
+	require.NoError(t, pmcorev1alpha1.AddToScheme(scheme))
+
 	inst := &pmcorev1alpha1.PlatformMesh{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pm",
-			Namespace: "test-ns",
+			Name:      name,
+			Namespace: namespace,
 		},
 		Spec: pmcorev1alpha1.PlatformMeshSpec{},
 	}
@@ -602,22 +616,16 @@ func (s *TemplateVarsTestSuite) newSubroutineWithProfile(profileYAML string, rem
 	}
 
 	fakeClient := fake.NewClientBuilder().
-		WithScheme(s.scheme).
+		WithScheme(scheme).
 		WithObjects(inst, cm).
 		Build()
 
-	operatorCfg := &config.OperatorConfig{
-		RemoteRuntime: remoteRuntime,
-	}
-	cfg := &pmconfig.CommonServiceConfig{}
-
-	sub := &DeploymentSubroutine{
+	return &DeploymentSubroutine{
 		clientRuntime: fakeClient,
 		clientInfra:   fakeClient,
-		cfg:           cfg,
-		cfgOperator:   operatorCfg,
-	}
-	return sub, inst
+		cfg:           &pmconfig.CommonServiceConfig{},
+		cfgOperator:   &config.OperatorConfig{RemoteRuntime: remoteRuntime},
+	}, inst
 }
 
 // minimalProfileYAML is a valid profile with empty infra and components sections.
