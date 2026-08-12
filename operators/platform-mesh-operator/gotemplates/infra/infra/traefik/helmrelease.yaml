@@ -31,8 +31,12 @@ spec:
     kind: OCIRepository
     name: {{ .traefik.name }}
     namespace: {{ .helmReleaseNamespace }}
+{{- if .traefikCRDs.enabled }}
   dependsOn:
     - name: {{ .traefikCRDs.name }}
+{{- else }}
+  dependsOn: []
+{{- end }}
   interval: {{ .traefik.interval }}
   releaseName: {{ .traefik.name }}
   targetNamespace: {{ .traefik.targetNamespace }}

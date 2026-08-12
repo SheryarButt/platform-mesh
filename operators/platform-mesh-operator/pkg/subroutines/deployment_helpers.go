@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"text/template"
 
@@ -210,6 +211,113 @@ func (r *DeploymentSubroutine) renderTemplateFile(path string, tmplVars map[stri
 		objs = append(objs, &unstructured.Unstructured{Object: objMap})
 	}
 	return objs, nil
+}
+
+// helmReleaseKey identifies a HelmRelease the way Flux resolves a spec.dependsOn entry.
+func helmReleaseKey(namespace, name string) string {
+	return namespace + "/" + name
+}
+
+// dependencyKey returns the HelmRelease a dependsOn entry points at, or false if the entry
+// has no usable name.
+func dependencyKey(entry any, defaultNamespace string) (string, bool) {
+	dep, ok := entry.(map[string]any)
+	if !ok {
+		return "", false
+	}
+	name, ok := dep["name"].(string)
+	if !ok || name == "" {
+		return "", false
+	}
+	namespace, ok := dep["namespace"].(string)
+	if !ok || namespace == "" {
+		// Flux resolves a namespace-less dependency in the HelmRelease's own namespace.
+		namespace = defaultNamespace
+	}
+	return helmReleaseKey(namespace, name), true
+}
+
+// infraHelmReleaseNamespace resolves where the infra HelmReleases are rendered:
+// deploymentNamespace, then helmReleaseNamespace, then the fallback. The infra render and the
+// dependency pruning must agree here, so both call this with the infra profile merged with
+// templateVars and inst.Namespace as fallback. Anything else and the pruning stops matching.
+func infraHelmReleaseNamespace(infraVars map[string]any, fallback string) string {
+	if deployNs, ok := infraVars["deploymentNamespace"].(string); ok && deployNs != "" {
+		return deployNs
+	}
+	if hrNs, ok := infraVars["helmReleaseNamespace"].(string); ok && hrNs != "" {
+		return hrNs
+	}
+	return fallback
+}
+
+// disabledHelmReleases collects the HelmReleases we deliberately do not render, keyed as
+// Flux resolves dependsOn. Mirrors the template gates: infra components are gated on
+// "<component>.enabled" (missing flag counts as off), services additionally on
+// skipHelmRelease.
+func disabledHelmReleases(infraProfile, services map[string]any, infraNamespace, componentsNamespace string) map[string]struct{} {
+	disabled := make(map[string]struct{})
+
+	for _, component := range infraProfile {
+		config, ok := component.(map[string]any)
+		if !ok {
+			continue
+		}
+		// Only entries with a release name describe a HelmRelease.
+		name, ok := config["name"].(string)
+		if !ok || name == "" {
+			continue
+		}
+		if isZeroValue(config["enabled"]) {
+			disabled[helmReleaseKey(infraNamespace, name)] = struct{}{}
+		}
+	}
+
+	for service, serviceConfig := range services {
+		config, ok := serviceConfig.(map[string]any)
+		if !ok {
+			continue
+		}
+		if isZeroValue(config["enabled"]) || !isZeroValue(config["skipHelmRelease"]) {
+			disabled[helmReleaseKey(componentsNamespace, service)] = struct{}{}
+		}
+	}
+
+	return disabled
+}
+
+// pruneDisabledDependencies drops dependsOn entries pointing at a disabled component. Flux
+// waits in DependencyNotReady until a dependency exists and is ready, so an entry we never
+// render stalls the dependent release forever.
+//
+// Only provably disabled targets go. An unknown name might be someone else's HelmRelease, and
+// dropping a typo silently would hide a real misconfiguration.
+func pruneDisabledDependencies(services map[string]any, disabled map[string]struct{}, defaultNamespace string, log *logger.Logger) {
+	for service, serviceConfig := range services {
+		config, ok := serviceConfig.(map[string]any)
+		if !ok {
+			continue
+		}
+		dependsOn, ok := config["dependsOn"].([]any)
+		if !ok {
+			continue
+		}
+
+		config["dependsOn"] = slices.DeleteFunc(slices.Clone(dependsOn), func(entry any) bool {
+			key, resolvable := dependencyKey(entry, defaultNamespace)
+			if !resolvable {
+				return false
+			}
+			if _, isDisabled := disabled[key]; !isDisabled {
+				return false
+			}
+			log.Warn().
+				Str("service", service).
+				Str("dependency", key).
+				Msg("Dropping dependsOn entry: the dependency is disabled and is never deployed")
+			return true
+		})
+	}
 }
 
 // helper: functions for Helm-like templates in components gotemplates
