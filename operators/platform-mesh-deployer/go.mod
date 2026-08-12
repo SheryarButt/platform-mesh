@@ -12,7 +12,7 @@ require (
 	github.com/go-logr/logr v1.4.4
 	github.com/google/cel-go v0.30.0
 	github.com/kcp-dev/kcp-operator v0.0.0-00010101000000-000000000000
-	github.com/kcp-dev/kcp-operator/sdk v0.7.2
+	github.com/kcp-dev/kcp-operator/sdk v0.8.1-0.20260807064708-a6575ae6d6bb
 	github.com/kcp-dev/sdk v0.32.3
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/spf13/cobra v1.10.2
