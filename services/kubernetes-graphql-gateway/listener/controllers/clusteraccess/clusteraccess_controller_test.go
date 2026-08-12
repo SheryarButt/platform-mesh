@@ -54,10 +54,7 @@ import (
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 )
 
-const (
-	testNamespace          = "test-ns"
-	schemaCleanupFinalizer = "gateway.platform-mesh.io/schema-cleanup"
-)
+const testNamespace = "test-ns"
 
 var errInjectedSchemaDelete = errors.New("injected schema deletion failure")
 
@@ -266,7 +263,7 @@ func (suite *ClusterAccessControllerTestSuite) waitForSchemaCleanupFinalizer(nam
 		if err := suite.client.Get(context.Background(), ctrlruntimeclient.ObjectKey{Name: name}, clusterAccess); err != nil {
 			return false
 		}
-		return slices.Contains(clusterAccess.Finalizers, schemaCleanupFinalizer)
+		return slices.Contains(clusterAccess.Finalizers, clusteraccess.SchemaCleanupFinalizer)
 	}, 10*time.Second, 250*time.Millisecond,
 		"expected ClusterAccess %s to have schema cleanup finalizer", name)
 	return clusterAccess
@@ -705,7 +702,7 @@ func (suite *ClusterAccessControllerTestSuite) TestCustomPathCleanupRetriesAfter
 		if err := suite.client.Get(context.Background(), ctrlruntimeclient.ObjectKey{Name: name}, current); err != nil {
 			return false
 		}
-		return !current.DeletionTimestamp.IsZero() && slices.Contains(current.Finalizers, schemaCleanupFinalizer)
+		return !current.DeletionTimestamp.IsZero() && slices.Contains(current.Finalizers, clusteraccess.SchemaCleanupFinalizer)
 	}, 10*time.Second, 250*time.Millisecond,
 		"expected cleanup failure to retain the finalizer")
 

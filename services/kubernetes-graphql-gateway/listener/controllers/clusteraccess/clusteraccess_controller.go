@@ -47,8 +47,10 @@ import (
 )
 
 const (
-	controllerName         = "clusteraccess-schema-controller"
-	schemaCleanupFinalizer = "gateway.platform-mesh.io/schema-cleanup"
+	controllerName = "clusteraccess-schema-controller"
+
+	// SchemaCleanupFinalizer ensures the generated schema is removed before a ClusterAccess is deleted.
+	SchemaCleanupFinalizer = "gateway.platform-mesh.io/schema-cleanup"
 
 	// ConditionTypeReady indicates whether the ClusterAccess schema was
 	// successfully generated and written.
@@ -119,14 +121,14 @@ func (r *ClusterAccessReconciler) Reconcile(ctx context.Context, req mcreconcile
 	}
 
 	if !ca.DeletionTimestamp.IsZero() {
-		if controllerutil.ContainsFinalizer(ca, schemaCleanupFinalizer) {
+		if controllerutil.ContainsFinalizer(ca, SchemaCleanupFinalizer) {
 			schemaPath := resolveSchemaPath(ca, clusterName)
 			if err := r.ioHandler.Delete(ctx, schemaPath); err != nil && !errors.Is(err, schemahandler.ErrNotExist) {
 				return ctrl.Result{}, fmt.Errorf("failed to clean up schema %q: %w", schemaPath, err)
 			}
 
 			patch := ctrlruntimeclient.MergeFrom(ca.DeepCopy())
-			controllerutil.RemoveFinalizer(ca, schemaCleanupFinalizer)
+			controllerutil.RemoveFinalizer(ca, SchemaCleanupFinalizer)
 			if err := c.Patch(ctx, ca, patch); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to remove schema cleanup finalizer: %w", err)
 			}
@@ -135,9 +137,9 @@ func (r *ClusterAccessReconciler) Reconcile(ctx context.Context, req mcreconcile
 		return ctrl.Result{}, nil
 	}
 
-	if !controllerutil.ContainsFinalizer(ca, schemaCleanupFinalizer) {
+	if !controllerutil.ContainsFinalizer(ca, SchemaCleanupFinalizer) {
 		patch := ctrlruntimeclient.MergeFrom(ca.DeepCopy())
-		controllerutil.AddFinalizer(ca, schemaCleanupFinalizer)
+		controllerutil.AddFinalizer(ca, SchemaCleanupFinalizer)
 		if err := c.Patch(ctx, ca, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to add schema cleanup finalizer: %w", err)
 		}
