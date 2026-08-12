@@ -236,14 +236,18 @@ func Marketplace(
 					return nil, fmt.Errorf("failed to list apiexports for provider %s: %w", provider.GetName(), err)
 				}
 
+				providerClusterID := logicalcluster.From(&provider)
 				for _, export := range exportList.Items {
+					if logicalcluster.From(&export) != providerClusterID {
+						continue
+					}
 					if len(export.Spec.LatestResourceSchemas) == 0 {
 						continue
 					}
 
 					idx := slices.IndexFunc(installedAPIBindings.Items, func(item kcpapisv1alpha1.APIBinding) bool {
 						return item.Spec.Reference.Export.Name == export.Name &&
-							item.Status.APIExportClusterName == export.Annotations["kcp.io/cluster"]
+							item.Status.APIExportClusterName == logicalcluster.From(&export).String()
 					})
 
 					var apiBindingName string
