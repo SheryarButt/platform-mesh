@@ -36,8 +36,8 @@ import (
 	gwapiv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
-func exposeString(host string, port int32) pmdeployv1alpha1.Exposure {
-	return pmdeployv1alpha1.Exposure{HostnameTemplate: host, Port: port}
+func exposeString(host string, port int32) *pmdeployv1alpha1.Exposure {
+	return &pmdeployv1alpha1.Exposure{HostnameTemplate: host, Port: port}
 }
 
 func TestExposureCreatesRoutes(t *testing.T) {
@@ -57,7 +57,7 @@ func TestExposureCreatesRoutes(t *testing.T) {
 				},
 				ShardGroups: []pmdeployv1alpha1.ShardGroup{{
 					Name:     "eu",
-					Exposure: ptrExposure(exposeString(`component + "." + cluster + ".sslip.io"`, 31443)),
+					Exposure: exposeString(`component + "." + cluster + ".sslip.io"`, 31443),
 				}},
 			},
 			Ingress: []pmdeployv1alpha1.IngressStack{{
@@ -219,8 +219,6 @@ func TestExposureTeardownKeepsModuleRoutes(t *testing.T) {
 	route := &gwapiv1alpha2.TLSRoute{}
 	assert.NoError(t, fpCl.Get(context.Background(), ctrlruntimeclient.ObjectKeyFromObject(owned), route))
 }
-
-func ptrExposure(e pmdeployv1alpha1.Exposure) *pmdeployv1alpha1.Exposure { return &e }
 
 func getRoute(t *testing.T, cl ctrlruntimeclient.Client, ns, name string) *gwapiv1alpha2.TLSRoute {
 	t.Helper()

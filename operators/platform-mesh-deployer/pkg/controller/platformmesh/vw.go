@@ -83,6 +83,9 @@ func (r *reconciler) reconcileVirtualWorkspace(ctx context.Context, pm *pmdeploy
 
 	spec.Target = target
 
+	if vws.Exposure == nil {
+		return fmt.Errorf("virtual workspace %q: a standalone server needs an exposure", name)
+	}
 	host, err := celtemplate.Eval(vws.Exposure.HostnameTemplate, celCtx)
 	if err != nil {
 		return fmt.Errorf("virtual workspace %q hostname: %w", name, err)

@@ -32,6 +32,8 @@ func TestControllerEnabled(t *testing.T) {
 	assert.True(t, cfg.controllerEnabled(ControllerModule))
 	assert.False(t, cfg.controllerEnabled(ControllerCopy))
 	assert.False(t, cfg.controllerEnabled(ControllerProvisioner))
+	assert.False(t, cfg.controllerEnabled(ControllerKcpConfig))
+	assert.False(t, cfg.controllerEnabled(ControllerKcpWorkload))
 }
 
 func TestControllerEnabledEmpty(t *testing.T) {
@@ -54,6 +56,8 @@ func TestNewSchemeKnowsEveryGroup(t *testing.T) {
 		{"gateway.networking.k8s.io", "v1alpha2", "TLSRoute"},
 		{"tenancy.kcp.io", "v1alpha1", "Workspace"},
 		{"core.kcp.io", "v1alpha1", "Shard"},
+		{"cert-manager.io", "v1", "Certificate"},
+		{"cert-manager.io", "v1", "Issuer"},
 		{"", "v1", "Secret"},
 	} {
 		t.Run(gv.group+"/"+gv.kind, func(t *testing.T) {

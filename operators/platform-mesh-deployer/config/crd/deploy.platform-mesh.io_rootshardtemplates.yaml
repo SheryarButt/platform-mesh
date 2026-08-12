@@ -54,8 +54,9 @@ spec:
           metadata:
             type: object
           spec:
-            description: RootShardTemplateSpec mirrors RootShardSpec with all fields
-              optional.
+            description: |-
+              external and cache are overwritten from the engaged clusters, but the
+              shared spec type requires them; any placeholder does.
             properties:
               audit:
                 properties:
@@ -3798,6 +3799,11 @@ spec:
                   ShardBaseURL is the base URL under which this shard should be reachable. This is used to configure
                   the external URL. If not provided, the operator will use kubernetes service address to generate it.
                 type: string
+            required:
+            - cache
+            - certificates
+            - etcd
+            - external
             type: object
         type: object
     served: true

@@ -54,8 +54,9 @@ spec:
           metadata:
             type: object
           spec:
-            description: VirtualWorkspaceTemplateSpec mirrors VirtualWorkspaceSpec
-              with all fields optional.
+            description: |-
+              external and target are overwritten from the engaged clusters, but the
+              shared spec type requires them; any placeholder does.
             properties:
               caBundleSecretRef:
                 description: |-
@@ -1809,6 +1810,9 @@ spec:
                 - message: Must specify exactly one of rootShardRef or shardRef
                   rule: (has(self.rootShardRef) && !has(self.shardRef)) || (!has(self.rootShardRef)
                     && has(self.shardRef))
+            required:
+            - external
+            - target
             type: object
         type: object
     served: true

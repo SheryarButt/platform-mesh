@@ -39,18 +39,18 @@ import (
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	operatorv1alpha1 "github.com/kcp-dev/kcp-operator/sdk/apis/operator/v1alpha1"
-	apisv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/apis/v1alpha1"
-	corev1alpha1 "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
-	tenancyv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
+	kcpcorev1alpha1 "github.com/kcp-dev/sdk/apis/core/v1alpha1"
+	kcptenancyv1alpha1 "github.com/kcp-dev/sdk/apis/tenancy/v1alpha1"
 )
 
 func kcpScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 	s := runtime.NewScheme()
 	utilruntime.Must(clientgoscheme.AddToScheme(s))
-	utilruntime.Must(tenancyv1alpha1.AddToScheme(s))
-	utilruntime.Must(apisv1alpha1.AddToScheme(s))
-	utilruntime.Must(corev1alpha1.AddToScheme(s))
+	utilruntime.Must(kcptenancyv1alpha1.AddToScheme(s))
+	utilruntime.Must(kcpapisv1alpha1.AddToScheme(s))
+	utilruntime.Must(kcpcorev1alpha1.AddToScheme(s))
 	return s
 }
 
@@ -141,11 +141,11 @@ func clusterClient(t *testing.T, base *rest.Config, path string, scheme *runtime
 	return cl
 }
 
-func waitForShards(t *testing.T, rootClient ctrlruntimeclient.Client, expected int) []corev1alpha1.Shard {
+func waitForShards(t *testing.T, rootClient ctrlruntimeclient.Client, expected int) []kcpcorev1alpha1.Shard {
 	t.Helper()
-	var shards []corev1alpha1.Shard
+	var shards []kcpcorev1alpha1.Shard
 	require.Eventuallyf(t, func() bool {
-		list := &corev1alpha1.ShardList{}
+		list := &kcpcorev1alpha1.ShardList{}
 		if err := rootClient.List(t.Context(), list); err != nil {
 			t.Logf("listing shards: %v", err)
 			return false
@@ -160,15 +160,15 @@ func waitForShards(t *testing.T, rootClient ctrlruntimeclient.Client, expected i
 // kcp schedule it anywhere.
 func createWorkspace(t *testing.T, parent ctrlruntimeclient.Client, name, shardName string) {
 	t.Helper()
-	ws := &tenancyv1alpha1.Workspace{
+	ws := &kcptenancyv1alpha1.Workspace{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec: tenancyv1alpha1.WorkspaceSpec{
+		Spec: kcptenancyv1alpha1.WorkspaceSpec{
 			// universal has no cross-shard initializers, so it schedules onto any shard.
-			Type: &tenancyv1alpha1.WorkspaceTypeReference{Name: "universal"},
+			Type: &kcptenancyv1alpha1.WorkspaceTypeReference{Name: "universal"},
 		},
 	}
 	if shardName != "" {
-		ws.Spec.Location = &tenancyv1alpha1.WorkspaceLocation{
+		ws.Spec.Location = &kcptenancyv1alpha1.WorkspaceLocation{
 			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": shardName}},
 		}
 	}
@@ -195,11 +195,11 @@ func (e *Env) WaitWorkspace(t *testing.T, root, frontProxy *Cluster, parent, nam
 func waitWorkspaceReady(t *testing.T, rootClient ctrlruntimeclient.Client, name string) {
 	t.Helper()
 	require.Eventuallyf(t, func() bool {
-		ws := &tenancyv1alpha1.Workspace{}
+		ws := &kcptenancyv1alpha1.Workspace{}
 		if err := rootClient.Get(t.Context(), ctrlruntimeclient.ObjectKey{Name: name}, ws); err != nil {
 			return false
 		}
-		return ws.Status.Phase == corev1alpha1.LogicalClusterPhaseReady
+		return ws.Status.Phase == kcpcorev1alpha1.LogicalClusterPhaseReady
 	}, 3*time.Minute, 3*time.Second, "workspace %q not Ready", name)
 }
 
@@ -208,13 +208,13 @@ const shimSchema = `{"type":"object","properties":{"spec":{"type":"object","prop
 
 func createShimExport(t *testing.T, provider ctrlruntimeclient.Client) {
 	t.Helper()
-	schema := &apisv1alpha1.APIResourceSchema{
+	schema := &kcpapisv1alpha1.APIResourceSchema{
 		ObjectMeta: metav1.ObjectMeta{Name: "v1.shims.example.io"},
-		Spec: apisv1alpha1.APIResourceSchemaSpec{
+		Spec: kcpapisv1alpha1.APIResourceSchemaSpec{
 			Group: "example.io",
 			Names: apiextensionsv1.CustomResourceDefinitionNames{Plural: "shims", Singular: "shim", Kind: "Shim", ListKind: "ShimList"},
 			Scope: apiextensionsv1.ClusterScoped,
-			Versions: []apisv1alpha1.APIResourceVersion{{
+			Versions: []kcpapisv1alpha1.APIResourceVersion{{
 				Name: "v1", Served: true, Storage: true, Schema: runtime.RawExtension{Raw: []byte(shimSchema)},
 			}},
 		},
@@ -222,9 +222,9 @@ func createShimExport(t *testing.T, provider ctrlruntimeclient.Client) {
 	if err := provider.Create(t.Context(), schema); err != nil && !apierrors.IsAlreadyExists(err) {
 		require.NoError(t, err)
 	}
-	export := &apisv1alpha1.APIExport{
+	export := &kcpapisv1alpha1.APIExport{
 		ObjectMeta: metav1.ObjectMeta{Name: "shim"},
-		Spec:       apisv1alpha1.APIExportSpec{LatestResourceSchemas: []string{"v1.shims.example.io"}},
+		Spec:       kcpapisv1alpha1.APIExportSpec{LatestResourceSchemas: []string{"v1.shims.example.io"}},
 	}
 	if err := provider.Create(t.Context(), export); err != nil && !apierrors.IsAlreadyExists(err) {
 		require.NoError(t, err)
@@ -233,11 +233,11 @@ func createShimExport(t *testing.T, provider ctrlruntimeclient.Client) {
 
 func bindShimExport(t *testing.T, consumer ctrlruntimeclient.Client, providerPath string) {
 	t.Helper()
-	binding := &apisv1alpha1.APIBinding{
+	binding := &kcpapisv1alpha1.APIBinding{
 		ObjectMeta: metav1.ObjectMeta{Name: "shim"},
-		Spec: apisv1alpha1.APIBindingSpec{
-			Reference: apisv1alpha1.BindingReference{
-				Export: &apisv1alpha1.ExportBindingReference{Path: providerPath, Name: "shim"},
+		Spec: kcpapisv1alpha1.APIBindingSpec{
+			Reference: kcpapisv1alpha1.BindingReference{
+				Export: &kcpapisv1alpha1.ExportBindingReference{Path: providerPath, Name: "shim"},
 			},
 		},
 	}
@@ -245,11 +245,11 @@ func bindShimExport(t *testing.T, consumer ctrlruntimeclient.Client, providerPat
 		require.NoError(t, err)
 	}
 	require.Eventually(t, func() bool {
-		b := &apisv1alpha1.APIBinding{}
+		b := &kcpapisv1alpha1.APIBinding{}
 		if err := consumer.Get(t.Context(), ctrlruntimeclient.ObjectKey{Name: "shim"}, b); err != nil {
 			return false
 		}
-		return b.Status.Phase == apisv1alpha1.APIBindingPhaseBound
+		return b.Status.Phase == kcpapisv1alpha1.APIBindingPhaseBound
 	}, 3*time.Minute, 3*time.Second, "APIBinding did not become Bound")
 }
 

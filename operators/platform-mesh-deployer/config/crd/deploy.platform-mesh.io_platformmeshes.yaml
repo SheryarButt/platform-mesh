@@ -192,8 +192,8 @@ spec:
                     properties:
                       exposure:
                         description: |-
-                          Exposure describes how the front proxy is exposed. Front proxies are
-                          public by definition, so exposure is required.
+                          Exposure describes how the front proxy is exposed. Omitting it leaves the
+                          front proxy reachable only from inside the cluster it runs on.
                         properties:
                           hostnameTemplate:
                             description: |-
@@ -243,7 +243,6 @@ spec:
                         - name
                         type: object
                     required:
-                    - exposure
                     - name
                     type: object
                   rootShard:
@@ -253,8 +252,9 @@ spec:
                         description: CacheServerRef references a cache server by name.
                         type: string
                       exposure:
-                        description: Exposure describes how the root shard front proxy
-                          endpoint is exposed.
+                        description: |-
+                          Exposure describes how the root shard endpoint is exposed. Omitting it
+                          leaves the root shard reachable only from inside the cluster it runs on.
                         properties:
                           hostnameTemplate:
                             description: |-
@@ -308,8 +308,8 @@ spec:
                           exposure:
                             description: |-
                               Exposure describes how the virtual workspaces endpoint is exposed.
-                              Virtual workspaces are public regardless of mode, so exposure is
-                              required.
+                              Required for Standalone; an Embedded server is reached through its shard
+                              and has no endpoint of its own.
                             properties:
                               hostnameTemplate:
                                 description: |-
@@ -362,11 +362,11 @@ spec:
                             required:
                             - name
                             type: object
-                        required:
-                        - exposure
                         type: object
+                        x-kubernetes-validations:
+                        - message: exposure is required when mode is Standalone
+                          rule: self.mode != 'Standalone' || has(self.exposure)
                     required:
-                    - exposure
                     - name
                     - virtualWorkspaces
                     type: object
@@ -384,8 +384,8 @@ spec:
                           type: string
                         exposure:
                           description: |-
-                            Exposure describes how the shard endpoint is exposed. Optional, shards
-                            do not need to be publicly reachable.
+                            Exposure describes how the shard endpoint is exposed. Omitting it leaves
+                            the shard reachable only from inside the cluster it runs on.
                           properties:
                             hostnameTemplate:
                               description: |-
@@ -440,8 +440,8 @@ spec:
                             exposure:
                               description: |-
                                 Exposure describes how the virtual workspaces endpoint is exposed.
-                                Virtual workspaces are public regardless of mode, so exposure is
-                                required.
+                                Required for Standalone; an Embedded server is reached through its shard
+                                and has no endpoint of its own.
                               properties:
                                 hostnameTemplate:
                                   description: |-
@@ -494,9 +494,10 @@ spec:
                               required:
                               - name
                               type: object
-                          required:
-                          - exposure
                           type: object
+                          x-kubernetes-validations:
+                          - message: exposure is required when mode is Standalone
+                            rule: self.mode != 'Standalone' || has(self.exposure)
                       required:
                       - name
                       - virtualWorkspaces

@@ -29,10 +29,6 @@ import (
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// shardServicePort is the kcp-operator service port for root shards and shards.
-// The front proxy service port equals its external port instead.
-const shardServicePort = 6443
-
 // routeParams is the stack-agnostic input a renderer turns into its own route object.
 type routeParams struct {
 	pmName    string
@@ -159,23 +155,29 @@ func (r *reconciler) exposureFailed(err error) (bool, error) {
 // endpoints lists the exposed components of a PlatformMesh.
 func endpoints(pm *pmdeployv1alpha1.PlatformMesh) []endpoint {
 	t := pm.Spec.Topology
-	eps := []endpoint{{
-		component: components.RootShard,
-		adminName: func(pm, clusterID string) string {
-			return names.RootShard(pm, t.RootShard.Name, clusterID)
-		},
-		svcSuffix:   "-kcp",
-		backendPort: shardServicePort,
-		exposure:    t.RootShard.Exposure,
-	}, {
-		component: components.FrontProxy,
-		adminName: func(pm, clusterID string) string {
-			return names.FrontProxy(pm, t.FrontProxy.Name, clusterID)
-		},
-		svcSuffix:   "-front-proxy",
-		backendPort: 0, // front proxy service port == external port
-		exposure:    t.FrontProxy.Exposure,
-	}}
+	var eps []endpoint
+	if t.RootShard.Exposure != nil {
+		eps = append(eps, endpoint{
+			component: components.RootShard,
+			adminName: func(pm, clusterID string) string {
+				return names.RootShard(pm, t.RootShard.Name, clusterID)
+			},
+			svcSuffix:   rootShardServiceSuffix,
+			backendPort: shardServicePort,
+			exposure:    *t.RootShard.Exposure,
+		})
+	}
+	if t.FrontProxy.Exposure != nil {
+		eps = append(eps, endpoint{
+			component: components.FrontProxy,
+			adminName: func(pm, clusterID string) string {
+				return names.FrontProxy(pm, t.FrontProxy.Name, clusterID)
+			},
+			svcSuffix:   frontProxyServiceSuffix,
+			backendPort: 0, // front proxy service port == external port
+			exposure:    *t.FrontProxy.Exposure,
+		})
+	}
 	for i := range t.ShardGroups {
 		g := t.ShardGroups[i]
 		if g.Exposure == nil {
@@ -187,7 +189,7 @@ func endpoints(pm *pmdeployv1alpha1.PlatformMesh) []endpoint {
 			adminName: func(pm, clusterID string) string {
 				return names.Shard(pm, g.Name, clusterID)
 			},
-			svcSuffix:   "-shard-kcp",
+			svcSuffix:   shardServiceSuffix,
 			backendPort: shardServicePort,
 			exposure:    *g.Exposure,
 		})

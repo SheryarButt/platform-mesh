@@ -19,8 +19,6 @@ package platformmesh
 import (
 	"context"
 	"fmt"
-	"net"
-	"strconv"
 
 	pmdeployv1alpha1 "go.platform-mesh.io/apis/deploy/v1alpha1"
 	"go.platform-mesh.io/platform-mesh-deployer/pkg/celtemplate"
@@ -89,12 +87,23 @@ func (r *reconciler) buildShardSpec(ctx context.Context, pm *pmdeployv1alpha1.Pl
 
 	spec.RootShard.Reference = &corev1.LocalObjectReference{Name: rootRef}
 
-	if group.Exposure != nil {
-		host, err := celtemplate.Eval(group.Exposure.HostnameTemplate, celCtx)
-		if err != nil {
-			return spec, fmt.Errorf("shard %q hostname: %w", name, err)
+	addr, err := resolveAddress(group.Exposure, celCtx, service{
+		adminName: name,
+		suffix:    shardServiceSuffix,
+		port:      shardServicePort,
+	}, pm.Namespace, "shard "+name)
+	if err != nil {
+		return spec, err
+	}
+	spec.ShardBaseURL = addr.URL()
+
+	// A standalone virtual workspace server only serves the shard that points at
+	// it: without the reference kcp-operator leaves the shard serving virtual
+	// workspaces in-process and the standalone deployment takes no traffic.
+	if group.VirtualWorkspaces.Mode == pmdeployv1alpha1.VirtualWorkspaceModeStandalone {
+		spec.KCPVirtualWorkspace = &corev1.LocalObjectReference{
+			Name: names.VirtualWorkspace(pm.Name, group.Name, clusterID),
 		}
-		spec.ShardBaseURL = "https://" + net.JoinHostPort(host, strconv.Itoa(int(group.Exposure.Port)))
 	}
 
 	if group.CacheServerRef != "" {

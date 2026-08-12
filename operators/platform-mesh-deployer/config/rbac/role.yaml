@@ -49,6 +49,28 @@ rules:
       - virtualworkspaces
       - kubeconfigs
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Status and finalizers on the admin CRs, for kcp-operator's config group.
+  # controller-gen cannot see its markers from another module, so these are
+  # transcribed from its own config/rbac/role.yaml by hand.
+  - apiGroups:
+      - operator.kcp.io
+    resources:
+      - rootshards/status
+      - shards/status
+      - frontproxies/status
+      - cacheservers/status
+      - virtualworkspaces/status
+      - kubeconfigs/status
+    verbs: ["get", "update", "patch"]
+  - apiGroups:
+      - operator.kcp.io
+    resources:
+      - rootshards/finalizers
+      - shards/finalizers
+      - frontproxies/finalizers
+      - cacheservers/finalizers
+      - kubeconfigs/finalizers
+    verbs: ["update"]
   # Compiled CRs are read on the config plane and written on workload clusters.
   - apiGroups:
       - deploy.operator.kcp.io
@@ -68,12 +90,23 @@ rules:
       - compiledcacheservers/status
       - compiledvirtualworkspaces/status
     verbs: ["get", "update", "patch"]
+  - apiGroups:
+      - deploy.operator.kcp.io
+    resources:
+      - compiledrootshards/finalizers
+      - compiledshards/finalizers
+      - compiledfrontproxies/finalizers
+      - compiledcacheservers/finalizers
+      - compiledvirtualworkspaces/finalizers
+    verbs: ["update"]
 
-  # Serving certificates for module components fronted by the front proxy.
+  # Serving certificates for module components fronted by the front proxy, and
+  # the CAs kcp-operator's config group issues the kcp certificates from.
   - apiGroups:
       - cert-manager.io
     resources:
       - certificates
+      - issuers
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
   # Ingress for exposed kcp endpoints.
@@ -95,3 +128,8 @@ rules:
     resources:
       - events
     verbs: ["create", "patch"]
+
+  # The kcp-operator workload group writes Deployments and Services, but on the
+  # engaged clusters, through their kubeconfig Secrets — not with this identity.
+  # Whatever mints those credentials has to grant it there.
+

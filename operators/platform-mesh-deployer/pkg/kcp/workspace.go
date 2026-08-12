@@ -27,8 +27,8 @@ import (
 	"k8s.io/client-go/rest"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 
-	corev1alpha1 "github.com/kcp-dev/kcp/sdk/apis/core/v1alpha1"
-	tenancyv1alpha1 "github.com/kcp-dev/kcp/sdk/apis/tenancy/v1alpha1"
+	kcpcorev1alpha1 "github.com/kcp-dev/sdk/apis/core/v1alpha1"
+	kcptenancyv1alpha1 "github.com/kcp-dev/sdk/apis/tenancy/v1alpha1"
 )
 
 // ErrWorkspacePending signals that a workspace exists but is not usable yet.
@@ -41,15 +41,15 @@ const WorkspaceType = "universal"
 // EnsureWorkspace creates a workspace below parent if it is missing and
 // reports ErrWorkspacePending until it is ready.
 func EnsureWorkspace(ctx context.Context, parent ctrlruntimeclient.Client, name string) error {
-	ws := &tenancyv1alpha1.Workspace{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	ws := &kcptenancyv1alpha1.Workspace{ObjectMeta: metav1.ObjectMeta{Name: name}}
 	if err := parent.Get(ctx, ctrlruntimeclient.ObjectKey{Name: name}, ws); err != nil {
 		if !apierrors.IsNotFound(err) {
 			return fmt.Errorf("reading workspace %q: %w", name, err)
 		}
-		ws = &tenancyv1alpha1.Workspace{
+		ws = &kcptenancyv1alpha1.Workspace{
 			ObjectMeta: metav1.ObjectMeta{Name: name},
-			Spec: tenancyv1alpha1.WorkspaceSpec{
-				Type: &tenancyv1alpha1.WorkspaceTypeReference{Name: tenancyv1alpha1.WorkspaceTypeName(WorkspaceType)},
+			Spec: kcptenancyv1alpha1.WorkspaceSpec{
+				Type: &kcptenancyv1alpha1.WorkspaceTypeReference{Name: kcptenancyv1alpha1.WorkspaceTypeName(WorkspaceType)},
 			},
 		}
 		if err := parent.Create(ctx, ws); err != nil && !apierrors.IsAlreadyExists(err) {
@@ -58,7 +58,7 @@ func EnsureWorkspace(ctx context.Context, parent ctrlruntimeclient.Client, name 
 		return fmt.Errorf("%w: %s", ErrWorkspacePending, name)
 	}
 
-	if ws.Status.Phase != corev1alpha1.LogicalClusterPhaseReady {
+	if ws.Status.Phase != kcpcorev1alpha1.LogicalClusterPhaseReady {
 		return fmt.Errorf("%w: %s is %s", ErrWorkspacePending, name, ws.Status.Phase)
 	}
 	return nil
@@ -107,7 +107,7 @@ func (a *Access) DeletePath(ctx context.Context, base *rest.Config, path string)
 // ErrWorkspacePending while the workspace is still terminating, and treats a
 // missing workspace as already done.
 func DeleteWorkspace(ctx context.Context, parent ctrlruntimeclient.Client, name string) error {
-	ws := &tenancyv1alpha1.Workspace{}
+	ws := &kcptenancyv1alpha1.Workspace{}
 	if err := parent.Get(ctx, ctrlruntimeclient.ObjectKey{Name: name}, ws); err != nil {
 		if apierrors.IsNotFound(err) || apierrors.IsForbidden(err) {
 			return nil

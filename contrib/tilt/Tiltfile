@@ -18,9 +18,9 @@
 #
 # kcp is BUILT, not installed. The base environment runs platform-mesh-deployer
 # and gives it a PlatformMesh; the deployer compiles that into the kcp-operator
-# admin CRs, and kcp appears. There is no static install and no `deployer`
-# profile — the deployer IS the infrastructure, so every profile sits on the kcp
-# it produced.
+# admin CRs and reconciles them itself, and kcp appears. There is no static
+# install and no `deployer` profile — the deployer IS the infrastructure, so
+# every profile sits on the kcp it produced.
 #
 # Quick start:
 #   kind create cluster --name platform-mesh
@@ -147,9 +147,9 @@ KCP_OIDC = {
 # the hostAliases and the "which of the two mechanisms covers this traffic?"
 # question all go away.
 
-# Skip remote-fetch infra (cert-manager, envoy gateway, kcp-operator) so the
-# Tiltfile evaluates offline — used for manifest validation. Local manifests and
-# the kcp CRs still render.
+# Skip remote-fetch infra (cert-manager, envoy gateway, the kcp-operator CRDs) so
+# the Tiltfile evaluates offline — used for manifest validation. Local manifests
+# and the kcp CRs still render.
 NO_INFRA = os.getenv('TILT_NO_INFRA', '') not in ('', '0', 'false', 'no')
 
 print('Platform Mesh dev env — profiles={} components={} no_infra={}'.format(','.join(PROFILES), COMPONENTS, NO_INFRA))
@@ -225,7 +225,7 @@ TENANCY_VW_HOSTNAME = sslip('tenancy')
 # resolves the endpoint verbatim and a .svc name means nothing there.
 
 # Dex — the OIDC issuer kcp authenticates against (RootShard spec.auth.oidc).
-# kcp always needs an issuer wired, and the kcp-operator won't create the shard
+# kcp always needs an issuer wired, and the deployer won't create the shard
 # Deployment until the referenced CA secret (dex-ca) exists, so Dex ships in the
 # base environment. Terminates its own TLS and is routed by SNI through the
 # passthrough gateway; the cert chain publishes `dex-ca`.
@@ -251,9 +251,8 @@ k8s_resource(
 
 # Remote-fetch infra (cert-manager, envoy gateway controller, Flux, OCM).
 #
-# The kcp-operator is NOT here: the deployer installs the ntnn fork it needs
-# (split config/workload controllers plus the Compiled* CRDs its admin CRs
-# compile into), which owns the same operator.kcp.io CRDs as upstream.
+# No kcp-operator here, and none anywhere: the deployer runs its controller
+# groups in its own process and installs only its CRDs.
 if not NO_INFRA:
     include('./infra_remote.Tiltfile')
 
@@ -265,10 +264,10 @@ if not NO_INFRA:
 # Tiltfile, next to the kustomizations it deploys. This file only supplies what
 # is environment-wide.
 #
-# This is the base environment, not an option: the deployer, the ntnn
-# kcp-operator fork it needs, a mutual-TLS etcd, the `eg` gateway, the CoreDNS
-# sslip.io answers, and a PlatformMesh for it to compile into kcp. Everything
-# else in this file sits on the kcp that comes out.
+# This is the base environment, not an option: the deployer, the kcp-operator
+# CRDs it reconciles, a mutual-TLS etcd, the `eg` gateway, the CoreDNS sslip.io
+# answers, and a PlatformMesh for it to compile into kcp. Everything else in
+# this file sits on the kcp that comes out.
 #
 # There is exactly one way to get a kcp here, on purpose. A second one would
 # have to own the same shards and the same operator.kcp.io CRDs, and every

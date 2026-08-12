@@ -25,10 +25,15 @@ import (
 	"go.platform-mesh.io/platform-mesh-deployer/pkg/names"
 	"go.platform-mesh.io/platform-mesh-deployer/test/e2e/suite"
 
+	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	deployv1alpha1 "github.com/kcp-dev/kcp-operator/sdk/apis/deploy/v1alpha1"
+	operatorv1alpha1 "github.com/kcp-dev/kcp-operator/sdk/apis/operator/v1alpha1"
 )
 
 // TestDistributedClusters deploys each component onto its own workload cluster.
@@ -69,6 +74,70 @@ func TestDistributedClusters(t *testing.T) {
 	}
 
 	env.VerifyKcp(t, rs, fp, 3)
+
+	verifyKubeconfigRBAC(t, env, rs, fp)
+	verifyShardTeardown(t, env, sh2)
+}
+
+// verifyKubeconfigRBAC asserts the deployer provisions RBAC inside kcp.
+//
+// It is the only case that reaches a running kcp from a cluster hosting none of
+// it: the Kubeconfigs the other cases mint leave spec.authorization unset, which
+// skips this path entirely.
+func verifyKubeconfigRBAC(t *testing.T, env *suite.Env, rootShard, frontProxy *suite.Cluster) {
+	t.Helper()
+
+	kc := &operatorv1alpha1.Kubeconfig{
+		ObjectMeta: metav1.ObjectMeta{Name: "e2e-rbac", Namespace: suite.ProviderNamespace},
+		Spec: operatorv1alpha1.KubeconfigSpec{
+			Target:          operatorv1alpha1.KubeconfigTarget{FrontProxyRef: &corev1.LocalObjectReference{Name: names.FrontProxy(suite.PlatformMeshName, "fp", frontProxy.NodeIP)}},
+			TargetWorkspace: "root",
+			Username:        "e2e-rbac",
+			Validity:        metav1.Duration{Duration: time.Hour},
+			SecretRef:       corev1.LocalObjectReference{Name: "e2e-rbac-kubeconfig"},
+			Authorization: &operatorv1alpha1.KubeconfigAuthorization{
+				ClusterRoleBindings: operatorv1alpha1.KubeconfigClusterRoleBindings{
+					ClusterRoles: []string{"cluster-admin"},
+				},
+			},
+		},
+	}
+	require.NoError(t, env.Config.Client.Create(t.Context(), kc))
+
+	root := env.WorkspaceClient(t, rootShard, frontProxy, "root")
+	require.Eventually(t, func() bool {
+		list := &rbacv1.ClusterRoleBindingList{}
+		if err := root.List(t.Context(), list, ctrlruntimeclient.MatchingLabels{"operator.kcp.io/kubeconfig": string(kc.UID)}); err != nil {
+			t.Logf("listing ClusterRoleBindings in root: %v", err)
+			return false
+		}
+		return len(list.Items) == 1
+	}, 5*time.Minute, 5*time.Second, "deployer did not provision the Kubeconfig's ClusterRoleBinding inside kcp")
+}
+
+// verifyShardTeardown asserts a shard whose cluster is disengaged is deleted.
+//
+// Deletion deregisters the shard from the root shard, so an unreachable root
+// shard strands the cleanup finalizer and the Shard never goes away. The wait is
+// generous: it happens on the next PlatformMesh pass, which backs off on
+// transient front-proxy errors.
+func verifyShardTeardown(t *testing.T, env *suite.Env, shard *suite.Cluster) {
+	t.Helper()
+
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
+		Name:      suite.PlatformMeshName + "--" + shard.NodeIP,
+		Namespace: suite.ProviderNamespace,
+	}}
+	require.NoError(t, env.Config.Client.Delete(t.Context(), secret))
+
+	key := ctrlruntimeclient.ObjectKey{
+		Namespace: suite.ProviderNamespace,
+		Name:      names.Shard(suite.PlatformMeshName, "default", shard.NodeIP),
+	}
+	require.Eventually(t, func() bool {
+		err := env.Config.Client.Get(t.Context(), key, &operatorv1alpha1.Shard{})
+		return apierrors.IsNotFound(err)
+	}, 10*time.Minute, 5*time.Second, "Shard of the disengaged cluster was not deleted")
 }
 
 func compiledExists(t *testing.T, cl ctrlruntimeclient.Client, kind, name string) bool {

@@ -27,7 +27,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	operatorv1alpha1 "github.com/kcp-dev/kcp-operator/sdk/apis/operator/v1alpha1"
@@ -46,8 +45,8 @@ func createPlatformMesh(t *testing.T, c ctrlruntimeclient.Client, etcdEndpoint s
 }
 
 func platformMesh(etcdEndpoint string) (*pmdeployv1alpha1.PlatformMesh, []ctrlruntimeclient.Object) {
-	etcd := func(prefix string) *operatorv1alpha1.EtcdConfig {
-		return &operatorv1alpha1.EtcdConfig{
+	etcd := func(prefix string) operatorv1alpha1.EtcdConfig {
+		return operatorv1alpha1.EtcdConfig{
 			Endpoints: []string{strconv.Quote(etcdEndpoint)},
 			TLSConfig: &operatorv1alpha1.EtcdTLSConfig{
 				SecretRef: corev1.LocalObjectReference{
@@ -57,7 +56,7 @@ func platformMesh(etcdEndpoint string) (*pmdeployv1alpha1.PlatformMesh, []ctrlru
 			Prefix: prefix,
 		}
 	}
-	certs := &operatorv1alpha1.Certificates{
+	certs := operatorv1alpha1.Certificates{
 		IssuerRef: &operatorv1alpha1.ObjectReference{
 			Name:  "kcp",
 			Kind:  "ClusterIssuer",
@@ -65,8 +64,8 @@ func platformMesh(etcdEndpoint string) (*pmdeployv1alpha1.PlatformMesh, []ctrlru
 		},
 	}
 	// host builds an sslip.io exposure; cluster carries the dashed node IP so it self-resolves.
-	host := func(expr string) pmdeployv1alpha1.Exposure {
-		return pmdeployv1alpha1.Exposure{
+	host := func(expr string) *pmdeployv1alpha1.Exposure {
+		return &pmdeployv1alpha1.Exposure{
 			HostnameTemplate: expr,
 			Port:             31443,
 		}
@@ -75,8 +74,8 @@ func platformMesh(etcdEndpoint string) (*pmdeployv1alpha1.PlatformMesh, []ctrlru
 	templates := []ctrlruntimeclient.Object{
 		&pmdeployv1alpha1.RootShardTemplate{
 			ObjectMeta: metav1.ObjectMeta{Name: "root", Namespace: suite.ProviderNamespace},
-			Spec: operatorv1alpha1.RootShardTemplateSpec{
-				CommonShardSpecTemplate: operatorv1alpha1.CommonShardSpecTemplate{
+			Spec: operatorv1alpha1.RootShardSpec{
+				CommonShardSpec: operatorv1alpha1.CommonShardSpec{
 					Etcd: etcd(`"/" + platformMesh + "/root"`),
 				},
 				Certificates: certs,
@@ -84,8 +83,8 @@ func platformMesh(etcdEndpoint string) (*pmdeployv1alpha1.PlatformMesh, []ctrlru
 		},
 		&pmdeployv1alpha1.ShardTemplate{
 			ObjectMeta: metav1.ObjectMeta{Name: "default", Namespace: suite.ProviderNamespace},
-			Spec: operatorv1alpha1.ShardTemplateSpec{
-				CommonShardSpecTemplate: operatorv1alpha1.CommonShardSpecTemplate{
+			Spec: operatorv1alpha1.ShardSpec{
+				CommonShardSpec: operatorv1alpha1.CommonShardSpec{
 					Etcd: etcd(`"/" + platformMesh + "/" + component + "/" + cluster`),
 				},
 			},
@@ -116,17 +115,11 @@ func platformMesh(etcdEndpoint string) (*pmdeployv1alpha1.PlatformMesh, []ctrlru
 					Name:        "root",
 					TemplateRef: &pmdeployv1alpha1.TemplateReference{Name: "root"},
 					Exposure:    host(`"root." + cluster + ".sslip.io"`),
-					VirtualWorkspaces: pmdeployv1alpha1.VirtualWorkspaceSpec{
-						Exposure: host(`"vw-root." + cluster + ".sslip.io"`),
-					},
 				},
 				ShardGroups: []pmdeployv1alpha1.ShardGroup{{
 					Name:        "default",
 					TemplateRef: &pmdeployv1alpha1.TemplateReference{Name: "default"},
-					Exposure:    ptr.To(host(`component + "." + cluster + ".sslip.io"`)),
-					VirtualWorkspaces: pmdeployv1alpha1.VirtualWorkspaceSpec{
-						Exposure: host(`"vw." + component + "." + cluster + ".sslip.io"`),
-					},
+					Exposure:    host(`component + "." + cluster + ".sslip.io"`),
 				}},
 				FrontProxy: pmdeployv1alpha1.FrontProxy{
 					Name:     "fp",
@@ -135,4 +128,22 @@ func platformMesh(etcdEndpoint string) (*pmdeployv1alpha1.PlatformMesh, []ctrlru
 			},
 		},
 	}, templates
+}
+
+// createInClusterPlatformMesh creates a PlatformMesh with no ingress stack and
+// no exposures, leaving every component reachable only inside the cluster.
+func createInClusterPlatformMesh(t *testing.T, c ctrlruntimeclient.Client, etcdEndpoint string) *pmdeployv1alpha1.PlatformMesh {
+	t.Helper()
+	pm, templates := platformMesh(etcdEndpoint)
+	for _, tpl := range templates {
+		require.NoError(t, c.Create(t.Context(), tpl))
+	}
+	pm.Spec.Ingress = nil
+	pm.Spec.Topology.RootShard.Exposure = nil
+	pm.Spec.Topology.FrontProxy.Exposure = nil
+	for i := range pm.Spec.Topology.ShardGroups {
+		pm.Spec.Topology.ShardGroups[i].Exposure = nil
+	}
+	require.NoError(t, c.Create(t.Context(), pm))
+	return pm
 }

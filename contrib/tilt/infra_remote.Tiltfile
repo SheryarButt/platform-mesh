@@ -37,10 +37,9 @@ helm_remote(
     version='v1.7.0',
 )
 
-# kcp-operator is NOT here. platform-mesh-deployer installs the ntnn fork it
-# needs (split config/workload controllers plus the Compiled* CRDs its admin CRs
-# compile into); it owns the same operator.kcp.io CRDs and the same Deployment as
-# the upstream operator, so only one of them can ever be installed.
+# kcp-operator is NOT here, and is not deployed at all. platform-mesh-deployer
+# runs kcp-operator's config and workload controller groups inside its own
+# manager and installs only their CRDs.
 
 # ---------------------------------------------------------------------------
 # Delivery engines for the provider-operator's ManagedProvider deploy step

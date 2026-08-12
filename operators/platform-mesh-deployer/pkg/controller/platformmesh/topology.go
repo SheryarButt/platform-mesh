@@ -74,7 +74,8 @@ func (r *reconciler) resolveTemplate(ctx context.Context, pm *pmdeployv1alpha1.P
 	if err := r.opts.GetTemplate(ctx, key, tpl); err != nil {
 		return fmt.Errorf("template %s: %w", key, err)
 	}
-	// The template spec mirrors the target spec with every field optional.
+	// Templates carry the same spec type as their target, so the deployer-owned
+	// fields it is about to overwrite are whatever the author put there.
 	data, err := json.Marshal(spec())
 	if err != nil {
 		return err

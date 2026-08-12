@@ -19,8 +19,6 @@ package platformmesh
 import (
 	"context"
 	"fmt"
-	"net"
-	"strconv"
 
 	pmdeployv1alpha1 "go.platform-mesh.io/apis/deploy/v1alpha1"
 	"go.platform-mesh.io/platform-mesh-deployer/pkg/celtemplate"
@@ -77,15 +75,19 @@ func (r *reconciler) frontProxyExternal(pm *pmdeployv1alpha1.PlatformMesh) (stri
 	if len(engaged) == 0 {
 		return "", 0, fmt.Errorf("front proxy not ready")
 	}
-	host, err := celtemplate.Eval(fp.Exposure.HostnameTemplate, celtemplate.Context{
+	addr, err := resolveAddress(fp.Exposure, celtemplate.Context{
 		PlatformMesh: pm.Name,
 		Component:    components.FrontProxy,
 		Cluster:      engaged[0].ClusterID,
-	})
+	}, service{
+		adminName: names.FrontProxy(pm.Name, fp.Name, engaged[0].ClusterID),
+		suffix:    frontProxyServiceSuffix,
+		port:      shardServicePort,
+	}, pm.Namespace, "front proxy")
 	if err != nil {
-		return "", 0, fmt.Errorf("front proxy hostname: %w", err)
+		return "", 0, err
 	}
-	return host, uint32(fp.Exposure.Port), nil
+	return addr.host, addr.port, nil
 }
 
 func (r *reconciler) buildRootShardSpec(ctx context.Context, pm *pmdeployv1alpha1.PlatformMesh, group pmdeployv1alpha1.RootShard, clusterID string) (operatorv1alpha1.RootShardSpec, error) {
@@ -114,11 +116,24 @@ func (r *reconciler) buildRootShardSpec(ctx context.Context, pm *pmdeployv1alpha
 	spec.External.Hostname = fpHost
 	spec.External.Port = fpPort
 
-	host, err := celtemplate.Eval(group.Exposure.HostnameTemplate, celCtx)
+	addr, err := resolveAddress(group.Exposure, celCtx, service{
+		adminName: name,
+		suffix:    rootShardServiceSuffix,
+		port:      shardServicePort,
+	}, pm.Namespace, "root shard "+name)
 	if err != nil {
-		return spec, fmt.Errorf("root shard %q hostname: %w", name, err)
+		return spec, err
 	}
-	spec.ShardBaseURL = "https://" + net.JoinHostPort(host, strconv.Itoa(int(group.Exposure.Port)))
+	spec.ShardBaseURL = addr.URL()
+
+	// A standalone virtual workspace server only serves the shard that points at
+	// it: without the reference kcp-operator leaves the shard serving virtual
+	// workspaces in-process and the standalone deployment takes no traffic.
+	if group.VirtualWorkspaces.Mode == pmdeployv1alpha1.VirtualWorkspaceModeStandalone {
+		spec.KCPVirtualWorkspace = &corev1.LocalObjectReference{
+			Name: names.VirtualWorkspace(pm.Name, group.Name, clusterID),
+		}
+	}
 
 	if group.CacheServerRef != "" {
 		ref, err := r.cacheServerRef(pm, group.CacheServerRef)

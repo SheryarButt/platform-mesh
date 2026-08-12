@@ -54,8 +54,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: CacheServerTemplateSpec mirrors CacheServerSpec with all
-              fields optional.
+            description: CacheServerSpec defines the desired state of CacheServer.
             properties:
               certificateTemplates:
                 additionalProperties:
@@ -1705,7 +1704,12 @@ spec:
                         type: string
                     type: object
                 type: object
+            required:
+            - certificates
             type: object
+            x-kubernetes-validations:
+            - message: etcd must be specified when replicas > 1
+              rule: '!has(self.replicas) || self.replicas <= 1 || has(self.etcd)'
         type: object
     served: true
     storage: true

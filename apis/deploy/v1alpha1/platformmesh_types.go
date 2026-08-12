@@ -121,9 +121,8 @@ type VirtualWorkspaceSpec struct {
 	TemplateRef *TemplateReference `json:"templateRef,omitempty"`
 
 	// Exposure describes how the virtual workspaces endpoint is exposed.
-	// Virtual workspaces are public regardless of mode, so exposure is
-	// required.
-	Exposure Exposure `json:"exposure"`
+	// +optional
+	Exposure *Exposure `json:"exposure,omitempty"`
 }
 
 // ShardGroup describes a group of kcp shards. One shard is deployed per
@@ -143,8 +142,7 @@ type ShardGroup struct {
 	// +optional
 	CacheServerRef string `json:"cacheServerRef,omitempty"`
 
-	// Exposure describes how the shard endpoint is exposed. Optional, shards
-	// do not need to be publicly reachable.
+	// Exposure describes how the shard endpoint is exposed.
 	// +optional
 	Exposure *Exposure `json:"exposure,omitempty"`
 
@@ -166,9 +164,9 @@ type FrontProxy struct {
 	// +optional
 	TemplateRef *TemplateReference `json:"templateRef,omitempty"`
 
-	// Exposure describes how the front proxy is exposed. Front proxies are
-	// public by definition, so exposure is required.
-	Exposure Exposure `json:"exposure"`
+	// Exposure describes how the front proxy is exposed.
+	// +optional
+	Exposure *Exposure `json:"exposure,omitempty"`
 }
 
 // CacheServer describes a kcp cache server deployment.
@@ -206,8 +204,9 @@ type RootShard struct {
 	// +optional
 	CacheServerRef string `json:"cacheServerRef,omitempty"`
 
-	// Exposure describes how the root shard front proxy endpoint is exposed.
-	Exposure Exposure `json:"exposure"`
+	// Exposure describes how the root shard endpoint is exposed.
+	// +optional
+	Exposure *Exposure `json:"exposure,omitempty"`
 
 	// VirtualWorkspaces configures the virtual workspaces server for the root shard.
 	VirtualWorkspaces VirtualWorkspaceSpec `json:"virtualWorkspaces"`

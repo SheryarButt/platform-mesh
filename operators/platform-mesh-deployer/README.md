@@ -32,8 +32,11 @@ against a dev `PlatformMesh`, in the same single-cluster shape as `test/e2e`'s
 environment's kcp — it replaced the static install, and everything else in the
 repo's Tilt env sits on the kcp it builds.
 
-It needs the ntnn/kcp-operator fork pinned by the `replace` in `go.mod`, which
-owns the same CRDs as the upstream operator; bump the two together. See
+It runs kcp-operator's config and workload controller groups inside its own
+manager, from the ntnn/kcp-operator fork pinned by the `replace` in `go.mod`.
+Nothing deploys kcp-operator itself; only its CRDs are installed, from
+`config/bases/kcp-operator/crds`, pinned to the same commit — bump the two
+together. See
 [contrib/tilt/README.md](../../contrib/tilt/README.md#how-kcp-gets-built).
 
 #### Kind setup, without Tilt

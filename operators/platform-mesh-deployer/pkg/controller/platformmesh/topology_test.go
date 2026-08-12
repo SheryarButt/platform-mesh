@@ -44,14 +44,14 @@ func platformMesh() *pmdeployv1alpha1.PlatformMesh {
 				RootShard: pmdeployv1alpha1.RootShard{
 					Name:        "root",
 					TemplateRef: &pmdeployv1alpha1.TemplateReference{Name: "root"},
-					Exposure: pmdeployv1alpha1.Exposure{
+					Exposure: &pmdeployv1alpha1.Exposure{
 						HostnameTemplate: `"kcp." + platformMesh + ".example.com"`,
 						Port:             6443,
 					},
 				},
 				FrontProxy: pmdeployv1alpha1.FrontProxy{
 					Name: "fp",
-					Exposure: pmdeployv1alpha1.Exposure{
+					Exposure: &pmdeployv1alpha1.Exposure{
 						HostnameTemplate: `"fp." + platformMesh + ".example.com"`,
 						Port:             6443,
 					},
@@ -64,9 +64,9 @@ func platformMesh() *pmdeployv1alpha1.PlatformMesh {
 func rootShardTemplate() *pmdeployv1alpha1.RootShardTemplate {
 	return &pmdeployv1alpha1.RootShardTemplate{
 		ObjectMeta: metav1.ObjectMeta{Name: "root", Namespace: "pm"},
-		Spec: operatorv1alpha1.RootShardTemplateSpec{
-			CommonShardSpecTemplate: operatorv1alpha1.CommonShardSpecTemplate{
-				Etcd: &operatorv1alpha1.EtcdConfig{
+		Spec: operatorv1alpha1.RootShardSpec{
+			CommonShardSpec: operatorv1alpha1.CommonShardSpec{
+				Etcd: operatorv1alpha1.EtcdConfig{
 					Endpoints: []string{`"https://etcd-" + platformMesh + ".pm:2379"`},
 					Prefix:    `"/" + platformMesh + "/" + cluster`,
 				},
@@ -78,9 +78,9 @@ func rootShardTemplate() *pmdeployv1alpha1.RootShardTemplate {
 func shardTemplate() *pmdeployv1alpha1.ShardTemplate {
 	return &pmdeployv1alpha1.ShardTemplate{
 		ObjectMeta: metav1.ObjectMeta{Name: "eu", Namespace: "pm"},
-		Spec: operatorv1alpha1.ShardTemplateSpec{
-			CommonShardSpecTemplate: operatorv1alpha1.CommonShardSpecTemplate{
-				Etcd: &operatorv1alpha1.EtcdConfig{
+		Spec: operatorv1alpha1.ShardSpec{
+			CommonShardSpec: operatorv1alpha1.CommonShardSpec{
+				Etcd: operatorv1alpha1.EtcdConfig{
 					Endpoints: []string{`"https://etcd-" + platformMesh + ".pm:2379"`},
 					Prefix:    `"/" + platformMesh + "/" + shardGroup + "/" + cluster`,
 				},
@@ -213,7 +213,7 @@ func TestReconcileFrontProxy(t *testing.T) {
 	pm := platformMesh()
 	pm.Spec.Topology.FrontProxy = pmdeployv1alpha1.FrontProxy{
 		Name: "fp",
-		Exposure: pmdeployv1alpha1.Exposure{
+		Exposure: &pmdeployv1alpha1.Exposure{
 			HostnameTemplate: `"api." + platformMesh + ".example.com"`,
 			Port:             443,
 		},
@@ -246,7 +246,7 @@ func TestReconcileCacheServer(t *testing.T) {
 	}
 	cacheTemplate := &pmdeployv1alpha1.CacheServerTemplate{
 		ObjectMeta: metav1.ObjectMeta{Name: "global", Namespace: "pm"},
-		Spec: operatorv1alpha1.CacheServerTemplateSpec{
+		Spec: operatorv1alpha1.CacheServerSpec{
 			Etcd: &operatorv1alpha1.EtcdConfig{
 				Endpoints: []string{`"https://cache-etcd-" + platformMesh + ".pm:2379"`},
 				Prefix:    `"/" + platformMesh + "/cache"`,
@@ -277,7 +277,7 @@ func TestReconcileVirtualWorkspace(t *testing.T) {
 	pm := platformMesh()
 	pm.Spec.Topology.RootShard.VirtualWorkspaces = pmdeployv1alpha1.VirtualWorkspaceSpec{
 		Mode: pmdeployv1alpha1.VirtualWorkspaceModeStandalone,
-		Exposure: pmdeployv1alpha1.Exposure{
+		Exposure: &pmdeployv1alpha1.Exposure{
 			HostnameTemplate: `"vw." + platformMesh + ".example.com"`,
 			Port:             443,
 		},
@@ -369,6 +369,10 @@ func TestReconcileCacheServerRef(t *testing.T) {
 		return []pmdeployv1alpha1.ShardGroup{{
 			Name:           "eu",
 			CacheServerRef: ref,
+			Exposure: &pmdeployv1alpha1.Exposure{
+				HostnameTemplate: `component + "." + cluster + ".sslip.io"`,
+				Port:             31443,
+			},
 		}}
 	}
 
@@ -482,4 +486,120 @@ func TestReconcileTemplateRef(t *testing.T) {
 			assert.Equal(t, tc.prefix, rs.Spec.Etcd.Prefix)
 		}
 	})
+}
+
+// A topology with no exposures describes a kcp nothing outside the cluster
+// reaches, so every component advertises the Service kcp-operator gives it.
+func TestUnexposedTopologyAddressesInCluster(t *testing.T) {
+	t.Parallel()
+	pm := platformMesh()
+	pm.Spec.Topology.RootShard.Exposure = nil
+	pm.Spec.Topology.FrontProxy.Exposure = nil
+	pm.Spec.Topology.ShardGroups = []pmdeployv1alpha1.ShardGroup{{
+		Name:        "eu",
+		TemplateRef: &pmdeployv1alpha1.TemplateReference{Name: "eu"},
+	}}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme(t)).WithObjects(pm, rootShardTemplate(), shardTemplate()).Build()
+	reg := clusters.NewRegistry()
+	engage(t, reg, "rootshard#customer-a--east")
+	engage(t, reg, "frontproxy#customer-a--east")
+	engage(t, reg, "shards-eu#customer-a--east")
+	r := newReconciler(t, cl, reg, pm)
+
+	rootName := names.RootShard("customer-a", "root", "east")
+	fpName := names.FrontProxy("customer-a", "fp", "east")
+	shardName := names.Shard("customer-a", "eu", "east")
+
+	rs, err := r.buildRootShardSpec(t.Context(), pm, pm.Spec.Topology.RootShard, "east")
+	require.NoError(t, err)
+	// The root shard reaches the other shards through the front proxy.
+	assert.Equal(t, fpName+"-front-proxy.pm.svc", rs.External.Hostname)
+	assert.Equal(t, uint32(6443), rs.External.Port)
+	assert.Equal(t, "https://"+rootName+"-kcp.pm.svc:6443", rs.ShardBaseURL)
+
+	fp, err := r.buildFrontProxySpec(t.Context(), pm, pm.Spec.Topology.FrontProxy, "east", rootName)
+	require.NoError(t, err)
+	assert.Equal(t, fpName+"-front-proxy.pm.svc", fp.External.Hostname)
+
+	sh, err := r.buildShardSpec(t.Context(), pm, pm.Spec.Topology.ShardGroups[0], "east", rootName)
+	require.NoError(t, err)
+	assert.Equal(t, "https://"+shardName+"-shard-kcp.pm.svc:6443", sh.ShardBaseURL)
+}
+
+func TestBuildFrontProxySpecRejectsDropGroups(t *testing.T) {
+	t.Parallel()
+	pm := platformMesh()
+	tpl := &pmdeployv1alpha1.FrontProxyTemplate{
+		ObjectMeta: metav1.ObjectMeta{Name: "fp", Namespace: "pm"},
+		Spec: operatorv1alpha1.FrontProxySpec{
+			Auth: &operatorv1alpha1.AuthSpec{DropGroups: []string{"system:kcp:admin"}},
+		},
+	}
+	pm.Spec.Topology.FrontProxy.TemplateRef = &pmdeployv1alpha1.TemplateReference{Name: "fp"}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme(t)).WithObjects(pm, rootShardTemplate(), tpl).Build()
+	reg := clusters.NewRegistry()
+	engage(t, reg, "rootshard#customer-a--east")
+	engage(t, reg, "frontproxy#customer-a--fp")
+	r := newReconciler(t, cl, reg, pm)
+
+	_, err := r.buildFrontProxySpec(t.Context(), pm, pm.Spec.Topology.FrontProxy, "fp", "root")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "auth.dropGroups")
+}
+
+// A standalone virtual workspace server is only used if the shard is pointed at
+// it; otherwise kcp-operator keeps serving them in-process and the deployment
+// it renders takes no traffic.
+func TestStandaloneVirtualWorkspaceIsWiredToItsShard(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		mode pmdeployv1alpha1.VirtualWorkspaceMode
+		want bool
+	}{
+		{name: "standalone is referenced", mode: pmdeployv1alpha1.VirtualWorkspaceModeStandalone, want: true},
+		{name: "embedded is not", mode: pmdeployv1alpha1.VirtualWorkspaceModeEmbedded, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pm := platformMesh()
+			pm.Spec.Topology.RootShard.VirtualWorkspaces = pmdeployv1alpha1.VirtualWorkspaceSpec{
+				Mode:     tc.mode,
+				Exposure: &pmdeployv1alpha1.Exposure{HostnameTemplate: `"vw.example.com"`, Port: 6443},
+			}
+			pm.Spec.Topology.ShardGroups = []pmdeployv1alpha1.ShardGroup{{
+				Name:        "eu",
+				TemplateRef: &pmdeployv1alpha1.TemplateReference{Name: "eu"},
+				VirtualWorkspaces: pmdeployv1alpha1.VirtualWorkspaceSpec{
+					Mode:     tc.mode,
+					Exposure: &pmdeployv1alpha1.Exposure{HostnameTemplate: `"vw.example.com"`, Port: 6443},
+				},
+			}}
+
+			cl := fake.NewClientBuilder().WithScheme(scheme(t)).WithObjects(pm, rootShardTemplate(), shardTemplate()).Build()
+			reg := clusters.NewRegistry()
+			engage(t, reg, "rootshard#customer-a--east")
+			engage(t, reg, "frontproxy#customer-a--east")
+			engage(t, reg, "shards-eu#customer-a--east")
+			r := newReconciler(t, cl, reg, pm)
+
+			rs, err := r.buildRootShardSpec(t.Context(), pm, pm.Spec.Topology.RootShard, "east")
+			require.NoError(t, err)
+			sh, err := r.buildShardSpec(t.Context(), pm, pm.Spec.Topology.ShardGroups[0], "east",
+				names.RootShard("customer-a", "root", "east"))
+			require.NoError(t, err)
+
+			if !tc.want {
+				assert.Nil(t, rs.KCPVirtualWorkspace)
+				assert.Nil(t, sh.KCPVirtualWorkspace)
+				return
+			}
+			require.NotNil(t, rs.KCPVirtualWorkspace)
+			require.NotNil(t, sh.KCPVirtualWorkspace)
+			assert.Equal(t, names.VirtualWorkspace("customer-a", "root", "east"), rs.KCPVirtualWorkspace.Name)
+			assert.Equal(t, names.VirtualWorkspace("customer-a", "eu", "east"), sh.KCPVirtualWorkspace.Name)
+		})
+	}
 }

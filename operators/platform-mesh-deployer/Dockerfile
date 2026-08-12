@@ -28,15 +28,17 @@ WORKDIR /workspace
 COPY go.work go.work
 COPY go.work.sum go.work.sum
 COPY apis/ apis/
+COPY golang-commons/ golang-commons/
+COPY subroutines/ subroutines/
 COPY operators/platform-mesh-deployer/ operators/platform-mesh-deployer/
 
 # Drop every workspace module except the ones copied above, so the workspace
-# resolves with only apis + this operator — regardless of what else go.work lists
-# (other operators, cmd/* tools, ...). This is a textual edit of go.work, so the
+# resolves with only those — regardless of what else go.work lists (other
+# operators, cmd/* tools, ...). This is a textual edit of go.work, so the
 # dropped modules don't need to exist in the build context.
 RUN for m in $(go work edit -json | sed -n 's/.*"DiskPath": "\(.*\)".*/\1/p'); do \
       case "$m" in \
-        ./apis|./operators/platform-mesh-deployer) ;; \
+        ./apis|./golang-commons|./subroutines|./operators/platform-mesh-deployer) ;; \
         *) go work edit -dropuse "$m" ;; \
       esac; \
     done
