@@ -391,11 +391,7 @@ func (r *DeploymentSubroutine) templateVarsFromProfileInfra(ctx context.Context,
 	}
 
 	// Ensure helmReleaseNamespace is set: prefer deploymentNamespace, then existing helmReleaseNamespace, then inst.Namespace
-	if deployNs, ok := tmplVars["deploymentNamespace"].(string); ok && deployNs != "" {
-		tmplVars["helmReleaseNamespace"] = deployNs
-	} else if _, ok := tmplVars["helmReleaseNamespace"]; !ok {
-		tmplVars["helmReleaseNamespace"] = inst.Namespace
-	}
+	tmplVars["helmReleaseNamespace"] = infraHelmReleaseNamespace(tmplVars, inst.Namespace)
 
 	return tmplVars, nil
 }
@@ -535,8 +531,9 @@ func (r *DeploymentSubroutine) buildRuntimeTemplateVars(ctx context.Context, ins
 func (r *DeploymentSubroutine) buildComponentsTemplateVars(ctx context.Context, inst *pmcorev1alpha1.PlatformMesh, templateVars apiextensionsv1.JSON) (map[string]any, error) {
 	log := logger.LoadLoggerFromContext(ctx).ChildLogger("subroutine", r.GetName())
 
-	// Load components profile from ConfigMap
-	_, componentsProfileYaml, err := r.loadProfileSections(ctx, inst)
+	// The infra section is needed too: services may depend on infra HelmReleases, which
+	// carry their own enabled flags.
+	infraProfileYaml, componentsProfileYaml, err := r.loadProfileSections(ctx, inst)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to load profile from ConfigMap")
 	}
@@ -545,6 +542,11 @@ func (r *DeploymentSubroutine) buildComponentsTemplateVars(ctx context.Context, 
 	var componentsProfileMap map[string]any
 	if err := yaml.Unmarshal([]byte(componentsProfileYaml), &componentsProfileMap); err != nil {
 		return nil, errors.Wrap(err, "Failed to parse components profile as YAML")
+	}
+
+	var infraProfileMap map[string]any
+	if err := yaml.Unmarshal([]byte(infraProfileYaml), &infraProfileMap); err != nil {
+		return nil, errors.Wrap(err, "Failed to parse infra profile as YAML")
 	}
 
 	// Parse templateVars JSON into a map
@@ -556,6 +558,15 @@ func (r *DeploymentSubroutine) buildComponentsTemplateVars(ctx context.Context, 
 	} else {
 		templateVarsMap = make(map[string]any)
 	}
+
+	// Resolve the infra namespace the same way templateVarsFromProfileInfra does. Must happen
+	// before templateVarsMap is merged with the components profile below, otherwise component
+	// keys leak into the infra resolution.
+	infraVars, err := merge.MergeMaps(infraProfileMap, templateVarsMap, log)
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to merge infra profile with templateVars")
+	}
+	infraNamespace := infraHelmReleaseNamespace(infraVars, inst.Namespace)
 
 	// Merge components profile (base) with templateVars (overrides)
 	// templateVars take precedence over profile values
@@ -649,19 +660,26 @@ func (r *DeploymentSubroutine) buildComponentsTemplateVars(ctx context.Context, 
 		return nil, errors.Wrap(err, "Failed to merge services from PlatformMesh.spec.Values with profile-components.yaml services")
 	}
 
+	// deploymentNamespace: where deployment CRs live (configurable via profile)
+	componentsNamespace := inst.Namespace
+	if deployNs, ok := values["deploymentNamespace"].(string); ok && deployNs != "" {
+		componentsNamespace = deployNs
+	}
+
+	// Drop dependencies on switched-off components: they are never rendered, so Flux would
+	// hold the dependent release in DependencyNotReady forever. Also keeps calculateSyncWaves
+	// below from ordering against a service that does not exist.
+	disabled := disabledHelmReleases(infraProfileMap, mergedServices, infraNamespace, componentsNamespace)
+	pruneDisabledDependencies(mergedServices, disabled, componentsNamespace, log)
+
 	// Put the merged services back into values
 	values["services"] = mergedServices
 
 	// Root data passed to component gotemplates
 	data := map[string]any{
-		"values":           values,
-		"releaseNamespace": inst.Namespace,
-	}
-	// deploymentNamespace: where deployment CRs live (configurable via profile)
-	if deployNs, ok := values["deploymentNamespace"].(string); ok && deployNs != "" {
-		data["deploymentNamespace"] = deployNs
-	} else {
-		data["deploymentNamespace"] = inst.Namespace
+		"values":              values,
+		"releaseNamespace":    inst.Namespace,
+		"deploymentNamespace": componentsNamespace,
 	}
 
 	// Add kubeConfig fields for remote PlatformMesh support

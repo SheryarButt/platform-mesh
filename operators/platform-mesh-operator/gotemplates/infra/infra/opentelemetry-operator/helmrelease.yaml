@@ -31,8 +31,12 @@ spec:
     kind: OCIRepository
     name: {{ .opentelemetryOperator.name }}
     namespace: {{ .helmReleaseNamespace }}
+{{- if .certManager.enabled }}
   dependsOn:
     - name: {{ .certManager.name }}
+{{- else }}
+  dependsOn: []
+{{- end }}
   interval: {{ .opentelemetryOperator.interval }}
   releaseName: {{ .opentelemetryOperator.name }}
   targetNamespace: {{ .opentelemetryOperator.targetNamespace }}
