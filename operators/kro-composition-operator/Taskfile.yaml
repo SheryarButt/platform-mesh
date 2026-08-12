@@ -31,6 +31,9 @@ tasks:
     cmds:
       - go fmt ./...
 
+  generate:
+    cmds: []
+
   lint:
     desc: Run linter
     cmds:

@@ -191,9 +191,7 @@ spec:
                     description: FrontProxy is the kcp front proxy.
                     properties:
                       exposure:
-                        description: |-
-                          Exposure describes how the front proxy is exposed. Omitting it leaves the
-                          front proxy reachable only from inside the cluster it runs on.
+                        description: Exposure describes how the front proxy is exposed.
                         properties:
                           hostnameTemplate:
                             description: |-
@@ -252,9 +250,8 @@ spec:
                         description: CacheServerRef references a cache server by name.
                         type: string
                       exposure:
-                        description: |-
-                          Exposure describes how the root shard endpoint is exposed. Omitting it
-                          leaves the root shard reachable only from inside the cluster it runs on.
+                        description: Exposure describes how the root shard endpoint
+                          is exposed.
                         properties:
                           hostnameTemplate:
                             description: |-
@@ -306,10 +303,8 @@ spec:
                           server for the root shard.
                         properties:
                           exposure:
-                            description: |-
-                              Exposure describes how the virtual workspaces endpoint is exposed.
-                              Required for Standalone; an Embedded server is reached through its shard
-                              and has no endpoint of its own.
+                            description: Exposure describes how the virtual workspaces
+                              endpoint is exposed.
                             properties:
                               hostnameTemplate:
                                 description: |-
@@ -363,9 +358,6 @@ spec:
                             - name
                             type: object
                         type: object
-                        x-kubernetes-validations:
-                        - message: exposure is required when mode is Standalone
-                          rule: self.mode != 'Standalone' || has(self.exposure)
                     required:
                     - name
                     - virtualWorkspaces
@@ -383,9 +375,8 @@ spec:
                             Defaults to the sole defined cache server.
                           type: string
                         exposure:
-                          description: |-
-                            Exposure describes how the shard endpoint is exposed. Omitting it leaves
-                            the shard reachable only from inside the cluster it runs on.
+                          description: Exposure describes how the shard endpoint is
+                            exposed.
                           properties:
                             hostnameTemplate:
                               description: |-
@@ -438,10 +429,8 @@ spec:
                             shard group.
                           properties:
                             exposure:
-                              description: |-
-                                Exposure describes how the virtual workspaces endpoint is exposed.
-                                Required for Standalone; an Embedded server is reached through its shard
-                                and has no endpoint of its own.
+                              description: Exposure describes how the virtual workspaces
+                                endpoint is exposed.
                               properties:
                                 hostnameTemplate:
                                   description: |-
@@ -495,9 +484,6 @@ spec:
                               - name
                               type: object
                           type: object
-                          x-kubernetes-validations:
-                          - message: exposure is required when mode is Standalone
-                            rule: self.mode != 'Standalone' || has(self.exposure)
                       required:
                       - name
                       - virtualWorkspaces
