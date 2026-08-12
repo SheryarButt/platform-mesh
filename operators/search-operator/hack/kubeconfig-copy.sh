@@ -36,7 +36,18 @@ echo "Checking for Kind cluster 'platform-mesh'..."
 if [ -n "${KIND_EXPERIMENTAL_PROVIDER:-}" ]; then
   export KIND_EXPERIMENTAL_PROVIDER
 fi
-if ! kind get clusters 2>/dev/null | grep -q "^platform-mesh$"; then
+
+# kind get clusters is broken with some podman versions (Go template incompatibility).
+# Fall back to querying podman directly when KIND_EXPERIMENTAL_PROVIDER=podman.
+_cluster_found=false
+if kind get clusters 2>/dev/null | grep -q "^platform-mesh$"; then
+  _cluster_found=true
+elif [ "${KIND_EXPERIMENTAL_PROVIDER:-}" = "podman" ] && \
+     podman ps -a --filter label=io.x-k8s.kind.cluster --format "{{.Names}}" 2>/dev/null | grep -q "^platform-mesh-"; then
+  _cluster_found=true
+fi
+
+if ! $_cluster_found; then
   echo "Error: Kind cluster 'platform-mesh' not found"
   echo "Available clusters:"
   kind get clusters 2>/dev/null || echo "(none)"
