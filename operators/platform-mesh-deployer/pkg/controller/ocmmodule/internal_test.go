@@ -152,15 +152,29 @@ func TestKubeconfigTargetErrors(t *testing.T) {
 	}
 }
 
-// The front proxy dials the backend by its in-cluster names, so the serving
-// certificate has to cover all of them.
-func TestServiceDNSNames(t *testing.T) {
-	assert.Equal(t, []string{
-		"acme-vw",
-		"acme-vw.acme-system",
-		"acme-vw.acme-system.svc",
-		"acme-vw.acme-system.svc.cluster.local",
-	}, serviceDNSNames("acme-vw", "acme-system"))
+// The front proxy verifies the certificate the backend presents against the name
+// it dialled, so the names on the certificate are decided by which kind of
+// backend the mapping names.
+func TestBackendDNSNames(t *testing.T) {
+	// In-cluster: all four spellings, because the authority the mapping resolves
+	// to is only one of them and any caller inside the cluster may use another.
+	t.Run("a Service backend covers every in-cluster spelling", func(t *testing.T) {
+		m := &pmdeployv1alpha1.Mapping{Service: "acme-vw", Port: 6443}
+		assert.Equal(t, []string{
+			"acme-vw",
+			"acme-vw.acme-system",
+			"acme-vw.acme-system.svc",
+			"acme-vw.acme-system.svc.cluster.local",
+		}, backendDNSNames(m, "acme-vw.acme-system.svc"))
+	})
+
+	// Out-of-cluster: that name alone. The in-cluster spellings do not resolve
+	// where this backend is reached from, and putting them on the certificate
+	// would only widen what it vouches for.
+	t.Run("a host backend covers only the host", func(t *testing.T) {
+		m := &pmdeployv1alpha1.Mapping{Host: "tenancy.example.com", Port: 6443}
+		assert.Equal(t, []string{"tenancy.example.com"}, backendDNSNames(m, "tenancy.example.com"))
+	})
 }
 
 func TestRootShardIssuer(t *testing.T) {
@@ -202,6 +216,37 @@ func TestResolveMapping(t *testing.T) {
 	assert.Equal(t, "https://acme-vw.acme-system.svc:8443", got.Backend)
 }
 
+// A component placed on a cluster the front proxy cannot reach by Service DNS
+// names the address it IS reachable at. The component's namespace is not part of
+// that address — it is a fact about the other cluster, and appending it produced
+// a backend that resolves nowhere.
+func TestResolveMappingHost(t *testing.T) {
+	inst := instance("vw", pmdeployv1alpha1.PlacementPerFrontProxy, "fp1", "")
+	inst.Component.Mapping = &pmdeployv1alpha1.Mapping{
+		Path: "/services/acme/",
+		Host: `${"tenancy." + cluster + ".example.com"}`,
+		Port: 6443,
+	}
+
+	got, err := resolveMapping(inst, celtemplate.Context{Cluster: "east"})
+	require.NoError(t, err)
+	assert.Equal(t, "/services/acme/", got.Path)
+	assert.Equal(t, "https://tenancy.east.example.com:6443", got.Backend)
+}
+
+// An expression that resolves to nothing would otherwise build
+// "https://.acme-system.svc:8443" — a backend the front proxy accepts and can
+// never dial.
+func TestResolveMappingRejectsEmptyBackend(t *testing.T) {
+	inst := instance("vw", pmdeployv1alpha1.PlacementPerFrontProxy, "fp1", "")
+	inst.Component.Mapping = &pmdeployv1alpha1.Mapping{
+		Path: "/services/acme/", Service: "${values.missing}", Port: 8443,
+	}
+
+	_, err := resolveMapping(inst, celtemplate.Context{Values: map[string]any{"missing": ""}})
+	require.ErrorContains(t, err, "empty string")
+}
+
 func TestResolveMappingRejectsBadTemplates(t *testing.T) {
 	tests := []struct{ name, service, path string }{
 		{name: "bad service", service: "${nope}", path: "/services/acme/"},
@@ -222,4 +267,52 @@ func TestResolveMappingRejectsBadTemplates(t *testing.T) {
 func TestToAnySlice(t *testing.T) {
 	assert.Equal(t, []any{"a", "b"}, toAnySlice([]string{"a", "b"}))
 	assert.Empty(t, toAnySlice(nil))
+}
+
+// "Exactly one of service/host" is enforced at admission, and again here — a CEL
+// rule is evaluated on write, so an object stored before the rule existed, or a
+// binary running against a CRD that predates it, reaches this code unchecked.
+func TestResolveMappingRequiresExactlyOneBackend(t *testing.T) {
+	tests := map[string]struct {
+		mapping *pmdeployv1alpha1.Mapping
+		wantErr string
+	}{
+		// Neither is silently preferred, because either choice routes to a
+		// backend the module author did not name.
+		"both": {
+			mapping: &pmdeployv1alpha1.Mapping{
+				Path: "/services/acme/", Service: "acme-vw", Host: "acme.example.com", Port: 8443,
+			},
+			wantErr: "sets both service",
+		},
+		"neither": {
+			mapping: &pmdeployv1alpha1.Mapping{Path: "/services/acme/", Port: 8443},
+			wantErr: "sets neither service nor host",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			inst := instance("vw", pmdeployv1alpha1.PlacementPerFrontProxy, "fp1", "")
+			inst.Component.Mapping = tc.mapping
+
+			_, err := resolveMapping(inst, celtemplate.Context{})
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
+
+// An IPv6 host has to be bracketed before the port is appended, or the address
+// and the port run together into something no client can dial. This is what
+// net.JoinHostPort is for, and why the backend is not built with a format
+// string.
+func TestResolveMappingIPv6Host(t *testing.T) {
+	inst := instance("vw", pmdeployv1alpha1.PlacementPerFrontProxy, "fp1", "")
+	inst.Component.Mapping = &pmdeployv1alpha1.Mapping{
+		Path: "/services/acme/", Host: "2001:db8::1", Port: 6443,
+	}
+
+	got, err := resolveMapping(inst, celtemplate.Context{})
+	require.NoError(t, err)
+	assert.Equal(t, "https://[2001:db8::1]:6443", got.Backend)
 }

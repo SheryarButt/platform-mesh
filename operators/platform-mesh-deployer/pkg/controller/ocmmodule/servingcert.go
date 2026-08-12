@@ -19,7 +19,9 @@ package ocmmodule
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	pmdeployv1alpha1 "go.platform-mesh.io/apis/deploy/v1alpha1"
 	"go.platform-mesh.io/platform-mesh-deployer/pkg/celtemplate"
 	"go.platform-mesh.io/platform-mesh-deployer/pkg/components"
 	"go.platform-mesh.io/platform-mesh-deployer/pkg/names"
@@ -62,13 +64,13 @@ func (r *reconciler) ensureServingCert(ctx context.Context, inst pmocmmodule.Ins
 	mod := r.mod
 	mapping := inst.Component.Mapping
 
-	service, err := celtemplate.Interpolate(mapping.Service, celCtx)
+	// The name the front proxy will dial, from the same resolver the mapping
+	// itself uses. The proxy verifies the certificate against exactly that name,
+	// so deriving it twice is how a backend ends up unreachable with both objects
+	// looking correct.
+	authority, err := mappingAuthority(inst, celCtx)
 	if err != nil {
-		return fmt.Errorf("component %q: mapping service: %w", inst.Component.Name, err)
-	}
-	name, ok := service.(string)
-	if !ok {
-		return fmt.Errorf("component %q: mapping service evaluated to %T, want string", inst.Component.Name, service)
+		return err
 	}
 
 	issuer, err := r.rootShardIssuer()
@@ -85,7 +87,7 @@ func (r *reconciler) ensureServingCert(ctx context.Context, inst pmocmmodule.Ins
 		cert.SetLabels(pmocmmodule.OCMModuleSelector(mod, inst.Cluster.ClusterID))
 		spec := map[string]any{
 			"secretName": certName,
-			"dnsNames":   toAnySlice(serviceDNSNames(name, inst.Component.Namespace)),
+			"dnsNames":   toAnySlice(backendDNSNames(mapping, authority)),
 			"usages":     []any{"server auth"},
 			"issuerRef": map[string]any{
 				"name":  issuer,
@@ -137,8 +139,20 @@ func toAnySlice(in []string) []any {
 	return out
 }
 
-// serviceDNSNames are the in-cluster names the front proxy dials the backend by.
-func serviceDNSNames(service, namespace string) []string {
+// backendDNSNames are the names the certificate must be valid for.
+//
+// For a Service backend that is the four in-cluster spellings, because the
+// authority the mapping resolves to is only one of them and a caller inside the
+// cluster may legitimately use any. For a `host` backend it is that name alone:
+// it is routed from outside, so the in-cluster spellings mean nothing there and
+// including them would only widen what the certificate vouches for.
+func backendDNSNames(mapping *pmdeployv1alpha1.Mapping, authority string) []string {
+	if mapping.Host != "" {
+		return []string{authority}
+	}
+
+	service, namespace, _ := strings.Cut(authority, ".")
+	namespace = strings.TrimSuffix(namespace, ".svc")
 	return []string{
 		service,
 		service + "." + namespace,

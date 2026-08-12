@@ -89,6 +89,22 @@ spec:
                         Mapping exposes the component under a URI path of the front proxy.
                         Only supported when Placement is per-front-proxy.
                       properties:
+                        host:
+                          description: |-
+                            Host is the DNS name of the backend, for a backend the front proxy cannot
+                            reach by Service DNS — a component placed on a different cluster, reached
+                            over an ingress or gateway.
+
+                            The front proxy verifies the certificate the backend presents, so the
+                            backend's serving certificate must carry this name. The deployer adds it to
+                            the certificate it issues for this component; a backend serving a
+                            certificate of its own has to include it.
+
+                            Terminating the connection between the front proxy and the backend breaks
+                            that verification, so whatever routes this name must pass TLS through.
+                            Supports ${ ... } templating.
+                          minLength: 1
+                          type: string
                         path:
                           description: |-
                             Path is the URI path added to the front proxy's path mappings, e.g.
@@ -96,23 +112,27 @@ spec:
                           pattern: ^/.*$
                           type: string
                         port:
-                          description: Port is the port the backend Service serves
-                            TLS on.
+                          description: Port is the port the backend serves TLS on.
                           format: int32
                           maximum: 65535
                           minimum: 1
                           type: integer
                         service:
                           description: |-
-                            Service is the name of the backend Service in the component's cluster.
+                            Service is the name of the backend Service, for a backend in the SAME
+                            cluster as the front proxy. Resolved as <service>.<component namespace>.svc.
                             Supports ${ ... } templating.
                           minLength: 1
                           type: string
                       required:
                       - path
                       - port
-                      - service
                       type: object
+                      x-kubernetes-validations:
+                      - message: set exactly one of service (a backend in the front
+                          proxy's own cluster) or host (a backend reached over the
+                          network)
+                        rule: has(self.service) != has(self.host)
                     name:
                       description: Name identifies the component within the module.
                       minLength: 1

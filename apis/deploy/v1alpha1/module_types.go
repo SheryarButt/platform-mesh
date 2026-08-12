@@ -87,18 +87,41 @@ type OCMModuleKubeconfig struct {
 }
 
 // Mapping exposes a component under a URI path of the front proxy.
+//
+// The path is the component's only entrypoint: callers always arrive at the
+// front proxy, which then dials the backend named below. Where that backend is
+// reachable from is what Service and Host distinguish — exactly one is set.
+// +kubebuilder:validation:XValidation:rule="has(self.service) != has(self.host)",message="set exactly one of service (a backend in the front proxy's own cluster) or host (a backend reached over the network)"
 type Mapping struct {
 	// Path is the URI path added to the front proxy's path mappings, e.g.
 	// /services/acme/.
 	// +kubebuilder:validation:Pattern=`^/.*$`
 	Path string `json:"path"`
 
-	// Service is the name of the backend Service in the component's cluster.
+	// Service is the name of the backend Service, for a backend in the SAME
+	// cluster as the front proxy. Resolved as <service>.<component namespace>.svc.
 	// Supports ${ ... } templating.
+	// +optional
 	// +kubebuilder:validation:MinLength=1
-	Service string `json:"service"`
+	Service string `json:"service,omitempty"`
 
-	// Port is the port the backend Service serves TLS on.
+	// Host is the DNS name of the backend, for a backend the front proxy cannot
+	// reach by Service DNS — a component placed on a different cluster, reached
+	// over an ingress or gateway.
+	//
+	// The front proxy verifies the certificate the backend presents, so the
+	// backend's serving certificate must carry this name. The deployer adds it to
+	// the certificate it issues for this component; a backend serving a
+	// certificate of its own has to include it.
+	//
+	// Terminating the connection between the front proxy and the backend breaks
+	// that verification, so whatever routes this name must pass TLS through.
+	// Supports ${ ... } templating.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	Host string `json:"host,omitempty"`
+
+	// Port is the port the backend serves TLS on.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=65535
 	Port int32 `json:"port"`

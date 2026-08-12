@@ -19,7 +19,9 @@ package ocmmodule
 import (
 	"context"
 	"fmt"
+	"net"
 	"sort"
+	"strconv"
 
 	pmdeployv1alpha1 "go.platform-mesh.io/apis/deploy/v1alpha1"
 	"go.platform-mesh.io/platform-mesh-deployer/pkg/celtemplate"
@@ -167,13 +169,9 @@ func kindsOf(set map[schema.GroupVersionKind]struct{}) []schema.GroupVersionKind
 func resolveMapping(inst pmocmmodule.Instance, celCtx celtemplate.Context) (*pmdeployv1alpha1.ResolvedMapping, error) {
 	m := inst.Component.Mapping
 
-	service, err := celtemplate.Interpolate(m.Service, celCtx)
+	authority, err := mappingAuthority(inst, celCtx)
 	if err != nil {
-		return nil, fmt.Errorf("component %q: mapping service: %w", inst.Component.Name, err)
-	}
-	name, ok := service.(string)
-	if !ok {
-		return nil, fmt.Errorf("component %q: mapping service evaluated to %T, want string", inst.Component.Name, service)
+		return nil, err
 	}
 
 	path, err := celtemplate.Interpolate(m.Path, celCtx)
@@ -185,11 +183,67 @@ func resolveMapping(inst pmocmmodule.Instance, celCtx celtemplate.Context) (*pmd
 		return nil, fmt.Errorf("component %q: mapping path evaluated to %T, want string", inst.Component.Name, path)
 	}
 
+	// JoinHostPort rather than "%s:%d": a `host` mapping may name an IPv6
+	// literal, which has to be bracketed or the port is read as part of the
+	// address.
 	return &pmdeployv1alpha1.ResolvedMapping{
-		Path: uri,
-		Backend: fmt.Sprintf("https://%s.%s.svc:%d",
-			name, inst.Component.Namespace, m.Port),
+		Path:    uri,
+		Backend: "https://" + net.JoinHostPort(authority, strconv.Itoa(int(m.Port))),
 	}, nil
+}
+
+// mappingAuthority is the host the front proxy dials for a mapped component:
+// the in-cluster Service name, or the DNS name of a backend it cannot reach that
+// way.
+//
+// It is also what the backend's certificate has to be valid for, which is why
+// ensureServingCert derives its dnsNames from the same function rather than
+// rebuilding the name — the proxy verifies exactly the name it dialled, and two
+// derivations of it would eventually disagree.
+func mappingAuthority(inst pmocmmodule.Instance, celCtx celtemplate.Context) (string, error) {
+	m := inst.Component.Mapping
+
+	// "Exactly one" is an admission rule on the type, and this checks it again
+	// rather than trusting it. A CEL rule is evaluated on WRITE: an object stored
+	// before the rule existed is never revalidated, and a binary can legitimately
+	// run against a CRD that predates it during a rollout.
+	//
+	// The cost of assuming is not a crash, which is why it is worth spelling out:
+	// with both set, one of them silently wins and the front proxy routes to a
+	// backend the module author did not name. With neither, the backend is
+	// "https://.svc:6443" — accepted, never dialable.
+	switch {
+	case m.Service != "" && m.Host != "":
+		return "", fmt.Errorf(
+			"component %q: mapping sets both service (%s) and host (%s); exactly one names the backend",
+			inst.Component.Name, m.Service, m.Host)
+	case m.Service == "" && m.Host == "":
+		return "", fmt.Errorf(
+			"component %q: mapping sets neither service nor host; one of them names the backend",
+			inst.Component.Name)
+	}
+
+	field, expr := "service", m.Service
+	if m.Host != "" {
+		field, expr = "host", m.Host
+	}
+
+	value, err := celtemplate.Interpolate(expr, celCtx)
+	if err != nil {
+		return "", fmt.Errorf("component %q: mapping %s: %w", inst.Component.Name, field, err)
+	}
+	name, ok := value.(string)
+	if !ok {
+		return "", fmt.Errorf("component %q: mapping %s evaluated to %T, want string", inst.Component.Name, field, value)
+	}
+	if name == "" {
+		return "", fmt.Errorf("component %q: mapping %s evaluated to an empty string", inst.Component.Name, field)
+	}
+
+	if m.Host != "" {
+		return name, nil
+	}
+	return fmt.Sprintf("%s.%s.svc", name, inst.Component.Namespace), nil
 }
 
 // componentStatus records one applied instance.

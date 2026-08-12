@@ -59,14 +59,23 @@ spec:
     log:
       level: info
     # Read by the virtual-workspace payload. MUST be the same issuer kcp
-    # authenticates against — the VW verifies the caller's token itself, before
-    # kcp is involved, so a mismatch means a token kcp accepts is rejected (or
-    # resolved to a different identity than RBAC will be enforced against).
+    # authenticates against — mirror the PlatformMesh's RootShardTemplate
+    # spec.auth.oidc here. The VW verifies the caller's token itself, before kcp
+    # is involved, so a mismatch means a token kcp accepts is rejected (or
+    # resolved to a different identity than RBAC will be enforced against), and
+    # the symptom is a 401 from the VW with nothing wrong at either end.
     #
-    # The packaged payload trusts the system CA pool only: an IdP serving from
-    # a private CA (contrib/tilt's dex, at https://idp.<id>.sslip.io:31443 with
-    # clientID platform-mesh) is not verifiable by this component yet — deploy
-    # the chart directly for that case.
+    # THE VALUE BELOW IS A PLACEHOLDER and will reject every real token. There is
+    # no default that could be right: it is a property of the installation.
+    #
+    # REQUIRED alongside this: a secret `tenancy-operator-oidc-ca` (key `ca.crt`)
+    # in the virtual-workspace component's namespace, holding the trust root for
+    # that issuer — its private CA, or the system bundle when the issuer is
+    # publicly trusted. The payload mounts it unconditionally and the pod will not
+    # start without it, so that a trust root is always something someone chose
+    # rather than whatever the image happened to ship. `task dev-oidc-ca` creates
+    # it for the tilt dev environment; see
+    # deploy/ocm/values.module.virtualworkspace.yaml for why it is not optional.
     virtualWorkspace:
       oidc:
         issuerURL: https://idp.example.com

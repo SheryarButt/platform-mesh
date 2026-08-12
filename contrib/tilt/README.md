@@ -85,8 +85,16 @@ is the node's InternalIP with dots replaced by dashes (`192-168-97-5`).
 | kcp front proxy | `fp.<id>.sslip.io:31443` |
 | root shard / shards | `root.<id>.sslip.io`, `shards-default.<id>.sslip.io` |
 | Dex (OIDC issuer) | `idp.<id>.sslip.io:31443` |
-| tenancy virtual workspace | `tenancy.<id>.sslip.io:31443` |
+| tenancy virtual workspace | `fp.<id>.sslip.io:31443` — a path on the front proxy, not a name of its own |
 | etcd | `etcd.<id>.sslip.io:31443` |
+
+The tenancy virtual workspace has no hostname. It is reached at
+`/services/tenancy/` on the front proxy, which is the prefix the server itself
+resolves on, and the front proxy is given that path by the `FrontProxyTemplate`
+this environment renders. That is the same entrypoint a real installation gets
+from an `OCMModule` component's `mapping` — one address, one CA, in dev and in
+production. `tenancyctl` takes the front proxy's base URL and appends the prefix
+itself, so pass `--server https://fp.<id>.sslip.io:31443`.
 
 **One scheme, because a kcp hostname has to resolve to the same address from four
 places**: the host, the kcp shards, anything following an
@@ -214,6 +222,7 @@ tilt up -f contrib/tilt/Tiltfile -- --profile=tenancy
 | Resource | What |
 |---|---|
 | `tenancy-kcp-credential` | mints the operator's kcp kubeconfig against the generated front proxy |
+| `tenancy-vw-cert` | issues the virtual workspace's serving certificate from the root shard's server CA, so the front proxy trusts the backend it dials |
 | `tenancy-init` | installs the tree into kcp — `system:controllers`, `system:directory`, `tenants`; the four APIExports and their APIResourceSchemas; the `organization`/`workspace` WorkspaceTypes; the two install-time APIBindings |
 | `tenancy-operator` | the controller, built from `operators/tenancy-operator` and live-updated |
 | `tenancy-vw` | the virtual workspace serving `users` self-provision |
@@ -229,6 +238,16 @@ The way out is that a `Kubeconfig` CR *names its own output Secret*. So the
 Secret name is pinned at evaluation time (`tenancy-kcp-kubeconfig`, passed to the
 chart), while the front proxy is discovered later, inside `tenancy-kcp-credential`,
 by label.
+
+The serving certificate has the same shape of problem and the same answer. The
+front proxy verifies the backend it dials against the one CA it mounts, so the
+certificate has to be issued by `<root shard>-server-ca` — a name that carries a
+hash. The chart's own `Certificate` is therefore switched off
+(`virtualWorkspace.cert.create=false`) and `tenancy-vw-cert` creates it after
+discovering the root shard by label, writing into the Secret name that *was*
+pinned at evaluation time. Left on the chart's default issuer, the failure reads
+as the VW pod stuck on a missing Secret, with the real reason two objects away on
+a `CertificateRequest`: `Referenced "Issuer" not found`.
 
 `kcp.server`/`kcp.serverName` are deliberately **empty** — "use the kubeconfig
 as-is". They exist to redirect a client away from a public hostname that does not
@@ -273,7 +292,7 @@ then the index row.
 
 ```
 contrib/tilt/
-  Tiltfile              # entrypoint: config, addressing, local infra, kcp, components
+  Tiltfile              # entrypoint: config, addressing, local infra, kcp, profiles
   infra_remote.Tiltfile # ext:// + remote-chart infra (gated by TILT_NO_INFRA)
   helpers.py            # chart_path(), component_binary(), component_build()
   manifests/            # local, no-fetch infra manifests (namespace, issuer, dex)

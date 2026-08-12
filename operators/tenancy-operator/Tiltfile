@@ -30,7 +30,8 @@ def deploy_tenancy(
         install_root,
         component_build,
         oidc={},
-        gateway={},
+        vw_service='tenancy-operator-vw',
+        vw_port=6443,
         platform_mesh_name='dev',
         resource_deps=[]):
     """Deploy the tenancy tree into kcp and the operator that reconciles it.
@@ -53,6 +54,13 @@ def deploy_tenancy(
                     workspace verifies tokens itself, so it and kcp must agree on
                     issuer, audience and username convention or a caller kcp
                     accepts is rejected here.
+      vw_service/vw_port: the Service the front proxy's /services/tenancy/ mapping
+                    points at. Passed in rather than assumed because the caller
+                    declares that mapping (front_proxy_mappings on
+                    deploy_deployer) and the serving certificate below has to be
+                    issued for exactly the name the proxy will dial — the proxy
+                    verifies it, and a mismatch is a 503 on that path with both
+                    objects looking healthy.
       platform_mesh_name: which installation to install into. Used to SELECT the
                     front proxy at runtime, not to name anything.
       component_build: passed in rather than loaded here so the build's relative
@@ -100,17 +108,22 @@ def deploy_tenancy(
     KCP_KUBECONFIG_SECRET = 'tenancy-kcp-kubeconfig'
     KCP_RESOURCE = 'tenancy-kcp-credential'
 
-    # The CA the VW's serving certificate roots from. Fixed name, chosen here, for
-    # the same reason the Secret above is: everything kcp-operator generates
-    # carries a hash and cannot be named in a values file.
+    # The VW's serving certificate, and the resource that mints it.
     #
-    # A CA OF ITS OWN rather than kcp's, which is a statement about the topology
-    # and not a shortcut. The VW is not a shard and nothing inside kcp dials it —
-    # it is reached only over its own SNI hostname on the passthrough listener, by
-    # clients that read `ca.crt` out of the cert Secret (`task dev-ca`). So there
-    # is no party that has to trust kcp's CA and this one, and rooting it in kcp's
-    # chain would only buy a dependency on a name that moves.
-    VW_CA_ISSUER = 'tenancy-vw-ca'
+    # It roots in KCP's chain, not a CA of its own. The VW is reached at the front
+    # proxy now, on a mapped path, and the proxy verifies the backend it dials
+    # against the one CA it mounts — the root shard's root CA. A certificate from
+    # anywhere else is a 503 on that path with the pod healthy and the Certificate
+    # Ready.
+    #
+    # So the issuer is the root shard's server CA, an INTERMEDIATE under that
+    # root, which is what the deployer issues from for a module's mapped
+    # component. Its name is `<root shard>-server-ca` and the root shard's name
+    # carries a hash, so it cannot be written into helm_set here — the chart's
+    # Certificate is switched off and a resource that runs LATER creates it,
+    # exactly as the kcp credential above does and for the same reason.
+    VW_CERT_SECRET = 'tenancy-virtual-workspace-cert'
+    VW_CERT_RESOURCE = 'tenancy-vw-cert'
 
     # Only the values that MUST agree with something outside the chart are set
     # here, and each comes from the same variable the other side uses.
@@ -142,23 +155,20 @@ def deploy_tenancy(
 
         # The tenancy VW, serving `users` self-provision.
         'virtualWorkspace.enabled=true',
-        # Exposed by SNI on the shared passthrough listener, exactly like kcp and
-        # the IdP — so `tenancyctl --server https://<hostname>:31443` works from
-        # the host with no port-forward and no special case.
-        'virtualWorkspace.gatewayApi.enabled=' + ('true' if gateway.get('name') else 'false'),
-        'virtualWorkspace.gatewayApi.name=' + gateway.get('name', ''),
-        'virtualWorkspace.gatewayApi.namespace=' + gateway.get('namespace', ''),
-        'virtualWorkspace.gatewayApi.hostname=' + gateway.get('hostname', ''),
-        # The VW's own CA, defined below — NOT the chart default.
-        #
-        # That default names `root-server-ca`, which is a kcp-operator-generated
-        # issuer, and kcp-operator generates it as `dev-root-<hash>-server-ca`.
-        # The hash is over names nothing here can reproduce, so the default cannot
-        # be right in this environment and cert-manager reports it as
-        # `Referenced "Issuer" not found` on a CertificateRequest — two objects
-        # away from the pod, which just says the Secret is missing.
-        'virtualWorkspace.cert.issuer.kind=Issuer',
-        'virtualWorkspace.cert.issuer.name=' + VW_CA_ISSUER,
+        # OFF. The gateway route exists for a front proxy that must reach the VW
+        # in ANOTHER cluster; here they share one, so the mapping the environment
+        # declared names the Service directly and nothing is routed by SNI.
+        # `tenancyctl --server https://fp.<cluster>.sslip.io:31443` reaches it on
+        # the mapped path, which is the same entrypoint production uses.
+        'virtualWorkspace.gatewayApi.enabled=false',
+        # The chart's Certificate is off and {res} creates it instead: its issuer
+        # is `<root shard>-server-ca`, a kcp-operator name carrying a hash that
+        # cannot be known while this file is being evaluated. Leaving the chart's
+        # default (`root-server-ca`) in place reports as `Referenced "Issuer" not
+        # found` on a CertificateRequest — two objects away from the pod, which
+        # only says its Secret is missing.
+        'virtualWorkspace.cert.create=false',
+        'virtualWorkspace.cert.secretName=' + VW_CERT_SECRET,
         'virtualWorkspace.oidc.issuerURL=' + oidc.get('issuerURL', ''),
         'virtualWorkspace.oidc.clientID=' + oidc.get('clientID', ''),
         'virtualWorkspace.oidc.caSecretName=' + oidc.get('caFileRef', {}).get('name', ''),
@@ -233,38 +243,64 @@ kubectl -n "$NS" wait "secret/{secret}" --for=create --timeout=5m'''.format(
         allow_parallel=True,
     )
 
-    # selfsigned -> tenancy-vw-ca -> the leaf the chart asks for. The same three
-    # links dex's cert chain uses (manifests/dex.yaml), and for the same reason: a
-    # real CA rather than a self-signed leaf means `ca.crt` in the Secret stays
-    # the same across renewal, so a CA a client pulled once keeps verifying.
+    # The VW's serving certificate, issued from the root shard's server CA.
     #
-    # `selfsigned` comes from the infra profile, which tenancy already sits on.
-    k8s_yaml(blob('''apiVersion: cert-manager.io/v1
+    # That CA is an intermediate under the root CA the front proxy mounts, so a
+    # leaf from it produces a chain the proxy already trusts — which is the whole
+    # requirement, since the proxy verifies the backend it dials on the mapped
+    # path. It is also exactly what the deployer issues for a module's mapped
+    # component, so the chart install and the OCM install present the same kind of
+    # certificate to the same verifier.
+    #
+    # A resource rather than a k8s_yaml blob because the issuer's name is
+    # `<root shard>-server-ca` and the root shard's name carries a hash over
+    # values this file cannot reproduce. Discovered the same way the front proxy
+    # is, from the labels the deployer stamps on what it generates.
+    #
+    # dnsNames are the in-cluster spellings only. Nothing outside the cluster
+    # dials this server — callers arrive at the front proxy — so an external name
+    # here would widen what the certificate vouches for and buy nothing.
+    local_resource(
+        VW_CERT_RESOURCE,
+        cmd='''set -eo pipefail
+NS={ns}
+PM={pm}
+
+echo "waiting for the root shard of PlatformMesh $PM..."
+until RS=$(kubectl -n "$NS" get rootshards.operator.kcp.io \\
+      -l deploy.platform-mesh.io/platform-mesh="$PM",deploy.platform-mesh.io/component=rootshard \\
+      -o jsonpath='{{.items[0].metadata.name}}' 2>/dev/null) && [ -n "$RS" ]; do
+  sleep 2
+done
+echo "root shard: $RS, issuing from ${{RS}}-server-ca"
+
+kubectl apply -f - <<EOF
+apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {ca}
-  namespace: {ns}
+  name: {svc}
+  namespace: $NS
 spec:
-  isCA: true
-  commonName: {ca}
-  secretName: {ca}
-  privateKey:
-    algorithm: ECDSA
-    size: 256
+  secretName: {secret}
+  dnsNames:
+    - {svc}
+    - {svc}.$NS
+    - {svc}.$NS.svc
+    - {svc}.$NS.svc.cluster.local
+  usages:
+    - server auth
   issuerRef:
-    name: selfsigned
+    name: ${{RS}}-server-ca
     kind: Issuer
     group: cert-manager.io
----
-apiVersion: cert-manager.io/v1
-kind: Issuer
-metadata:
-  name: {ca}
-  namespace: {ns}
-spec:
-  ca:
-    secretName: {ca}
-'''.format(ca=VW_CA_ISSUER, ns=namespace)))
+EOF
+
+kubectl -n "$NS" wait "certificate/{svc}" --for=condition=Ready --timeout=5m'''.format(
+            ns=namespace, pm=platform_mesh_name, svc=vw_service, secret=VW_CERT_SECRET),
+        resource_deps=resource_deps,
+        labels=[LABEL],
+        allow_parallel=True,
+    )
 
     component_build(
         name='tenancy-operator',
@@ -288,19 +324,17 @@ spec:
     # The virtual workspace: its own resource, because "is the API serving?" and
     # "is the controller reconciling?" are different questions with different
     # answers, and one red dot for both hides which.
+    #
+    # No objects: the chart renders only the Deployment and Service for this now.
+    # Its Certificate is off (the issuer's name is not knowable here) and created
+    # by VW_CERT_RESOURCE instead, and there is no TLSRoute because the front
+    # proxy reaches this Service directly.
     k8s_resource(
         'tenancy-operator-vw',
         new_name='tenancy-vw',
-        # The CA rides with the VW rather than the infra profile: it exists only to
-        # sign this one certificate, and cert-manager resolves the ordering between
-        # the two itself.
-        objects=[
-            'tenancy-operator-vw:certificate',
-            'tenancy-operator-vw:tlsroute',
-            VW_CA_ISSUER + ':certificate',
-            VW_CA_ISSUER + ':issuer',
-        ],
-        resource_deps=[INIT_RESOURCE],
+        # The certificate has to exist before the pod can mount it, so the wait is
+        # here rather than as a CrashLoop on a missing Secret.
+        resource_deps=[INIT_RESOURCE, VW_CERT_RESOURCE],
         labels=[LABEL],
     )
 

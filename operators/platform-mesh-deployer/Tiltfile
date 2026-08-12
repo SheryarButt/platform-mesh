@@ -52,6 +52,7 @@ def deploy_deployer(
         component_binary,
         oidc={},
         platform_mesh_name='dev',
+        front_proxy_mappings=[],
         resource_deps=[]):
     """Deploy the platform-mesh-deployer and a dev PlatformMesh for it to build.
 
@@ -79,6 +80,18 @@ def deploy_deployer(
       component_binary: passed in rather than loaded here, for the same reason as
                     repo_root: the build's ./bin and ./runtime.Dockerfile are
                     relative to contrib/tilt.
+      front_proxy_mappings: paths the front proxy serves in ADDITION to kcp's own,
+                    as [{'path': ..., 'backend': ...}]. Rendered into a
+                    FrontProxyTemplate the PlatformMesh references.
+
+                    This exists for components installed by Helm rather than by an
+                    OCMModule. A module declares its own path with a component
+                    `mapping` and the deployer registers it; a chart cannot, and
+                    not for want of a field — the deployer rebuilds
+                    spec.additionalPathMappings from the template plus every
+                    module and server-side-applies it with ForceOwnership, so
+                    anything a chart wrote there is erased on the next reconcile.
+                    The template is the one seam a non-module component can use.
       resource_deps: prerequisites for the leaf resources (e.g. the namespace).
     """
 
@@ -101,6 +114,39 @@ def deploy_deployer(
         new_name='deployer-cert-issuer',
         objects=['kcp:clusterissuer'],
         labels=[LABEL],
+    )
+
+    # A writable OCI registry, so a module component can be built from this
+    # checkout and resolved by the deployer without leaving the machine.
+    #
+    # Without it the only component an OCMModule can name is a PUBLISHED one, and
+    # every change to a payload — the chart, values.module*.yaml — is invisible
+    # until it is released. The gap does not announce itself: the deployer happily
+    # applies the last published payload, so a fix that is in the working tree and
+    # a fix that is deployed look identical from the cluster.
+    #
+    # Plain HTTP, reached at registry.<namespace>.svc:5000 in-cluster and on the
+    # node's :30500 from the host. The deployer's resolver takes an http:// URL
+    # and turns off TLS for it (pkg/ocm.ParseRepositoryURL); the node never pulls
+    # from here, because a locally built IMAGE is side-loaded with `kind load`
+    # under a tag no registry serves — see `task dev-module`.
+    # The namespace is stamped here rather than in the base, which carries none
+    # because e2e applies it into a namespace of its own choosing. Without this
+    # the objects land in `default`, and the failure is not where you would look:
+    # the NodePort still accepts a push, because a NodePort belongs to no
+    # namespace, so publishing a component SUCCEEDS and only the deployer fails —
+    # resolving registry.<namespace>.svc, which now names a Service that is not
+    # there.
+    _registry = []
+    for o in decode_yaml_stream(kustomize(cfg('bases', 'registry'))):
+        o['metadata']['namespace'] = namespace
+        _registry.append(o)
+    k8s_yaml(encode_yaml_stream(_registry))
+    k8s_resource(
+        'registry',
+        new_name='deployer-registry',
+        labels=[LABEL],
+        resource_deps=resource_deps,
     )
 
     # The `eg` gateway the PlatformMesh's ingress stack attaches to, plus the
@@ -409,6 +455,37 @@ kubectl -n "$NS" create secret generic "$SECRET" \\
             '        key: ' + oidc.get('caFileRef', {}).get('key', 'ca.crt'),
         ])
 
+    # A FrontProxyTemplate, only when something asked for a path on the front
+    # proxy. Rendered here rather than by the caller because the PlatformMesh has
+    # to reference it, and the two would otherwise be edited in two files.
+    #
+    # The three certificate paths are the front proxy's own mounts, and are the
+    # same values the deployer writes for a module's mapping (frontproxy.go). A
+    # mapping without them is served without client identity, so the backend sees
+    # every caller as anonymous.
+    _fp_template = ''
+    _fp_template_ref = ''
+    if front_proxy_mappings:
+        _entries = ''.join([('''
+    - path: {path}
+      backend: {backend}
+      backend_server_ca: /etc/kcp/tls/ca/tls.crt
+      proxy_client_cert: /etc/kcp-front-proxy/requestheader-client/tls.crt
+      proxy_client_key: /etc/kcp-front-proxy/requestheader-client/tls.key''').format(**m)
+            for m in front_proxy_mappings])
+        _fp_template = '''apiVersion: deploy.platform-mesh.io/v1alpha1
+kind: FrontProxyTemplate
+metadata:
+  name: fp
+  namespace: {ns}
+spec:
+  additionalPathMappings:{entries}
+---
+'''.format(ns=namespace, entries=_entries)
+        _fp_template_ref = '''
+      templateRef:
+        name: fp'''
+
     # A dev PlatformMesh and the two topology templates it references, mirroring
     # test/e2e's fixture. The quoting is not a typo: hostnameTemplate, the etcd
     # endpoints and the etcd prefix are CEL EXPRESSIONS, so a literal string has
@@ -418,7 +495,7 @@ kubectl -n "$NS" create secret generic "$SECRET" \\
     # `external`, `cache` and `rootShard` are placeholders. A template carries the
     # same spec type as the object it is merged onto, so the schema requires them,
     # but the deployer overwrites all three from the clusters it engaged.
-    k8s_yaml(blob('''apiVersion: deploy.platform-mesh.io/v1alpha1
+    k8s_yaml(blob(_fp_template + '''apiVersion: deploy.platform-mesh.io/v1alpha1
 kind: RootShardTemplate
 metadata:
   name: root
@@ -502,11 +579,12 @@ spec:
             hostnameTemplate: '"vw." + component + "." + cluster + ".sslip.io"'
             port: {port}
     frontProxy:
-      name: fp
+      name: fp{fp_ref}
       exposure:
         hostnameTemplate: '"fp." + cluster + ".sslip.io"'
         port: {port}
-'''.format(ns=namespace, pm=platform_mesh_name, cluster=cluster_id, port=gateway_nodeport, oidc=_oidc_block)))
+'''.format(ns=namespace, pm=platform_mesh_name, cluster=cluster_id, port=gateway_nodeport,
+           oidc=_oidc_block, fp_ref=_fp_template_ref)))
 
     k8s_resource(
         new_name='platformmesh',
@@ -514,7 +592,7 @@ spec:
             '{}:platformmesh'.format(platform_mesh_name),
             'root:rootshardtemplate',
             'default:shardtemplate',
-        ],
+        ] + (['fp:frontproxytemplate'] if front_proxy_mappings else []),
         # Everything the reconcile touches on its first pass. The engage Secret
         # especially: without it the deployer has no cluster to place shards on
         # and the PlatformMesh sits unreconciled with no error to point at.
