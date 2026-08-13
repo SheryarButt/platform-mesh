@@ -139,11 +139,13 @@ func (s *apiBindingWatcherSubroutine) Process(ctx context.Context, instance runt
 		providerPath := b.Spec.Reference.Export.Path
 		providerClient, err := GetScopedClient(mcMngr.GetConfig(), mcMngr.GetScheme(), providerPath)
 		if err != nil {
+			log.Warn().Str("provider", providerPath).Msg("failed to get provider client")
 			continue
 		}
 
 		schemas, err := boundSchemasForBinding(ctx, providerClient, b)
 		if err != nil {
+			log.Warn().Str("binding", b.Name).AnErr("due to", err).Msg("failed to get bound Resource Schemas for binding")
 			continue
 		}
 		if len(schemas) == 0 {
