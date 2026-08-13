@@ -44,16 +44,12 @@ import (
 	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
 )
 
-// apiBindingWatcherSubroutine watches APIBinding resources across workspaces.
-// When a binding takes place in an org then all indexes are updated for the
-// fields contained in the bound APIResourceSchemas.
+// The apiBindingWatcherSubroutine only watches bindings of the Search export
 type apiBindingWatcherSubroutine struct {
-	mgr             mcmanager.Manager
-	orgsClient      ctrlruntimeclient.Client
-	rootCfg         *rest.Config
-	cfg             config.Config
-	indexPrefix     string
-	providerByGroup map[string]string
+	mgr         mcmanager.Manager
+	orgsClient  ctrlruntimeclient.Client
+	rootCfg     *rest.Config
+	indexPrefix string
 }
 
 // NewAPIBindingWatcherSubroutine creates a new APIBinding watcher subroutine.
@@ -66,18 +62,11 @@ func NewAPIBindingWatcherSubroutine(mgr mcmanager.Manager, orgsClient ctrlruntim
 		return nil, err
 	}
 
-	providerByGroup := make(map[string]string, len(cfg.SearchableResource.Resources))
-	for _, rss := range cfg.SearchableResource.Resources {
-		providerByGroup[rss.Group] = rss.Provider
-	}
-
 	return &apiBindingWatcherSubroutine{
-		mgr:             mgr,
-		orgsClient:      orgsClient,
-		rootCfg:         rootCfg,
-		cfg:             cfg,
-		indexPrefix:     indexPrefix,
-		providerByGroup: providerByGroup,
+		mgr:         mgr,
+		orgsClient:  orgsClient,
+		rootCfg:     rootCfg,
+		indexPrefix: indexPrefix,
 	}, nil
 }
 
@@ -120,6 +109,15 @@ func (s *apiBindingWatcherSubroutine) Process(ctx context.Context, instance runt
 		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("get workspace path: %w", err), true, false)
 	}
 
+	wsClient, err := buildWorkspaceScopedClient(s.rootCfg, s.mgr.GetLocalManager().GetScheme(), workspacePath)
+	if err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("build workspace client: %w", err), true, false)
+	}
+	otherBindings := &kcpapisv1alpha1.APIBindingList{}
+	if err := wsClient.List(ctx, otherBindings); err != nil {
+		return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("list APIBindings in workspace: %w", err), true, false)
+	}
+
 	orgName, err := extractOrgFromPath(workspacePath)
 	if err != nil {
 		log.Debug().Str("workspacePath", workspacePath).Msg("APIBinding is not in an org workspace, skipping")
@@ -132,13 +130,39 @@ func (s *apiBindingWatcherSubroutine) Process(ctx context.Context, instance runt
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	for _, pc := range binding.Status.AppliedPermissionClaims {
-		fields, err := s.resolveFieldsForPermissionClaim(ctx, pc, s.providerByGroup)
-		if err != nil {
-			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("resolve fields for binding %q: %w", binding.Name, err), true, false)
+	for _, b := range otherBindings.Items {
+		if b.Status.Phase != kcpapisv1alpha1.APIBindingPhaseBound {
+			continue
 		}
-		if err := s.ensureSearchIndex(ctx, log, orgName, orgClusterID, pc.Resource, fields); err != nil {
-			return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("ensure SearchIndex for binding %q resource %q: %w", binding.Name, pc.Resource, err), true, false)
+		mcMngr := s.mgr.GetLocalManager()
+
+		providerPath := b.Spec.Reference.Export.Path
+		providerClient, err := GetScopedClient(mcMngr.GetConfig(), mcMngr.GetScheme(), providerPath)
+		if err != nil {
+			log.Warn().Str("provider", providerPath).Msg("failed to get provider client")
+			continue
+		}
+
+		schemas, err := boundSchemasForBinding(ctx, providerClient, b)
+		if err != nil {
+			log.Warn().Str("binding", b.Name).AnErr("due to", err).Msg("failed to get bound Resource Schemas for binding")
+			continue
+		}
+		if len(schemas) == 0 {
+			log.Debug().Str("provider", providerPath).Msg("no matching APIResourceSchemas found for binding")
+			continue
+		}
+
+		for _, sc := range schemas {
+			fields, err := s.resolveFieldsForSchema(ctx, providerClient, sc)
+			if err != nil {
+				return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("resolve fields for binding %q: %w", binding.Name, err), true, false)
+			}
+			// the current convention is using the resource plural for the index but ideally we use sc.Name and be consistent
+			// everywhere else the index name is fetched.
+			if err := s.ensureSearchIndex(ctx, log, orgName, orgClusterID, sc.Spec.Names.Plural, fields); err != nil {
+				return ctrl.Result{}, errors.NewOperatorError(fmt.Errorf("ensure SearchIndex for binding %q resource %q: %w", binding.Name, sc.Name, err), true, false)
+			}
 		}
 	}
 
@@ -162,42 +186,8 @@ type searchIndexFields struct {
 // resolveFieldsForPermissionClaim finds the APIResourceSchema for the claimed (group, resource)
 // by searching configured provider workspaces, then classifies fields using any SearchConfig
 // found in the same provider workspace.
-func (s *apiBindingWatcherSubroutine) resolveFieldsForPermissionClaim(ctx context.Context, pc kcpapisv1alpha1.PermissionClaim, providerByGroup map[string]string) (*searchIndexFields, error) {
+func (s *apiBindingWatcherSubroutine) resolveFieldsForSchema(ctx context.Context, pc ctrlruntimeclient.Client, rs *kcpapisv1alpha1.APIResourceSchema) (*searchIndexFields, error) {
 	log := logger.LoadLoggerFromContext(ctx)
-	mcMngr := s.mgr.GetLocalManager()
-
-	provider, ok := providerByGroup[pc.Group]
-	if !ok {
-		log.Debug().Str("group", pc.Group).Str("resource", pc.Resource).Msg("no provider found for permission claim, skipping")
-		return &searchIndexFields{}, nil
-	}
-
-	providerPath := fmt.Sprintf("root:providers:%s", provider)
-	if provider == "platform-mesh-system" {
-		providerPath = "root:platform-mesh-system"
-	}
-	providerClient, err := GetScopedClient(mcMngr.GetConfig(), mcMngr.GetScheme(), providerPath)
-	if err != nil {
-		return nil, fmt.Errorf("build provider client %q: %w", providerPath, err)
-	}
-
-	schemaList := &kcpapisv1alpha1.APIResourceSchemaList{}
-	if err := providerClient.List(ctx, schemaList); err != nil {
-		return nil, fmt.Errorf("list APIResourceSchemas in %q: %w", providerPath, err)
-	}
-
-	var matched *kcpapisv1alpha1.APIResourceSchema
-	for i := range schemaList.Items {
-		s := &schemaList.Items[i]
-		if s.Spec.Names.Plural == pc.Resource {
-			matched = s
-			break
-		}
-	}
-	if matched == nil {
-		log.Debug().Str("group", pc.Group).Str("resource", pc.Resource).Str("provider", providerPath).Msg("no matching APIResourceSchema found")
-		return &searchIndexFields{}, nil
-	}
 
 	defaultFields := sets.New[string]()
 	semanticFields := sets.New[string]()
@@ -205,21 +195,21 @@ func (s *apiBindingWatcherSubroutine) resolveFieldsForPermissionClaim(ctx contex
 
 	var cf *searchConfigFilter
 	searchCfg := &pmsearchv1alpha1.SearchConfig{}
-	if err := providerClient.Get(ctx, types.NamespacedName{Name: matched.Name}, searchCfg); err != nil {
-		log.Warn().Str("schema", matched.Name).Msg("no SearchConfig found, all fields are default fields")
+	if err := pc.Get(ctx, types.NamespacedName{Name: rs.Name}, searchCfg); err != nil {
+		log.Warn().Str("schema", rs.Name).Msg("no SearchConfig found, all fields are default fields")
 	} else {
-		log.Debug().Str("searchConfig", searchCfg.Name).Str("schema", matched.Name).Msg("found SearchConfig in provider workspace")
+		log.Debug().Str("searchConfig", searchCfg.Name).Str("schema", rs.Name).Msg("found SearchConfig in provider workspace")
 		filter := newSearchConfigFilter(searchCfg)
 		cf = &filter
 	}
 
-	for _, version := range matched.Spec.Versions {
+	for _, version := range rs.Spec.Versions {
 		if !version.Served {
 			continue
 		}
 		props, err := version.GetSchema()
 		if err != nil {
-			return nil, fmt.Errorf("parse schema for %q version %q: %w", matched.Name, version.Name, err)
+			return nil, fmt.Errorf("parse schema for %q version %q: %w", rs.Name, version.Name, err)
 		}
 		if props == nil {
 			continue
@@ -241,6 +231,24 @@ func (s *apiBindingWatcherSubroutine) resolveFieldsForPermissionClaim(ctx contex
 		semanticFields:   sets.List(semanticFields),
 		filterableFields: sets.List(exactFields),
 	}, nil
+}
+
+func boundSchemasForBinding(ctx context.Context, providerClient ctrlruntimeclient.Client, b kcpapisv1alpha1.APIBinding) ([]*kcpapisv1alpha1.APIResourceSchema, error) {
+	schemaList := &kcpapisv1alpha1.APIResourceSchemaList{}
+	if err := providerClient.List(ctx, schemaList); err != nil {
+		return nil, err
+	}
+	boundNames := sets.New[string]()
+	for _, br := range b.Status.BoundResources {
+		boundNames.Insert(br.Schema.Name)
+	}
+	var matched []*kcpapisv1alpha1.APIResourceSchema
+	for i := range schemaList.Items {
+		if boundNames.Has(schemaList.Items[i].Name) {
+			matched = append(matched, &schemaList.Items[i])
+		}
+	}
+	return matched, nil
 }
 
 // maxSchemaWalkDepth bounds recursion into pathological / deeply nested schemas.
