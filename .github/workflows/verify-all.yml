@@ -76,8 +76,5 @@ jobs:
       - run: task dco BASE=${BASE}
       - run: task lint
       - run: task tidy-check
-      # NOTE: `task verify` also runs `task boilerplate`, which is NOT run here.
-      # It currently fails on ~15 pre-existing files that predate the license
-      # header requirement, so it would make this job red on every PR. The
-      # per-component `verify-*` target skips it for the same reason. Add it back
-      # (and drop this note) once those files are fixed.
+      # Missing headers are fixed locally with `task boilerplate-fix`.
+      - run: task boilerplate

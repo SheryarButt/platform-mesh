@@ -132,6 +132,13 @@ tasks:
         # --skip args from hack/boilerplate/skip.txt, ignoring blank lines and '#' comment lines.
         skip_args=$(grep -vE '^[[:space:]]*(#|$)' hack/boilerplate/skip.txt | sed 's/^/--skip /' | tr '\n' ' ')
         ./hack/verify_boilerplate.py --boilerplate-dir hack/boilerplate/ $skip_args
+  boilerplate-fix:
+    desc: Prepends the boilerplate comment to source files that are missing it.
+    cmds:
+      - |
+        # --skip args from hack/boilerplate/skip.txt, ignoring blank lines and '#' comment lines.
+        skip_args=$(grep -vE '^[[:space:]]*(#|$)' hack/boilerplate/skip.txt | sed 's/^/--skip /' | tr '\n' ' ')
+        ./hack/fix_boilerplate.py --boilerplate-dir hack/boilerplate/ $skip_args
   test:
     desc: Run unit tests for every component.
     cmds:
@@ -259,8 +266,7 @@ tasks:
     cmds:
       - task: lint-{{index .MATCH 0}}
       - task: tidy-check-{{index .MATCH 0}}
-      # TODO: Currently lots of files do not have the correct boilerplate.
-      # - task: boilerplate-{{index .MATCH 0}}
+      - task: boilerplate-{{index .MATCH 0}}
   "images-*":
     desc: "Build (and optionally push) one component's image (e.g. task images-account-operator VERSION=v0.1.0 PUSH=true)."
     vars:
