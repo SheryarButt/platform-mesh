@@ -40,8 +40,9 @@ vars:
   # command that uses the tool, but with UGET_UPDATE=true set, for example for
   # bumping golangci-lint, run `UGET_UPDATE=true task lint`.
 
-  # also used for kcp's apigen
-  APIGEN: '{{.BIN}}/apigen-{{.KCP_VERSION}}'
+  # the same version is re-used for all kcp components
+  KCP_VERSION: 0.32.3
+  APIGEN: '{{.BIN}}/apigen-v{{.KCP_VERSION}}'
 
   CONTROLLER_GEN_VERSION: v0.21.0
   CONTROLLER_GEN: '{{.BIN}}/controller-gen-{{.CONTROLLER_GEN_VERSION}}'
@@ -60,7 +61,6 @@ vars:
   GO_TEST_COVERAGE: '{{.BIN}}/go-test-coverage-{{.GO_TEST_COVERAGE_VERSION}}'
 
   # kcp release used by the operators' envtest suites (see component test-e2e).
-  KCP_VERSION: 0.32.3
   CACHE_SERVER: '{{.BIN}}/cache-server-{{.KCP_VERSION}}'
   KCP: '{{.BIN}}/kcp-{{.KCP_VERSION}}'
   KCP_FRONT_PROXY: '{{.BIN}}/kcp-front-proxy-{{.KCP_VERSION}}'
@@ -141,7 +141,7 @@ tasks:
         vars:
           tool: apigen
           source: github.com/kcp-dev/sdk/cmd/apigen
-          version: '{{ .KCP_VERSION }}' # yes, re-use the shared kcp version for apigen
+          version: 'v{{ .KCP_VERSION }}' # yes, re-use the shared kcp version for apigen
           goModule: true
   kcp:
     desc: Install kcp into the root bin (shared by the operators' envtest suites).
@@ -305,7 +305,7 @@ tasks:
       # resolves a model for EVERY referenced type. Generating only our package
       # yields definitions with dangling references and the server refuses to
       # start. This is the same input set the upstream projects use.
-      - '{{.OAPI_CODEGEN}} --output-dir {{.BASEDIR}}/{{.PATH}} --output-pkg {{.PKG}} --output-file zz_generated.openapi.go --go-header-file {{.HACK}}/boilerplate/boilerplate.go.txt {{.PKG}} k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/runtime k8s.io/apimachinery/pkg/version'
+      - '{{.OPENAPI_GEN}} --output-dir {{.BASEDIR}}/{{.PATH}} --output-pkg {{.PKG}} --output-file zz_generated.openapi.go --go-header-file {{.HACK}}/boilerplate/boilerplate.go.txt {{.PKG}} k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/runtime k8s.io/apimachinery/pkg/version'
 
   generate-crds:
     internal: true

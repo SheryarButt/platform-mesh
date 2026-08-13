@@ -67,7 +67,7 @@ tasks:
         cp config/example/crd/example.platform-mesh.io_certificates.yaml "$tmp"
         cp config/example/crd/example.platform-mesh.io_dnszones.yaml "$tmp"
         cp config/example/crd/example.platform-mesh.io_vms.yaml "$tmp"
-        {{.BIN}}/apigen --input-dir "$tmp" --output-dir test/e2e/setup --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt
+        {{.APIGEN}} --input-dir "$tmp" --output-dir test/e2e/setup --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt
 
   build:
     desc: Build the module
