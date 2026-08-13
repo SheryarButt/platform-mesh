@@ -187,7 +187,7 @@ func main() {
 	// Setup IndexableResource controllers for each configured searchable resource type
 	for _, GVK := range cfg.SearchableResource.Resources {
 		obj := &unstructured.Unstructured{}
-		obj.SetGroupVersionKind(GVK.GroupVersionKind)
+		obj.SetGroupVersionKind(GVK)
 		idxRssReconciler, err := controller.NewIndexableResource(log, *cfg, mgr, osClient, apiExportEndpointSliceName, obj)
 		if err != nil {
 			setupLog.Error(err, "unable to create IndexableResource reconciler")
