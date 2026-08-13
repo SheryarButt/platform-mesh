@@ -50,9 +50,13 @@ vars:
     - backup-operator
     - extension-manager-operator
     - kcp-migration-operator
+    - kro-composition-operator
+    - platform-mesh-deployer
+    - platform-mesh-operator
     - resource-broker
     - search-operator
     - security-operator
+    - tenancy-operator
     - terminal-controller-manager
 
     # services
@@ -61,6 +65,11 @@ vars:
     - rebac-authz-webhook
     - search-service
     - virtual-workspaces
+
+  LIBRARIES:
+    - apis
+    - subroutines
+    - golang-commons
 
 tasks:
   default:
@@ -73,9 +82,39 @@ tasks:
   verify:
     desc: Runs all check targets in sequence.
     cmds:
+      - task: dco
       - task: lint
       - task: boilerplate
       - task: tidy-check
+  dco:
+    desc: 'Every commit on this branch needs a Signed-off-by matching its author (BASE=<ref> to override the comparison point).'
+    vars:
+      BASE: '{{.BASE | default "origin/main"}}'
+    cmds:
+      - |
+        base='{{.BASE}}'
+        if ! git rev-parse --verify --quiet "$base^{commit}" >/dev/null; then
+          echo "dco: cannot resolve base ref '$base', skipping (set BASE=<ref> to pick another)" >&2
+          exit 0
+        fi
+        # Mirrors the DCO app that gates pull requests: merge commits and bot
+        # authors are exempt, and the sign-off email must match the author's.
+        # The whole message is scanned, not just the trailer block -- a commit
+        # may end with another paragraph (e.g. On-behalf-of:), which would hide
+        # the sign-off from git's trailer parser but still satisfies the app.
+        bad=$(git rev-list --no-merges "$base..HEAD" | while read -r sha; do
+          author=$(git show -s --format='%ae' "$sha" | tr 'A-Z' 'a-z')
+          case "$author" in *"[bot]"*) continue ;; esac
+          git show -s --format='%B' "$sha" | grep -i '^signed-off-by:' \
+            | tr 'A-Z' 'a-z' | grep -qF "<$author>" \
+            || git show -s --format='  %h %s' "$sha"
+        done)
+        if [ -n "$bad" ]; then
+          echo "Commits without a Signed-off-by matching the commit author:" >&2
+          echo "$bad" >&2
+          echo "Fix with: git rebase --signoff $base" >&2
+          exit 1
+        fi
   lint:
     desc: Lint every component.
     cmds:
@@ -93,6 +132,13 @@ tasks:
         # --skip args from hack/boilerplate/skip.txt, ignoring blank lines and '#' comment lines.
         skip_args=$(grep -vE '^[[:space:]]*(#|$)' hack/boilerplate/skip.txt | sed 's/^/--skip /' | tr '\n' ' ')
         ./hack/verify_boilerplate.py --boilerplate-dir hack/boilerplate/ $skip_args
+  boilerplate-fix:
+    desc: Prepends the boilerplate comment to source files that are missing it.
+    cmds:
+      - |
+        # --skip args from hack/boilerplate/skip.txt, ignoring blank lines and '#' comment lines.
+        skip_args=$(grep -vE '^[[:space:]]*(#|$)' hack/boilerplate/skip.txt | sed 's/^/--skip /' | tr '\n' ' ')
+        ./hack/fix_boilerplate.py --boilerplate-dir hack/boilerplate/ $skip_args
   test:
     desc: Run unit tests for every component.
     cmds:
@@ -124,6 +170,39 @@ tasks:
           VERSION: '{{.VERSION}}'
           PUSH: '{{.PUSH}}'
           PLATFORMS: '{{.PLATFORMS}}'
+
+  # ---------------------------------------------------------------------------
+  # Local developer flow for the tenancy profile. Thin aliases: the real tasks
+  # live with the component, in operators/tenancy-operator/Taskfile.yaml.
+  # ---------------------------------------------------------------------------
+  dev-login:
+    desc: 'Sign in against the dev IdP (tenancy profile). Credentials: dex@pm.localhost / dex'
+    cmds:
+      - task --dir operators/tenancy-operator dev-login
+  dev-provision:
+    desc: 'Provision the caller''s User (the explicit `create users` of RFC 010 §Part 0).'
+    cmds:
+      - task --dir operators/tenancy-operator dev-provision
+  dev-orgs:
+    desc: List the organizations you belong to.
+    cmds:
+      - task --dir operators/tenancy-operator dev-orgs
+  dev-accounts:
+    desc: 'List the accounts you can work in (ORGANIZATION=<uuid|name> to narrow).'
+    cmds:
+      - task --dir operators/tenancy-operator dev-accounts ORGANIZATION={{.ORGANIZATION}}
+  dev-whoami:
+    desc: Show the identity in the cached token.
+    cmds:
+      - task --dir operators/tenancy-operator dev-whoami
+  dev-grant-group:
+    desc: 'Grant an IdP group access to a tenant (TENANT=<uuid|name> [GROUP=<g>] [ROLE=<role>]).'
+    cmds:
+      - task --dir operators/tenancy-operator dev-grant-group TENANT={{.TENANT}} GROUP={{.GROUP}} ROLE={{.ROLE}}
+  dev-kubeconfig:
+    desc: 'Write a kubeconfig for one workspace (CLUSTER=<id> task dev-kubeconfig).'
+    cmds:
+      - task --dir operators/tenancy-operator dev-kubeconfig CLUSTER={{.CLUSTER}} OUTPUT={{.OUTPUT}}
 
   # ---------------------------------------------------------------------------
   # Per-component targets. Each delegates to the component's own Taskfile.
@@ -187,8 +266,7 @@ tasks:
     cmds:
       - task: lint-{{index .MATCH 0}}
       - task: tidy-check-{{index .MATCH 0}}
-      # TODO: Currently lots of files do not have the correct boilerplate.
-      # - task: boilerplate-{{index .MATCH 0}}
+      - task: boilerplate-{{index .MATCH 0}}
   "images-*":
     desc: "Build (and optionally push) one component's image (e.g. task images-account-operator VERSION=v0.1.0 PUSH=true)."
     vars:
@@ -345,9 +423,9 @@ tasks:
   tidy:
     desc: Tidy every module's go.mod (standalone) and re-sync the workspace.
     cmds:
+      - go work sync
       - for: {var: COMPONENTS}
         cmd: task tidy-{{.ITEM}}
-      - go work sync
       # ref: https://github.com/golang/go/issues/63901
       # TLDR: go work sync doesn't actually everything.
       # We force fill the go.work.sum by downloading all deps.
@@ -371,7 +449,7 @@ tasks:
         # it resolves standalone, e.g. in docker builds.
         replaces=$(GOWORK= go work edit -json | jq -r '.Replace[] | "\(.Old.Path)=\(.New.Path)@\(.New.Version)"')
         cd "$dir"
-        for r in $replaces; do go mod edit -replace="$r"; done
+        go mod edit $(printf ' -replace=%s' $replaces)
         go mod tidy
         # Drop old replaces and those whose Old path isn't referenced by this module.
         deps=$(go list -m -f '{{`{{.Path}}`}}' all)

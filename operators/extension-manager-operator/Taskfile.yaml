@@ -43,7 +43,7 @@ tasks:
   mockery:
     deps: [tools:mockery]
     cmds:
-      - "{{.BIN}}/mockery"
+      - "{{.MOCKERY}}"
   manifests:
     cmds:
       - task: tools:generate-crds
@@ -58,8 +58,8 @@ tasks:
         vars:
           PATH: /ui/...
       - task: schemagen
-      - "{{.BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
-      - "{{.BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir ./test/setup --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
+      - "{{.APIGEN}} --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
+      - "{{.APIGEN}} --input-dir {{.CRD_DIRECTORY}} --output-dir ./test/setup --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
       - task: copynamespacedcrd
   build:
     cmds:
@@ -118,6 +118,9 @@ tasks:
       - echo "All deployments restarted"
 
   ## Testing
+  clean:
+    cmds:
+      - rm -rf -- .test
   fmt:
     cmds:
       - go fmt ./...
@@ -130,13 +133,19 @@ tasks:
     cmds:
       - go test ./...
   test-e2e:
-    deps: [tools:kcp, tools:envtest]
+    deps: [tools:kcp, tools:envtest, clean]
     env:
-      TEST_KCP_ASSETS: '{{.BIN}}'
+      KCP_ASSET_KCP: '{{.BIN}}/kcp'
+      KCP_ASSET_SHARDED_TEST_SERVER: '{{.BIN}}/sharded-test-server'
+      KCP_ASSET_KCP_FRONT_PROXY: '{{.BIN}}/kcp-front-proxy'
+      KCP_ASSET_CACHE_SERVER: '{{.BIN}}/cache-server'
+      NO_GORUN: "true"
+      COMPONENT_DIRECTORY:
+        sh: 'realpath .'
     cmds:
       - |
         set -ex
-        export KUBEBUILDER_ASSETS=$({{.BIN}}/setup-envtest use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.BIN}} -p path)
+        export KUBEBUILDER_ASSETS=$({{.ENVTEST}} use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.BIN}} -p path)
         go test -tags integration ./... {{.ADDITIONAL_COMMAND_ARGS}}
   cover:
     deps: [tools:go-test-coverage]
@@ -144,14 +153,14 @@ tasks:
       - task: test
         vars:
           ADDITIONAL_COMMAND_ARGS: -v -coverprofile=./cover.out -covermode=atomic -coverpkg=./...
-      - "{{.BIN}}/go-test-coverage --threshold-file 80 --threshold-package 80 --threshold-total 95 --profile cover.out --config ./.testcoverage.yml"
+      - "{{.GO_TEST_COVERAGE}} --threshold-file 80 --threshold-package 80 --threshold-total 95 --profile cover.out --config ./.testcoverage.yml"
   cover-e2e:
     deps: [tools:go-test-coverage]
     cmds:
       - task: test-e2e
         vars:
           ADDITIONAL_COMMAND_ARGS: -v -coverprofile=./cover.out -covermode=atomic -coverpkg=./...
-      - "{{.BIN}}/go-test-coverage --threshold-file 80 --threshold-package 80 --threshold-total 95 --profile cover.out --config ./.testcoverage.yml"
+      - "{{.GO_TEST_COVERAGE}} --threshold-file 80 --threshold-package 80 --threshold-total 95 --profile cover.out --config ./.testcoverage.yml"
   helm-unittest:
     cmds:
       - helm unittest chart

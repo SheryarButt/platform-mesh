@@ -205,27 +205,26 @@ func (suite *ClusterAccessControllerTestSuite) grantClusterAdminToSA(saName, saN
 	suite.Require().NoError(err, "failed to create cluster role binding for %s", saName)
 }
 
-// waitForSchemaFile waits for schema file to be generated
-func (suite *ClusterAccessControllerTestSuite) waitForSchemaFile(name string) {
+// waitForSchemaFile waits for a complete schema file and returns its contents.
+func (suite *ClusterAccessControllerTestSuite) waitForSchemaFile(name string) []byte {
 	schemaFilePath := filepath.Join(suite.listenerCfg.Options.SchemasDir, name)
+	var raw []byte
 	suite.Eventually(func() bool {
-		_, err := os.Stat(schemaFilePath)
-		return err == nil
+		var err error
+		raw, err = os.ReadFile(schemaFilePath)
+		return err == nil && json.Valid(raw)
 	}, 10*time.Second, 500*time.Millisecond,
 		"expected schema file to be generated for %s", name)
+	return raw
 }
 
-// verifySchemaMetadata reads and validates the schema file
+// verifySchemaMetadata validates the contents of a schema file
 func (suite *ClusterAccessControllerTestSuite) verifySchemaMetadata(
-	name string,
+	raw []byte,
 	expectedAuthType pmgatewayv1alpha1.AuthenticationType,
 ) {
-	schemaFilePath := filepath.Join(suite.listenerCfg.Options.SchemasDir, name)
-	raw, err := os.ReadFile(schemaFilePath)
-	suite.Require().NoError(err, "failed to read schema file")
-
 	var schemaJSON map[string]any
-	err = json.NewDecoder(bytes.NewReader(raw)).Decode(&schemaJSON)
+	err := json.NewDecoder(bytes.NewReader(raw)).Decode(&schemaJSON)
 	suite.Require().NoError(err, "failed to decode schema file")
 
 	// The x-cluster-metadata is stored as raw JSON bytes in the schema
@@ -288,10 +287,10 @@ func (suite *ClusterAccessControllerTestSuite) TestKubeconfigAuth() {
 	suite.Require().NoError(err, "failed to create ClusterAccess")
 
 	// Wait for schema file to be generated
-	suite.waitForSchemaFile("single-kubeconfig-test")
+	raw := suite.waitForSchemaFile("single-kubeconfig-test")
 
 	// Verify schema metadata
-	suite.verifySchemaMetadata("single-kubeconfig-test", pmgatewayv1alpha1.AuthTypeKubeconfig)
+	suite.verifySchemaMetadata(raw, pmgatewayv1alpha1.AuthTypeKubeconfig)
 }
 
 // TestKubeconfigAuthWithoutHost tests ClusterAccess with kubeconfig authentication and no explicit host.
@@ -331,10 +330,10 @@ func (suite *ClusterAccessControllerTestSuite) TestKubeconfigAuthWithoutHost() {
 	suite.Require().NoError(err, "failed to create ClusterAccess")
 
 	// Wait for schema file to be generated
-	suite.waitForSchemaFile("single-kubeconfig-nohost-test")
+	raw := suite.waitForSchemaFile("single-kubeconfig-nohost-test")
 
 	// Verify schema metadata — host should have been derived from kubeconfig
-	suite.verifySchemaMetadata("single-kubeconfig-nohost-test", pmgatewayv1alpha1.AuthTypeKubeconfig)
+	suite.verifySchemaMetadata(raw, pmgatewayv1alpha1.AuthTypeKubeconfig)
 }
 
 // TestTokenAuth tests ClusterAccess with token authentication
@@ -409,10 +408,10 @@ func (suite *ClusterAccessControllerTestSuite) TestTokenAuth() {
 	suite.Require().NoError(err, "failed to create ClusterAccess")
 
 	// Wait for schema file to be generated
-	suite.waitForSchemaFile("single-token-test")
+	raw := suite.waitForSchemaFile("single-token-test")
 
 	// Verify schema metadata
-	suite.verifySchemaMetadata("single-token-test", pmgatewayv1alpha1.AuthTypeToken)
+	suite.verifySchemaMetadata(raw, pmgatewayv1alpha1.AuthTypeToken)
 }
 
 // TestClientCertAuth tests ClusterAccess with client certificate authentication
@@ -460,10 +459,10 @@ func (suite *ClusterAccessControllerTestSuite) TestClientCertAuth() {
 	suite.Require().NoError(err, "failed to create ClusterAccess")
 
 	// Wait for schema file to be generated
-	suite.waitForSchemaFile("single-clientcert-test")
+	raw := suite.waitForSchemaFile("single-clientcert-test")
 
 	// Verify schema metadata
-	suite.verifySchemaMetadata("single-clientcert-test", pmgatewayv1alpha1.AuthTypeClientCert)
+	suite.verifySchemaMetadata(raw, pmgatewayv1alpha1.AuthTypeClientCert)
 }
 
 // TestServiceAccountAuth tests ClusterAccess with service account authentication
@@ -510,13 +509,9 @@ func (suite *ClusterAccessControllerTestSuite) TestServiceAccountAuth() {
 	suite.Require().NoError(err, "failed to create ClusterAccess")
 
 	// Wait for schema file to be generated
-	suite.waitForSchemaFile("single-serviceaccount-test")
+	raw := suite.waitForSchemaFile("single-serviceaccount-test")
 
 	// Verify schema metadata has SA auth type and details
-	schemaFilePath := filepath.Join(suite.listenerCfg.Options.SchemasDir, "single-serviceaccount-test")
-	raw, err := os.ReadFile(schemaFilePath)
-	suite.Require().NoError(err, "failed to read schema file")
-
 	var schemaJSON map[string]any
 	err = json.NewDecoder(bytes.NewReader(raw)).Decode(&schemaJSON)
 	suite.Require().NoError(err, "failed to decode schema file")

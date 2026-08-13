@@ -51,7 +51,7 @@ tasks:
     desc: Generate mocks using mockery
     deps: [tools:mockery]
     cmds:
-      - "{{.BIN}}/mockery"
+      - "{{.MOCKERY}}"
 
   build:
     desc: Build the operator binary
@@ -83,7 +83,7 @@ tasks:
     cmds:
       - |
         set -ex
-        export KUBEBUILDER_ASSETS=$({{.BIN}}/setup-envtest use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.BIN}} -p path)
+        export KUBEBUILDER_ASSETS=$({{.ENVTEST}} use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.BIN}} -p path)
         go test -tags integration ./... {{.ADDITIONAL_COMMAND_ARGS}}
   cover:
     cmds:

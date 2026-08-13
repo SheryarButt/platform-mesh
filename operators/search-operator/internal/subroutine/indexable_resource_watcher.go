@@ -167,6 +167,7 @@ func (s *IndexableResourceWatcherSubroutine) Process(ctx context.Context, instan
 	doc.DefaultFields = extractConfiguredFields(resource, searchIndex.Spec.DefaultFields)
 	doc.SemanticFields = extractStringConfiguredFields(resource, searchIndex.Spec.SemanticFields)
 	doc.FilterableFields = extractFilterableFields(resource, searchIndex.Spec.FilterableFields)
+	doc.SetDefaultFilterableFields()
 
 	accountInfo, err := s.getAccountInfo(ctx, workspacePath, gvk, resource)
 	if err != nil {
@@ -319,8 +320,6 @@ func getSearchIndex(ctx context.Context, orgsClient ctrlruntimeclient.Client, or
 	return searchIndex, nil
 }
 
-// extractConfiguredFields copies the configured dot-notation paths from the
-// unstructured resource object into an output map with the same nested shape.
 func extractConfiguredFields(resource *unstructured.Unstructured, fieldPaths []string) map[string]any {
 	return extractFieldPaths(resource, fieldPaths, nil)
 }
@@ -362,6 +361,7 @@ func extractFieldPaths(
 				continue
 			}
 		}
+		value = sanitizeMapKeys(value)
 		setFieldPath(out, segments, value)
 	}
 
@@ -459,6 +459,30 @@ func opensearchSplitFieldPath(fieldPath string) []string {
 		segments = append(segments, segment)
 	}
 	return segments
+}
+
+// sanitizeMapKeys recursively removes map keys that OpenSearch rejects as field names.
+// OpenSearch rejects keys that are empty or consist only of '.'.
+func sanitizeMapKeys(v any) any {
+	switch val := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(val))
+		for k, child := range val {
+			if strings.Trim(k, ".") == "" {
+				continue
+			}
+			out[k] = sanitizeMapKeys(child)
+		}
+		return out
+	case []any:
+		out := make([]any, len(val))
+		for i, item := range val {
+			out[i] = sanitizeMapKeys(item)
+		}
+		return out
+	default:
+		return v
+	}
 }
 
 func (s *IndexableResourceWatcherSubroutine) generateDocumentID(

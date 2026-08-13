@@ -64,29 +64,13 @@ type Service struct {
 	idmChecker      IDMUserChecker
 }
 
-func New(client openfgav1.OpenFGAServiceClient, cfg *config.ServiceConfig, wsClientFactory workspace.ClientFactory, idmChecker IDMUserChecker) (*Service, error) {
-	// Use configurable roles retriever from YAML file
-	rolesRetriever, err := roles.NewFileBasedRolesRetriever(cfg.Roles.FilePath)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to initialize roles retriever from YAML file")
-	}
-
+func New(client openfgav1.OpenFGAServiceClient, cfg *config.ServiceConfig, wsClientFactory workspace.ClientFactory, idmChecker IDMUserChecker, rolesRetriever roles.RolesRetriever) *Service {
 	return &Service{
 		client:          client,
 		helper:          store.NewFGAStoreHelper(cfg.OpenFGA.StoreCacheTTL),
 		rolesRetriever:  rolesRetriever,
 		wsClientFactory: wsClientFactory,
 		idmChecker:      idmChecker,
-	}, nil
-}
-
-// NewWithRolesRetriever creates a new FGA service with a custom roles retriever
-func NewWithRolesRetriever(client openfgav1.OpenFGAServiceClient, cfg *config.ServiceConfig, rolesRetriever roles.RolesRetriever) *Service {
-	helper := store.NewFGAStoreHelper(cfg.OpenFGA.StoreCacheTTL)
-	return &Service{
-		client:         client,
-		helper:         helper,
-		rolesRetriever: rolesRetriever,
 	}
 }
 

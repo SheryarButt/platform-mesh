@@ -33,7 +33,7 @@ tasks:
   mockery:
     deps: [tools:mockery]
     cmds:
-      - "{{.BIN}}/mockery"
+      - "{{.MOCKERY}}"
   manifests:
     cmds:
       - task: tools:generate-crds
@@ -47,7 +47,7 @@ tasks:
       - task: tools:generate-deepcopy
         vars:
           PATH: /core/...
-      - "{{.BIN}}/apigen --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
+      - "{{.APIGEN}} --input-dir {{.CRD_DIRECTORY}} --output-dir ./config/resources --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
   build:
     cmds:
       - go build ./...
@@ -55,6 +55,9 @@ tasks:
     cmds:
       - docker build .
   ## Testing
+  clean:
+    cmds:
+      - rm -rf -- .test
   fmt:
     cmds:
       - go fmt ./...
@@ -64,14 +67,19 @@ tasks:
       - task: tools:lint
   envtest:
     internal: true
-    deps: [tools:kcp, tools:envtest]
+    deps: [tools:kcp, tools:envtest, clean]
     env:
-      # Shared kcp installed by tools:kcp into the root bin.
-      TEST_KCP_ASSETS: '{{.BIN}}'
+      KCP_ASSET_KCP: '{{.BIN}}/kcp'
+      KCP_ASSET_SHARDED_TEST_SERVER: '{{.BIN}}/sharded-test-server'
+      KCP_ASSET_KCP_FRONT_PROXY: '{{.BIN}}/kcp-front-proxy'
+      KCP_ASSET_CACHE_SERVER: '{{.BIN}}/cache-server'
+      NO_GORUN: "true"
+      COMPONENT_DIRECTORY:
+        sh: 'realpath .'
     cmds:
       - |
         set -ex
-        export KUBEBUILDER_ASSETS=$({{.BIN}}/setup-envtest use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.BIN}} -p path)
+        export KUBEBUILDER_ASSETS=$({{.ENVTEST}} use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.BIN}} -p path)
         go test -count=1 {{.TEST_PACKAGES | default "./..."}} {{.ADDITIONAL_COMMAND_ARGS}}
 
   # Integration (envtest) lives in ./internal/test/integration; everything else is unit.
@@ -98,7 +106,7 @@ tasks:
     deps: [tools:go-test-coverage]
     cmds:
       - task: cover
-      - "{{.BIN}}/go-test-coverage --profile cover.out --config ./.testcoverage.yml"
+      - "{{.GO_TEST_COVERAGE}} --profile cover.out --config ./.testcoverage.yml"
   install:
     cmds:
       - kubectl apply -f config/crd/bases

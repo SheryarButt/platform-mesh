@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: 2025 Christoph Mewes, https://codeberg.org/xrstf/uget
 # SPDX-License-Identifier: MIT
 #
-# µget 0.5.0 – your friendly downloader
+# µget 0.5.1 – your friendly downloader
 # -------------------------------------
 #
 # µget can download software as binaries, archives or Go modules.
@@ -350,12 +350,12 @@ uget_url_replaceWithArgs() {
     # version is treated specially
     [ "$placeholder" = "VERSION" ] && continue
 
-    placeholder="$(uget_trim_env_prefix "$placeholder")"
+    normalized="$(uget_trim_env_prefix "$placeholder")"
 
     local replacement
-    replacement="$(uget_url_valueFromPair "$kvString" "$placeholder")"
+    replacement="$(uget_url_valueFromPair "$kvString" "$normalized")"
     if [ -z "$replacement" ]; then
-      uget_error "Found no replacement string for placeholder $placeholder."
+      uget_error "Found no replacement string for placeholder $normalized."
       exit 1
     fi
 

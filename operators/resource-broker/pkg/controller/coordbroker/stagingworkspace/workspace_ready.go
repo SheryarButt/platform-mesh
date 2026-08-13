@@ -82,21 +82,21 @@ func (s *workspaceReadySubroutine) Process(ctx context.Context, obj ctrlruntimec
 			return subroutines.Result{}, fmt.Errorf("creating staging workspace %q: %w", sw.Name, err)
 		}
 		sw.Status.Phase = pmcoordbrokerv1alpha1.StagingWorkspacePhasePending
-		return subroutines.Pending(s.opts.RequeueInterval, "created staging workspace"), nil
+		return subroutines.StopWithRequeue(s.opts.RequeueInterval, "created staging workspace"), nil
 	case err != nil:
 		return subroutines.Result{}, fmt.Errorf("getting staging workspace %q: %w", sw.Name, err)
 	}
 
 	if !workspace.DeletionTimestamp.IsZero() {
 		sw.Status.Phase = pmcoordbrokerv1alpha1.StagingWorkspacePhasePending
-		return subroutines.Pending(s.opts.RequeueInterval, "staging workspace is terminating"), nil
+		return subroutines.StopWithRequeue(s.opts.RequeueInterval, "staging workspace is terminating"), nil
 	}
 
 	sw.Status.ClusterName = workspace.Spec.Cluster
 
 	if workspace.Status.Phase != kcpcorev1alpha1.LogicalClusterPhaseReady {
 		sw.Status.Phase = pmcoordbrokerv1alpha1.StagingWorkspacePhasePending
-		return subroutines.Pending(s.opts.RequeueInterval, "waiting for staging workspace to become ready"), nil
+		return subroutines.StopWithRequeue(s.opts.RequeueInterval, "waiting for staging workspace to become ready"), nil
 	}
 
 	return subroutines.OK(), nil

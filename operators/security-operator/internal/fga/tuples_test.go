@@ -17,6 +17,7 @@ limitations under the License.
 package fga
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -111,4 +112,102 @@ func TestInitialTuplesForAccount_nilCreator(t *testing.T) {
 	_, err := InitialTuplesForAccount(in)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "creator is empty")
+}
+
+func TestParseAccountKey(t *testing.T) {
+	tests := []struct {
+		in   string
+		want AccountKey
+		ok   bool
+	}{
+		{
+			in:   "core_platform-mesh_io_account:abc123/myorg",
+			want: AccountKey{ObjectType: "core_platform-mesh_io_account", ClusterID: "abc123", Name: "myorg"},
+			ok:   true,
+		},
+		{
+			in:   "role:core_platform-mesh_io_account/abc123/myorg/owner",
+			want: AccountKey{ObjectType: "core_platform-mesh_io_account", ClusterID: "abc123", Name: "myorg", Role: "owner"},
+			ok:   true,
+		},
+		{
+			in:   "role:core_platform-mesh_io_account/abc123/myorg/owner#assignee",
+			want: AccountKey{ObjectType: "core_platform-mesh_io_account", ClusterID: "abc123", Name: "myorg", Role: "owner", Relation: "assignee"},
+			ok:   true,
+		},
+		{
+			in:   "core_platform-mesh_io_account:abc123/myorg#member",
+			want: AccountKey{ObjectType: "core_platform-mesh_io_account", ClusterID: "abc123", Name: "myorg", Relation: "member"},
+			ok:   true,
+		},
+		// Non-account keys must not parse.
+		{in: "user:someone.example.com", ok: false},
+		{in: "user:*", ok: false},
+		{in: "role:authenticated", ok: false},
+		{in: "role:authenticated#assignee", ok: false},
+		{in: "no-colon-here", ok: false},
+		{in: "core_platform-mesh_io_account:abc123", ok: false},
+		{in: "core_platform-mesh_io_account:abc123/a/b", ok: false},
+		{in: "role:type/cluster/name", ok: false},
+		{in: "role:type/cluster/name/role/extra", ok: false},
+		{in: "role:type//name/owner", ok: false},
+		{in: ":cluster/name", ok: false},
+		{in: "core_platform-mesh_io_account:abc123/myorg#", ok: false},
+	}
+	for _, test := range tests {
+		t.Run(test.in, func(t *testing.T) {
+			got, ok := ParseAccountKey(test.in)
+			assert.Equal(t, test.ok, ok)
+			if test.ok {
+				assert.Equal(t, test.want, got)
+				// Round-trip.
+				assert.Equal(t, test.in, got.String())
+			}
+		})
+	}
+}
+
+// TestRenderersRoundTripThroughAccountKey pins the renderers and the parser to
+// each other: every key the package writes must parse back into the fields it
+// was built from. Changing one direction without the other fails here.
+func TestRenderersRoundTripThroughAccountKey(t *testing.T) {
+	const (
+		objectType = "core_platform-mesh_io_account"
+		clusterID  = "abc123"
+		name       = "myorg"
+	)
+	tests := []struct {
+		name     string
+		rendered string
+		want     AccountKey
+	}{
+		{
+			name:     "renderAccountEntity",
+			rendered: renderAccountEntity(objectType, clusterID, name),
+			want:     AccountKey{ObjectType: objectType, ClusterID: clusterID, Name: name},
+		},
+		{
+			name:     "renderOwnerRole",
+			rendered: renderOwnerRole(objectType, clusterID, name),
+			want:     AccountKey{ObjectType: objectType, ClusterID: clusterID, Name: name, Role: "owner"},
+		},
+		{
+			name:     "renderOwnerRoleAssigneeGroup",
+			rendered: renderOwnerRoleAssigneeGroup(objectType, clusterID, name),
+			want:     AccountKey{ObjectType: objectType, ClusterID: clusterID, Name: name, Role: "owner", Relation: "assignee"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, ok := ParseAccountKey(test.rendered)
+			require.True(t, ok, "renderer output %q must parse as an account key", test.rendered)
+			assert.Equal(t, test.want, got)
+			assert.Equal(t, test.rendered, got.String())
+		})
+	}
+
+	// RenderRolePrefix is a prefix, not a whole key: every role key starts with it.
+	prefix := RenderRolePrefix(objectType, clusterID, name)
+	assert.Equal(t, prefix, AccountKey{ObjectType: objectType, ClusterID: clusterID, Name: name}.RolePrefix())
+	assert.True(t, strings.HasPrefix(renderOwnerRole(objectType, clusterID, name), prefix))
 }

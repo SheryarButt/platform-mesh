@@ -36,11 +36,10 @@ import (
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/klog/v2"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 
 	"github.com/kcp-dev/client-go/dynamic"
 	"github.com/kcp-dev/logicalcluster/v3"
-	"github.com/kcp-dev/multicluster-provider/apiexport"
+	mcpcache "github.com/kcp-dev/multicluster-provider/pkg/cache"
 	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
 	"github.com/kcp-dev/virtual-workspace-framework/pkg/forwardingregistry"
 )
@@ -197,23 +196,25 @@ func ContentConfigurationLookup(client dynamic.ClusterInterface, cfg config.Serv
 	})
 }
 
-func Marketplace(provider *apiexport.Provider, cfg config.ServiceConfig) forwardingregistry.StorageWrapper {
+func Marketplace(
+	lister mcpcache.Lister,
+	clusterClient func(context.Context, string) (ctrlruntimeclient.Client, error),
+	cfg config.ServiceConfig,
+) forwardingregistry.StorageWrapper {
 	return forwardingregistry.StorageWrapperFunc(func(resource schema.GroupResource, storage *forwardingregistry.StoreFuncs) {
 		storage.ListerFunc = func(ctx context.Context, options *internalversion.ListOptions) (runtime.Object, error) {
 			cluster := genericapirequest.ClusterFrom(ctx)
 
-			cl, err := provider.Get(ctx, multicluster.ClusterName(cluster.Name.String()))
+			cl, err := clusterClient(ctx, cluster.Name.String())
 			if err != nil {
 				return nil, fmt.Errorf("failed to get cluster from provider: %w", err)
 			}
 
 			// Get APIBindings for this specific cluster
 			installedAPIBindings := &kcpapisv1alpha1.APIBindingList{}
-			if err := cl.GetClient().List(ctx, installedAPIBindings); err != nil {
+			if err := cl.List(ctx, installedAPIBindings); err != nil {
 				return nil, fmt.Errorf("failed to list apibindings: %w", err)
 			}
-
-			lister := provider.Lister()
 
 			var providerList pmuiv1alpha1.ProviderMetadataList
 			if err := lister.List(ctx, &providerList); err != nil {
@@ -235,14 +236,18 @@ func Marketplace(provider *apiexport.Provider, cfg config.ServiceConfig) forward
 					return nil, fmt.Errorf("failed to list apiexports for provider %s: %w", provider.GetName(), err)
 				}
 
+				providerClusterID := logicalcluster.From(&provider)
 				for _, export := range exportList.Items {
+					if logicalcluster.From(&export) != providerClusterID {
+						continue
+					}
 					if len(export.Spec.LatestResourceSchemas) == 0 {
 						continue
 					}
 
 					idx := slices.IndexFunc(installedAPIBindings.Items, func(item kcpapisv1alpha1.APIBinding) bool {
 						return item.Spec.Reference.Export.Name == export.Name &&
-							item.Status.APIExportClusterName == export.Annotations["kcp.io/cluster"]
+							item.Status.APIExportClusterName == logicalcluster.From(&export).String()
 					})
 
 					var apiBindingName string

@@ -42,6 +42,9 @@ on:
     paths:
       - 'services/iam-service/**'
       - 'apis/**'
+      - 'golang-commons/**'
+      - 'subroutines/**'
+      - 'operators/account-operator/**'
       - 'go.work'
       - 'go.work.sum'
       - '.github/workflows/iam-service.yml'

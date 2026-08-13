@@ -21,7 +21,8 @@ import (
 	"fmt"
 
 	pmcoordbrokerv1alpha1 "go.platform-mesh.io/apis/coordbroker/v1alpha1"
-	"go.platform-mesh.io/resource-broker/pkg/sync"
+	"go.platform-mesh.io/golang-commons/controller/transfer"
+	"go.platform-mesh.io/resource-broker/pkg/relatedresources"
 	"go.platform-mesh.io/subroutines"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -232,7 +233,7 @@ func (s *stagesSubroutine) copyRelatedResources(ctx context.Context, wsName stri
 	}
 
 	gvk := schema.GroupVersionKind{Group: target.GVK.Group, Version: target.GVK.Version, Kind: target.GVK.Kind}
-	related, err := sync.CollectRelatedResources(ctx, stagingClient, gvk, nn)
+	related, err := relatedresources.Collect(ctx, stagingClient, gvk, nn)
 	switch {
 	case apierrors.IsNotFound(err):
 		return subroutines.Pending(s.opts.RequeueInterval, fmt.Sprintf("waiting for staging copy in workspace %q", wsName)), nil
@@ -258,7 +259,7 @@ func (s *stagesSubroutine) copyRelatedResource(ctx context.Context, stagingClien
 		return fmt.Errorf("getting related resource %q: %w", nn, err)
 	}
 
-	target := sync.StripClusterMetadata(source)
+	target := transfer.StripClusterMetadata(source)
 	target.SetName(prefix + nn.Name)
 	target.SetNamespace(nn.Namespace)
 

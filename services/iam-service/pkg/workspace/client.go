@@ -25,6 +25,9 @@ import (
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
+
+	"github.com/kcp-dev/logicalcluster/v3"
+	mcclient "github.com/kcp-dev/multicluster-provider/client"
 )
 
 // ClientFactory creates a client for a specific kcp workspace
@@ -32,7 +35,7 @@ type ClientFactory interface {
 	New(ctx context.Context, accountPath multicluster.ClusterName) (ctrlruntimeclient.Client, error)
 }
 
-// KCPClient implements ClientFactory for kcp workspaces
+// KCPClient implements ClientFactory for kcp workspaces using the multicluster manager
 type KCPClient struct {
 	mgr mcmanager.Manager
 }
@@ -54,4 +57,25 @@ func (f *KCPClient) New(ctx context.Context, accountPath multicluster.ClusterNam
 	}
 
 	return cluster.GetClient(), nil
+}
+
+// ClusterClientFactory wraps the multicluster-provider ClusterClient to implement ClientFactory.
+// Unlike KCPClient which relies on the multicluster manager's REST mapper,
+// this client creates new clients with dynamic REST mappers for each workspace path,
+// allowing it to work with any API group available in that workspace.
+type ClusterClientFactory struct {
+	client mcclient.ClusterClient
+}
+
+// NewClusterClientFactory creates a new ClientFactory using the multicluster-provider ClusterClient.
+func NewClusterClientFactory(client mcclient.ClusterClient) *ClusterClientFactory {
+	return &ClusterClientFactory{
+		client: client,
+	}
+}
+
+// New implements ClientFactory interface
+func (c *ClusterClientFactory) New(_ context.Context, accountPath multicluster.ClusterName) (ctrlruntimeclient.Client, error) {
+	path := logicalcluster.NewPath(string(accountPath))
+	return c.client.Cluster(path), nil
 }

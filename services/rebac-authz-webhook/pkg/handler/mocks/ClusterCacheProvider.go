@@ -56,6 +56,66 @@ func (_m *ClusterCacheProvider) EXPECT() *ClusterCacheProvider_Expecter {
 	return &ClusterCacheProvider_Expecter{mock: &_m.Mock}
 }
 
+// ClusterName provides a mock function for the type ClusterCacheProvider
+func (_mock *ClusterCacheProvider) ClusterName(clusterPath string) (multicluster.ClusterName, bool) {
+	ret := _mock.Called(clusterPath)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ClusterName")
+	}
+
+	var r0 multicluster.ClusterName
+	var r1 bool
+	if returnFunc, ok := ret.Get(0).(func(string) (multicluster.ClusterName, bool)); ok {
+		return returnFunc(clusterPath)
+	}
+	if returnFunc, ok := ret.Get(0).(func(string) multicluster.ClusterName); ok {
+		r0 = returnFunc(clusterPath)
+	} else {
+		r0 = ret.Get(0).(multicluster.ClusterName)
+	}
+	if returnFunc, ok := ret.Get(1).(func(string) bool); ok {
+		r1 = returnFunc(clusterPath)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+	return r0, r1
+}
+
+// ClusterCacheProvider_ClusterName_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ClusterName'
+type ClusterCacheProvider_ClusterName_Call struct {
+	*mock.Call
+}
+
+// ClusterName is a helper method to define mock.On call
+//   - clusterPath string
+func (_e *ClusterCacheProvider_Expecter) ClusterName(clusterPath interface{}) *ClusterCacheProvider_ClusterName_Call {
+	return &ClusterCacheProvider_ClusterName_Call{Call: _e.mock.On("ClusterName", clusterPath)}
+}
+
+func (_c *ClusterCacheProvider_ClusterName_Call) Run(run func(clusterPath string)) *ClusterCacheProvider_ClusterName_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ClusterCacheProvider_ClusterName_Call) Return(clusterName multicluster.ClusterName, b bool) *ClusterCacheProvider_ClusterName_Call {
+	_c.Call.Return(clusterName, b)
+	return _c
+}
+
+func (_c *ClusterCacheProvider_ClusterName_Call) RunAndReturn(run func(clusterPath string) (multicluster.ClusterName, bool)) *ClusterCacheProvider_ClusterName_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Engage provides a mock function for the type ClusterCacheProvider
 func (_mock *ClusterCacheProvider) Engage(context1 context.Context, clusterName multicluster.ClusterName, cluster1 cluster.Cluster) error {
 	ret := _mock.Called(context1, clusterName, cluster1)

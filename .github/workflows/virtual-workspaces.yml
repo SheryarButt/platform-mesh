@@ -42,6 +42,8 @@ on:
     paths:
       - 'services/virtual-workspaces/**'
       - 'apis/**'
+      - 'golang-commons/**'
+      - 'subroutines/**'
       - 'go.work'
       - 'go.work.sum'
       - '.github/workflows/virtual-workspaces.yml'

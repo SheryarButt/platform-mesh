@@ -17,10 +17,15 @@ coverage.html
 # Dependency directories
 vendor/
 
+# kcp sharded envtest
+.kcp-*/
+.test/
+
 # IDE and editor files
 .idea/
 .vscode/
 .claude/
+.cursor/
 .run/
 CLAUDE.local.md
 .gocache/
@@ -53,3 +58,4 @@ debug
 # Task context (if using claude code delegation)
 task-context/
 cmd/release/release
+operators/tenancy-operator/.task/checksum/tenancyctl

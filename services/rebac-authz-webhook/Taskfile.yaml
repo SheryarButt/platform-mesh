@@ -78,11 +78,11 @@ tasks:
     deps: [tools:go-test-coverage]
     cmds:
       - task: cover
-      - "{{.BIN}}/go-test-coverage --profile cover.out --config ./.testcoverage.yml"
+      - "{{.GO_TEST_COVERAGE}} --profile cover.out --config ./.testcoverage.yml"
   mockery:
     deps: [tools:mockery]
     cmds:
-      - "{{.BIN}}/mockery"
+      - "{{.MOCKERY}}"
   docker:kind:load:
     desc: "Build container image with current tag from kind cluster and load it into kind"
     vars:
@@ -92,10 +92,10 @@ tasks:
       DEPLOYMENT_NAMESPACE: '{{.DEPLOYMENT_NAMESPACE | default "platform-mesh-system"}}'
       IMAGE_TAG:
         sh: kubectl get deployment {{.DEPLOYMENT_NAME}} -n {{.DEPLOYMENT_NAMESPACE}} -o jsonpath='{.spec.template.spec.containers[0].image}' | cut -d':' -f2
-      IMAGE_NAME: ghcr.io/platform-mesh/rebac-authz-webhook:{{.IMAGE_TAG}}
+      IMAGE_NAME: ghcr.io/platform-mesh/platform-mesh/rebac-authz-webhook:{{.IMAGE_TAG}}
     cmds:
       - echo "Building image with tag {{.IMAGE_TAG}} using {{.CONTAINER_RUNTIME}}"
-      - "{{.CONTAINER_RUNTIME}} build -t {{.IMAGE_NAME}} ."
+      - " cd ../.. && {{.CONTAINER_RUNTIME}} build -f services/rebac-authz-webhook/Dockerfile -t {{.IMAGE_NAME}} ."
       - |
         if [ "{{.CONTAINER_RUNTIME}}" = "podman" ]; then
           {{.CONTAINER_RUNTIME}} save {{.IMAGE_NAME}} -o /tmp/kind-image.tar

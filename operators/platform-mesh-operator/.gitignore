@@ -1,0 +1,12 @@
+*.crt
+*.key
+*.srl
+
+test/e2e/kind/certs/
+test/e2e/kind/kind-testcluster.kubeconfig
+**/__debug_bin*
+gha-logs.txt
+*.kubeconfig
+
+config/crd/apigen/crds/
+config/crd/apigen/out/

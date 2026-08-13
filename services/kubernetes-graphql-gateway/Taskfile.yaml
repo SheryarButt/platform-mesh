@@ -32,7 +32,7 @@ tasks:
         vars:
           PATH: /gateway/...
           OUTPUT: config/crd
-      - "{{.BIN}}/apigen --output-dir config/kcp --input-dir config/crd --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
+      - "{{.APIGEN}} --output-dir config/kcp --input-dir config/crd --header-file {{.HACK}}/boilerplate/boilerplate.yaml.txt"
 
   ## Development
   build:
@@ -80,7 +80,7 @@ tasks:
     cmds:
       - |
         set -ex
-        export KUBEBUILDER_ASSETS=$({{.BIN}}/setup-envtest use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.BIN}} -p path)
+        export KUBEBUILDER_ASSETS=$({{.ENVTEST}} use {{.ENVTEST_K8S_VERSION}} --bin-dir {{.BIN}} -p path)
         go test ./... {{.ADDITIONAL_COMMAND_ARGS}}
   test:
     cmds:
@@ -96,7 +96,7 @@ tasks:
       - task: envtest
         vars:
           ADDITIONAL_COMMAND_ARGS: -coverprofile=./cover.out -covermode=atomic -coverpkg=./...
-      - "{{.BIN}}/go-test-coverage --profile cover.out --config ./.testcoverage.yml"
+      - "{{.GO_TEST_COVERAGE}} --profile cover.out --config ./.testcoverage.yml"
   cover-html:
     desc: "Generate and open HTML coverage report"
     deps: [cover]
@@ -121,7 +121,7 @@ tasks:
   mockery:
     deps: [tools:mockery]
     cmds:
-      - "{{.BIN}}/mockery"
+      - "{{.MOCKERY}}"
   proto:
     desc: "Generate protobuf files"
     cmds:

@@ -115,16 +115,15 @@ func (suite *ResourceControllerTestSuite) SetupSuite() {
 
 func (suite *ResourceControllerTestSuite) TestSchemaGeneration() {
 	schemaFilePath := filepath.Join(suite.listenerCfg.Options.SchemasDir, "single")
+	var raw []byte
 	suite.Eventually(func() bool {
-		_, err := os.Stat(schemaFilePath)
-		return err == nil
+		var err error
+		raw, err = os.ReadFile(schemaFilePath)
+		return err == nil && json.Valid(raw)
 	}, 5*time.Second, 500*time.Millisecond, "expected schema file to be generated")
 
-	raw, err := os.ReadFile(schemaFilePath)
-	suite.Require().NoError(err, "failed to read schema file")
-
 	var schema pmgatewayv1alpha1.Schema
-	err = json.NewDecoder(bytes.NewReader(raw)).Decode(&schema)
+	err := json.NewDecoder(bytes.NewReader(raw)).Decode(&schema)
 	suite.Require().NoError(err, "failed to decode schema file")
 
 	suite.NotEmpty(schema.ClusterMetadata, "schema has metadata")

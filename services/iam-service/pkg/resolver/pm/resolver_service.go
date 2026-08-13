@@ -30,6 +30,7 @@ import (
 	"go.platform-mesh.io/iam-service/pkg/resolver/api"
 	serrors "go.platform-mesh.io/iam-service/pkg/resolver/errors"
 	"go.platform-mesh.io/iam-service/pkg/resolver/transformer"
+	"go.platform-mesh.io/iam-service/pkg/roles"
 	"go.platform-mesh.io/iam-service/pkg/sorter"
 	"go.platform-mesh.io/iam-service/pkg/workspace"
 
@@ -149,15 +150,9 @@ func (s *Service) Roles(ctx context.Context, context graph.ResourceContext) ([]*
 	return s.fgaService.GetRoles(ctx, context)
 }
 
-func NewResolverService(fgaClient openfgav1.OpenFGAServiceClient, service *keycloak.Service, cfg *config.ServiceConfig, mgr mcmanager.Manager) (*Service, error) {
-	// Create workspace client factory
+func NewResolverService(fgaClient openfgav1.OpenFGAServiceClient, service *keycloak.Service, cfg *config.ServiceConfig, mgr mcmanager.Manager, rolesRetriever roles.RolesRetriever) *Service {
 	wsClientFactory := workspace.NewClientFactory(mgr)
-
-	// Create FGA service with workspace client factory and keycloak checker
-	fgaService, err := fga.New(fgaClient, cfg, wsClientFactory, service)
-	if err != nil {
-		return nil, err
-	}
+	fgaService := fga.New(fgaClient, cfg, wsClientFactory, service, rolesRetriever)
 
 	return &Service{
 		fgaService:      fgaService,
@@ -166,5 +161,5 @@ func NewResolverService(fgaClient openfgav1.OpenFGAServiceClient, service *keycl
 		pager:           pager.NewPager(cfg),
 		mgr:             mgr,
 		transformer:     transformer.NewUserTransformer(&cfg.JWT),
-	}, nil
+	}
 }
