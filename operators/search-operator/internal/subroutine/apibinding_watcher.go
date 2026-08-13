@@ -49,7 +49,6 @@ type apiBindingWatcherSubroutine struct {
 	mgr         mcmanager.Manager
 	orgsClient  ctrlruntimeclient.Client
 	rootCfg     *rest.Config
-	cfg         config.Config
 	indexPrefix string
 }
 
@@ -67,7 +66,6 @@ func NewAPIBindingWatcherSubroutine(mgr mcmanager.Manager, orgsClient ctrlruntim
 		mgr:         mgr,
 		orgsClient:  orgsClient,
 		rootCfg:     rootCfg,
-		cfg:         cfg,
 		indexPrefix: indexPrefix,
 	}, nil
 }
