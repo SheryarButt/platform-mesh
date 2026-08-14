@@ -1,0 +1,124 @@
+# Copyright The Platform Mesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: ui.platform-mesh.io/v1alpha1
+kind: ContentConfiguration
+metadata:
+  labels:
+    ui.platform-mesh.io/entity: core_platform-mesh_io_account
+  name: account-namespaces
+spec:
+  inlineConfiguration:
+    content: |-
+      {
+          "name": "namespaces",
+          "creationTimestamp": "2022-05-17T11:37:17Z",
+          "luigiConfigFragment": {
+              "data": {
+                  "nodes": [
+                      {
+                          "pathSegment": "namespaces",
+                          "navigationContext": "namespaces",
+                          "label": "Namespaces",
+                          "entityType": "main.core_platform-mesh_io_account",
+                          "icon": "group-2",
+                          "order": 110,
+                          "category": {
+                              "id": "workspace",
+                              "isGroup": true,
+                              "label": "Workspace Resources",
+                              "order": 500
+                          },
+                          "loadingIndicator": {
+                              "enabled": false
+                          },
+                          "keepSelectedForChildren": true,
+                          "url": "/assets/platform-mesh-portal-ui-wc.js#generic-list-view",
+                          "webcomponent": {
+                              "selfRegistered": true
+                          },
+                          "context": {
+                              "resourceDefinition": {
+                                  "version": "v1",
+                                  "entityCollection": "Namespaces",
+                                  "entity": "Namespace",
+                                  "scope": "Cluster",
+                                  "namespace": null,
+                                  "ui": {
+                                      "listView": {
+                                          "fields": [
+                                              {
+                                                  "label": "Name",
+                                                  "property": "metadata.name"
+                                              }
+                                          ]
+                                      },
+                                      "detailView": {
+                                          "fields": [
+                                              {
+                                                  "label": "Name",
+                                                  "property": "metadata.name"
+                                              }
+                                          ]
+                                      },
+                                      "createView": {
+                                          "fields": [
+                                              {
+                                                  "label": "Name",
+                                                  "property": "metadata.name",
+                                                  "required": true
+                                              }
+                                          ]
+                                      }
+                                  }
+                              }
+                          },
+                          "children": [
+                            {
+                                "pathSegment": ":namespaceId",
+                                "hideFromNav": true,
+                                "keepSelectedForChildren": false,
+                                "defineEntity": {
+                                    "id": "namespace",
+                                    "contextKey": "namespaceId"
+                                },
+                                "context": {
+                                    "namespaceId": ":namespaceId",
+                                    "resourceId": ":namespaceId"
+                                }
+                            }
+                          ]
+                      },
+                      {
+                        "entityType": "main.core_platform-mesh_io_account.namespace",
+                        "pathSegment": "dashboard",
+                        "label": "Dashboard",
+                        "order": 100,
+                        "url": "/assets/platform-mesh-portal-ui-wc.js#generic-detail-view",
+                        "webcomponent": {
+                          "selfRegistered": true
+                        },
+                        "defineEntity": {
+                            "id": "dashboard"
+                        },
+                        "compound": {
+                            "children": []
+                        }
+                      }
+
+                  ]
+              }
+          }
+      }
+    contentType: json

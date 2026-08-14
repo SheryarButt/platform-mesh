@@ -13,9 +13,9 @@
 # limitations under the License.
 
 # NOTE: the build context is the repository ROOT, not this directory.
-# The operator module is linked to the shared ./apis module through the
-# repository-root go.work file, so the workspace and apis source must be
-# present in the build:
+# The operator module is linked to the shared in-repo modules through the
+# repository-root go.work file and the go.mod replace directives, so the
+# workspace and those module sources must be present in the build:
 #   docker build -f operators/resource-broker/Dockerfile .
 FROM --platform=$BUILDPLATFORM golang:1.26@sha256:792443b89f65105abba56b9bd5e97f680a80074ac62fc844a584212f8c8102c3 AS builder
 
@@ -25,15 +25,17 @@ WORKDIR /workspace
 COPY go.work go.work
 COPY go.work.sum go.work.sum
 COPY apis/ apis/
+COPY golang-commons/ golang-commons/
+COPY subroutines/ subroutines/
 COPY operators/resource-broker/ operators/resource-broker/
 
 # Drop every workspace module except the ones copied above, so the workspace
-# resolves with only apis + this operator — regardless of what else go.work lists
+# resolves with only the modules copied above — regardless of what else go.work lists
 # (other operators, cmd/* tools, ...). This is a textual edit of go.work, so the
 # dropped modules don't need to exist in the build context.
 RUN for m in $(go work edit -json | sed -n 's/.*"DiskPath": "\(.*\)".*/\1/p'); do \
       case "$m" in \
-        ./apis|./operators/resource-broker) ;; \
+        ./apis|./golang-commons|./subroutines|./operators/resource-broker) ;; \
         *) go work edit -dropuse "$m" ;; \
       esac; \
     done

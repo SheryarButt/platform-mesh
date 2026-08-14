@@ -31,6 +31,7 @@ import (
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/authorization/union"
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/clustercache"
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/config"
+	"go.platform-mesh.io/rebac-authz-webhook/pkg/handler/batch"
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/handler/contextual"
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/handler/nonresourceattributes"
 	"go.platform-mesh.io/rebac-authz-webhook/pkg/handler/orgs"
@@ -131,6 +132,14 @@ func NewServeCmd() *cobra.Command {
 					contextual.New(fga, clusterCache, extraAttrClusterKey, cacheMissTracker, serverCfg.Webhook.CacheMissRetryAfter),
 				),
 			))
+
+			batchHandler := batch.New(
+				klog.NewKlogr(),
+				fga,
+				clusterCache,
+				serverCfg.Webhook.ClusterPathKey,
+			)
+			mgr.GetWebhookServer().Register("/batch-authz", batchHandler)
 
 			if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 				klog.Exit(err, "unable to set up health check")

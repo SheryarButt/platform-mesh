@@ -71,7 +71,7 @@ func createTestResolverService(t *testing.T) (*Service, *mocks.OpenFGAServiceCli
 	}
 
 	// Create FGA service with real roles retriever
-	fgaService := fga.NewWithRolesRetriever(mockFGA, cfg, rolesRetriever)
+	fgaService := fga.New(mockFGA, cfg, nil, nil, rolesRetriever)
 
 	userSorter := sorter.NewUserSorter()
 	paginator := pager.NewPager(cfg)

@@ -26,7 +26,7 @@ tasks:
   mockery:
     deps: [tools:mockery]
     cmds:
-      - "{{.BIN}}/mockery"
+      - "{{.MOCKERY}}"
   generate:
     desc: Run code generation (mocks).
     cmds:
@@ -68,7 +68,7 @@ tasks:
   test-coverage:
     desc: Run tests with coverage and check thresholds
     deps:
+      - task: tools:go-test-coverage
       - task: cover
     cmds:
-      - go install github.com/vladopajic/go-test-coverage/v2@{{.GO_TEST_COVERAGE_VERSION}}
-      - go-test-coverage --profile cover.out --config ./.testcoverage.yml
+      - '{{.GO_TEST_COVERAGE}} --profile cover.out --config ./.testcoverage.yml'

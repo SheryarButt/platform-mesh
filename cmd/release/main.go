@@ -18,44 +18,14 @@ limitations under the License.
 //
 // Each component has its own tag namespace and independent version line. The tag
 // prefix is the component name (for go-gettable modules it is also the module's
-// directory path, so the tag doubles as the Go-module tag):
+// directory path, so the tag doubles as the Go-module tag). Library components
+// (e.g. golang-commons) are merely tagged to become go-gettable and do not
+// produce a container image, all other components get
 //
-//	golang-commons     golang-commons/v<X.Y.Z>     go-gettable module tag for
-//	                                               go.platform-mesh.io/golang-commons (no image)
-//	subroutines        subroutines/v<X.Y.Z>        go-gettable module tag for
-//	                                               go.platform-mesh.io/subroutines (no image)
-//	apis               apis/v<X.Y.Z>               go-gettable module tag for
-//	                                               go.platform-mesh.io/apis (no image)
-//	account-operator   account-operator/v<X.Y.Z>   account-operator.yml: signed image,
-//	                                               GitHub release, chart bump, SBOM, OCM
-//	backup-operator    backup-operator/v<X.Y.Z>    backup-operator.yml: signed image,
-//	                                               GitHub release, chart bump, SBOM, OCM
-//	extension-manager-operator   extension-manager-operator/v<X.Y.Z>
-//	                                               extension-manager-operator.yml: signed image,
-//	                                               GitHub release, chart bump, SBOM, OCM
-//	kcp-migration-operator   kcp-migration-operator/v<X.Y.Z>
-//	                                               kcp-migration-operator.yml: signed image,
-//	                                               GitHub release, chart bump, SBOM, OCM
-//	search-operator    search-operator/v<X.Y.Z>    search-operator.yml: signed image,
-//	                                               GitHub release, chart bump, SBOM, OCM
-//	search-service     search-service/v<X.Y.Z>     search-service.yml: signed image,
-//	                                               GitHub release, chart bump, SBOM, OCM
-//	security-operator  security-operator/v<X.Y.Z>  security-operator.yml: signed image,
-//	                                               GitHub release, chart bump, SBOM, OCM
-//	terminal-controller-manager   terminal-controller-manager/v<X.Y.Z>
-//	                                               terminal-controller-manager.yml: signed image,
-//	                                               GitHub release, chart bump, SBOM, OCM
-//	iam-service   iam-service/v<X.Y.Z>             iam-service.yml: signed image,
-//	                                               GitHub release, chart bump, SBOM, OCM
-//	kubernetes-graphql-gateway   kubernetes-graphql-gateway/v<X.Y.Z>
-//	                                               kubernetes-graphql-gateway.yml: signed image,
-//	                                               GitHub release, chart bump, SBOM, OCM
-//	rebac-authz-webhook   rebac-authz-webhook/v<X.Y.Z>
-//	                                               rebac-authz-webhook.yml: signed image,
-//	                                               GitHub release, chart bump, SBOM, OCM
-//	virtual-workspaces   virtual-workspaces/v<X.Y.Z>
-//	                                               virtual-workspaces.yml: signed image,
-//	                                               GitHub release, chart bump, SBOM, OCM
+//   - a GitHub release
+//   - a chart bump
+//   - an SBOM
+//   - an OCM component
 //
 // It finds the component's latest existing tag, bumps it (patch by default),
 // and creates + pushes the new tag — the release workflow does the rest.
@@ -85,6 +55,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -461,29 +432,48 @@ func resolveRemote() (string, error) {
 	return "", fmt.Errorf("no git remote points at %s — add one with `git remote add upstream https://github.com/%s`", canonicalRepo, canonicalRepo)
 }
 
+func sortedKeys[T any](theMap map[string]T) []string {
+	keys := make([]string, 0, len(theMap))
+	for key := range theMap {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+
+	return keys
+}
+
 func usage() {
-	fmt.Print(`release — cut release tags for platform-mesh monorepo components
+	var maxLength int
+
+	for name := range components {
+		maxLength = max(maxLength, len(name))
+	}
+
+	fmtString := fmt.Sprintf("  %%-%ds %%-%ds %%s", maxLength, maxLength)
+	componentStrings := make([]string, 0, len(components)+1) // +1 for "all"
+
+	for _, name := range sortedKeys(libraryComponents) {
+		componentStrings = append(componentStrings, fmt.Sprintf(fmtString, name, name, "(go-gettable module tag, no image)"))
+	}
+
+	for _, name := range sortedKeys(components) {
+		// do not repeat libraries again
+		if _, exists := libraryComponents[name]; exists {
+			continue
+		}
+
+		componentStrings = append(componentStrings, fmt.Sprintf(fmtString, name, name, "(signed image + release + chart + SBOM + OCM)"))
+	}
+
+	componentStrings = append(componentStrings, fmt.Sprintf(fmtString, "all", "every component", "(independent versions)"))
+
+	fmt.Printf(`release — cut release tags for platform-mesh monorepo components
 
 Usage:
   task release -- <component|all> [flags]
 
 Components:
-  golang-commons               golang-commons/v<X.Y.Z>               (go-gettable module tag, no image)
-  subroutines                  subroutines/v<X.Y.Z>                  (go-gettable module tag, no image)
-  apis                         apis/v<X.Y.Z>                         (go-gettable module tag, no image)
-  account-operator             account-operator/v<X.Y.Z>             (signed image + release + chart + SBOM + OCM)
-  backup-operator              backup-operator/v<X.Y.Z>              (signed image + release + chart + SBOM + OCM)
-  extension-manager-operator   extension-manager-operator/v<X.Y.Z>   (signed image + release + chart + SBOM + OCM)
-  kcp-migration-operator       kcp-migration-operator/v<X.Y.Z>       (signed image + release + chart + SBOM + OCM)
-  kubernetes-graphql-gateway   kubernetes-graphql-gateway/v<X.Y.Z>   (signed image + release + chart + SBOM + OCM)
-  security-operator            security-operator/v<X.Y.Z>            (signed image + release + chart + SBOM + OCM)
-  search-operator              search-operator/v<X.Y.Z>              (signed image + release + chart + SBOM + OCM)
-  search-service               search-service/v<X.Y.Z>               (signed image + release + chart + SBOM + OCM)
-  terminal-controller-manager  terminal-controller-manager/v<X.Y.Z>  (signed image + release + chart + SBOM + OCM)
-  iam-service                  iam-service/v<X.Y.Z>                  (signed image + release + chart + SBOM + OCM)
-  rebac-authz-webhook          rebac-authz-webhook/v<X.Y.Z>          (signed image + release + chart + SBOM + OCM)
-  virtual-workspaces           virtual-workspaces/v<X.Y.Z>           (signed image + release + chart + SBOM + OCM)
-  all                          every component                       (independent versions)
+%s
 
 Flags:
   --tag <vX.Y.Z>   set the exact version (single component only)
@@ -500,5 +490,5 @@ Examples:
   task release -- account-operator --rc       cut the next rc (e.g. v0.0.2-rc1, then -rc2, ...)
   task release -- account-operator --tag v0.0.1
   task release -- all --dry-run
-`)
+`, strings.Join(componentStrings, "\n"))
 }

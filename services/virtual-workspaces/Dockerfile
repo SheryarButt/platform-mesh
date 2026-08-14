@@ -15,9 +15,9 @@
 # Build the manager binary.
 #
 # NOTE: the build context is the repository ROOT, not this directory.
-# The operator module is linked to the shared ./apis module through the
-# repository-root go.work file, so the workspace and apis source must be
-# present in the build:
+# The operator module is linked to the shared in-repo modules through the
+# repository-root go.work file and the go.mod replace directives, so the
+# workspace and those module sources must be present in the build:
 #   docker build -f services/virtual-workspaces/Dockerfile .
 FROM golang:1.26@sha256:87a41d2539e5671777734e91f467499ed5eafb1fb1f77221dff2744db7a51775 AS builder
 ARG TARGETOS
@@ -29,15 +29,17 @@ WORKDIR /workspace
 COPY go.work go.work
 COPY go.work.sum go.work.sum
 COPY apis/ apis/
+COPY golang-commons/ golang-commons/
+COPY subroutines/ subroutines/
 COPY services/virtual-workspaces/ services/virtual-workspaces/
 
 # Drop every workspace module except the ones copied above, so the workspace
-# resolves with only apis + this operator — regardless of what else go.work lists
+# resolves with only the modules copied above — regardless of what else go.work lists
 # (other operators, cmd/* tools, ...). This is a textual edit of go.work, so the
 # dropped modules don't need to exist in the build context.
 RUN for m in $(go work edit -json | sed -n 's/.*"DiskPath": "\(.*\)".*/\1/p'); do \
       case "$m" in \
-        ./apis|./services/virtual-workspaces) ;; \
+        ./apis|./golang-commons|./subroutines|./services/virtual-workspaces) ;; \
         *) go work edit -dropuse "$m" ;; \
       esac; \
     done

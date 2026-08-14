@@ -1,0 +1,415 @@
+# Copyright The Platform Mesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+version: '3'
+
+includes:
+  # Shared go-installable tooling (controller-gen, golangci-lint, mockery,
+  # apigen), installed once into the root bin/ and reused by every component.
+  tools:
+    taskfile: ../../tools/Taskfile.yaml
+    dir: .
+
+vars:
+  CRD_DIRECTORY: config/crd
+  RESOURCE_DIRECTORY: deploy/kcp/resources
+
+  # --- local dev environment (contrib/tilt, `--profile=tenancy`) --------------
+  #
+  # Every dev hostname is <name>.<CLUSTER_ID>.sslip.io on the gateway's NodePort,
+  # where CLUSTER_ID is the node's InternalIP with dots replaced by dashes. It is
+  # resolved from the cluster rather than written down because it changes with the
+  # kind cluster, and because a literal here would be a fourth copy of the node's
+  # address to keep in step with the Tiltfile, dex and the PlatformMesh.
+  #
+  # sslip.io resolves those names to the node from the host and from inside the
+  # cluster alike, which is why none of this needs a port-forward or /etc/hosts.
+  CLUSTER_ID:
+    sh: kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null | tr '.' '-'
+  GATEWAY_PORT: '{{.GATEWAY_PORT | default "31443"}}'
+
+  # Defaults matching what the Tiltfile hands to kcp and to the operator.
+  # Override on the command line if yours differ, but the issuer and client ID
+  # MUST match kcp's OIDC config or a token minted here is rejected there: the
+  # RBAC identity is derived from the issuer, so a mismatch reads as a puzzling
+  # 403 rather than a bad token.
+  OIDC_ISSUER: '{{.OIDC_ISSUER | default (printf "https://idp.%s.sslip.io:%s" .CLUSTER_ID .GATEWAY_PORT)}}'
+  OIDC_CLIENT_ID: '{{.OIDC_CLIENT_ID | default "platform-mesh"}}'
+  # The front proxy, reached at the hostname the PlatformMesh told it to
+  # advertise. Not a Service name: the deployer generates those with a hash.
+  KCP_SERVER: '{{.KCP_SERVER | default (printf "https://fp.%s.sslip.io:%s" .CLUSTER_ID .GATEWAY_PORT)}}'
+  NAMESPACE: '{{.NAMESPACE | default "platform-mesh-system"}}'
+
+  # contrib/tilt/.secret is gitignored, and is already where the Tilt dev env
+  # drops the admin kubeconfig — so the CAs pulled from the cluster live beside
+  # it rather than in a second place to keep in step.
+  #
+  # REPO_ROOT is resolved here rather than reusing the tools Taskfile's TOPLEVEL:
+  # vars from an included Taskfile resolve inside `cmds`, but NOT when referenced
+  # from this file's own `vars` block — there they silently expand to "", which
+  # turns these into absolute paths at the filesystem root.
+  REPO_ROOT:
+    sh: git rev-parse --show-toplevel
+  SECRET_DIR: '{{.REPO_ROOT}}/contrib/tilt/.secret/kcp'
+  DEX_CA: '{{.REPO_ROOT}}/contrib/tilt/.secret/kcp/dex-ca.crt'
+  KCP_CA: '{{.REPO_ROOT}}/contrib/tilt/.secret/kcp/kcp-ca.crt'
+  VW_CA: '{{.REPO_ROOT}}/contrib/tilt/.secret/kcp/tenancy-vw-ca.crt'
+  # The admin kubeconfig the `deployer-admin` Tilt resource writes, minted by
+  # kcp-operator against the generated front proxy.
+  ADMIN_KUBECONFIG: '{{.REPO_ROOT}}/contrib/tilt/.secret/kcp/tilt-dev-admin.kubeconfig'
+  # The tenancy virtual workspace is reached at the front proxy, always.
+  #
+  # It has no address of its own to a client: the front proxy maps a path to it
+  # (/services/tenancy/) and that mapping is the entrypoint, whether the VW was
+  # installed by an OCMModule or by the chart. The chart's gateway hostname is
+  # not an alternative to this — it is how the front proxy reaches the backend
+  # when the backend is in another cluster, and no client dials it.
+  #
+  # A BASE URL with no path: the CLI appends the virtual workspace's own prefix
+  # (/services/tenancy) to whatever it is given. Writing that prefix here too
+  # doubles it, which resolves to nothing — a 404 from the VW after the token has
+  # already been accepted, reading like a missing object rather than a wrong
+  # address.
+  VW_SERVER: '{{.VW_SERVER | default .KCP_SERVER}}'
+
+tasks:
+  ## Development
+  manifests:
+    cmds:
+      - task: tools:generate-crds
+        vars:
+          PATH: /tenancy/...
+          OUTPUT: '{{.CRD_DIRECTORY}}'
+  generate:
+    cmds:
+      - task: manifests
+      - task: tools:generate-deepcopy
+        vars:
+          PATH: /tenancy/...
+      - task: apiexports
+  apiexports:
+    desc: Render the four tenancy APIExports and their APIResourceSchemas.
+    deps: [tools:apigen]
+    env:
+      APIGEN: '{{.APIGEN}}'
+      HEADER: '{{.HACK}}/boilerplate/boilerplate.yaml.txt'
+    cmds:
+      # apigen emits one export per API group; this group is split into four
+      # by audience and by capability. See the script for why.
+      - ./hack/gen-apiexports.sh
+  build:
+    desc: Build the tenancy-operator.
+    cmds:
+      - go build ./...
+
+  # ---------------------------------------------------------------------------
+  # Local developer flow against the `tenancy` Tilt profile.
+  # ---------------------------------------------------------------------------
+
+  tenancyctl:
+    desc: Build the developer CLI into the root bin.
+    cmds:
+      - go build -o {{.BIN}}/tenancyctl ./cmd/tenancyctl
+    sources:
+      - cmd/tenancyctl/**/*.go
+      - internal/cli/**/*.go
+      - pkg/identity/**/*.go
+    generates:
+      - '{{.BIN}}/tenancyctl'
+
+  dev-module:
+    desc: >-
+      Build THIS checkout as an OCM module and install it. One command from a
+      fresh cluster to a working tenancy tree — no manual patching.
+    deps: [dev-oidc-ca]
+    vars:
+      # A tag no registry serves. That is the point: `kind load` puts it on the
+      # node and nothing can ever replace it, where a tag that also exists
+      # upstream is evicted by kubelet's image GC and silently re-pulled — the
+      # published binary then runs in place of this checkout, with nothing in any
+      # log to say so.
+      #
+      # If it IS evicted the pod reports ImagePullBackOff, which is a question
+      # someone can answer.
+      MODULE_IMAGE: '{{.MODULE_IMAGE | default "platform-mesh.local/tenancy-operator:dev"}}'
+      MODULE_VERSION: '{{.MODULE_VERSION | default "v0.0.0-dev"}}'
+      KIND_CLUSTER: '{{.KIND_CLUSTER | default "platform-mesh"}}'
+      # Two addresses for one registry, because the two ends reach it differently:
+      # this shell pushes over the node's NodePort, the deployer resolves over
+      # Service DNS. http:// is load-bearing — it is how the deployer's resolver
+      # is told to skip TLS (pkg/ocm.ParseRepositoryURL).
+      REGISTRY_PUSH: '{{.REGISTRY_PUSH | default (printf "http://registry.%s.sslip.io:30500/pm" .CLUSTER_ID)}}'
+      REGISTRY_RESOLVE: '{{.REGISTRY_RESOLVE | default (printf "http://registry.%s.svc:5000/pm" .NAMESPACE)}}'
+      SAMPLE: '{{.REPO_ROOT}}/operators/platform-mesh-deployer/config/samples/deploy_v1alpha1_ocmmodule_tenancy-operator.yaml'
+    cmds:
+      - |
+        set -eo pipefail
+        echo "==> image {{.MODULE_IMAGE}}"
+        docker build -q -f {{.REPO_ROOT}}/operators/tenancy-operator/Dockerfile \
+          -t {{.MODULE_IMAGE}} {{.REPO_ROOT}}
+        kind load docker-image {{.MODULE_IMAGE}} --name {{.KIND_CLUSTER}}
+      # Renders the chart with values.module*.yaml and packages it with the image
+      # reference above, so a payload change in this checkout is what gets
+      # installed. Skipping this step is what makes an edited chart look applied
+      # when the last PUBLISHED payload is still running.
+      - |
+        set -eo pipefail
+        echo "==> component {{.MODULE_VERSION}} -> {{.REGISTRY_PUSH}}"
+        cd {{.REPO_ROOT}}/operators/tenancy-operator/deploy/ocm
+        # SKIP_IMAGE_DIGEST because MODULE_IMAGE is served by no registry —
+        # resolving its digest is a HEAD that cannot succeed, and the digest is
+        # not what the payload reads. See build.sh.
+        SKIP_IMAGE_DIGEST=1 IMAGE={{.MODULE_IMAGE}} VERSION={{.MODULE_VERSION}} \
+          ./build.sh --push {{.REGISTRY_PUSH}}
+      # The sample stays the source of truth for the module's SHAPE; only what is
+      # a property of this environment is overridden. The issuer especially: the
+      # sample ships a placeholder that cannot be right anywhere, and a wrong one
+      # is a 401 from the VW with nothing else out of place.
+      - |
+        set -eo pipefail
+        echo "==> OCMModule -> {{.REGISTRY_RESOLVE}} @ {{.MODULE_VERSION}}, issuer {{.OIDC_ISSUER}}"
+        kubectl apply -f {{.SAMPLE}}
+        kubectl patch ocmmodule tenancy-operator -n {{.NAMESPACE}} --type=merge -p '{
+          "spec": {
+            "ocm": {"url": "{{.REGISTRY_RESOLVE}}"},
+            "version": "{{.MODULE_VERSION}}",
+            "values": {"virtualWorkspace": {"oidc": {
+              "issuerURL": "{{.OIDC_ISSUER}}",
+              "clientID": "{{.OIDC_CLIENT_ID}}"
+            }}}
+          }
+        }'
+      - |
+        set -eo pipefail
+        echo "==> waiting for the module"
+        kubectl wait ocmmodule/tenancy-operator -n {{.NAMESPACE}} --for=condition=Ready --timeout=10m
+        echo
+        echo "installed. Sign in with:  task dev-login"
+
+  dev-oidc-ca:
+    desc: >-
+      Give the OCM-deployed virtual workspace dex's CA, so it can verify the dev
+      issuer. REQUIRED for a module install — its pod does not start without this
+      secret. Not needed for a chart install, which mounts no CA unless asked.
+    deps: [dev-ca]
+    vars:
+      # The name the packaged payload mounts, by convention: <module>-oidc-ca in
+      # the component's own namespace. See deploy/ocm/values.module.virtualworkspace.yaml.
+      VW_NAMESPACE: '{{.VW_NAMESPACE | default "tenancy-system"}}'
+      OIDC_CA_SECRET: '{{.OIDC_CA_SECRET | default "tenancy-operator-oidc-ca"}}'
+    cmds:
+      # The payload mounts this unconditionally and the pod does not start
+      # without it, so creating it is what turns a VW that never schedules — or,
+      # with an older payload, a 401 with the issuer and audience both correct —
+      # into a working login against a private-CA IdP.
+      - |
+        kubectl create secret generic {{.OIDC_CA_SECRET}} -n {{.VW_NAMESPACE}} \
+          --from-file=ca.crt={{.DEX_CA}} \
+          --dry-run=client -o yaml | kubectl apply -f -
+      - 'echo "dex CA published as {{.OIDC_CA_SECRET}} in {{.VW_NAMESPACE}}"'
+
+  dev-ca:
+    desc: Pull the dex and kcp CAs out of the running cluster.
+    internal: true
+    cmds:
+      - mkdir -p {{.SECRET_DIR}}
+      # dex signs its own serving cert from a private CA, so the CLI and the
+      # browser both need it to reach the issuer.
+      - kubectl get secret dex-ca -n {{.NAMESPACE}} -o jsonpath='{.data.ca\.crt}' | base64 -d > {{.DEX_CA}}
+      # kcp's CA comes out of the admin kubeconfig the Tilt dev env extracts
+      # (deployer-admin), so there is one source rather than a second copy.
+      - yq '.clusters[0].cluster."certificate-authority-data"' {{.ADMIN_KUBECONFIG}} | base64 -d > {{.KCP_CA}}
+      # The VW is reached at the front proxy, so the certificate the CLI verifies
+      # is the front proxy's and the CA is kcp's — the one written just above.
+      # The VW's own serving certificate is presented only on the hop from the
+      # proxy to the backend, and only the proxy ever checks it.
+      #
+      # Kept as its own file rather than collapsed into KCP_CA so the CLI's
+      # --vw-ca-file keeps meaning "the CA for VW_SERVER", which stays true if
+      # the VW is ever fronted by something else.
+      - cp {{.KCP_CA}} {{.VW_CA}}
+      - 'echo "CAs written to {{.SECRET_DIR}}"'
+
+  dev-login:
+    desc: 'Sign in against the dev IdP (dex). Credentials: dex@pm.localhost / dex'
+    deps: [tenancyctl, dev-ca]
+    cmds:
+      - |
+        echo "Signing in at {{.OIDC_ISSUER}}"
+        echo "  dev credentials: dex@pm.localhost / dex"
+        echo
+        echo "Your BROWSER must also trust the dex CA, or you will get a warning at"
+        echo "the issuer URL. The CA is at {{.DEX_CA}}."
+        echo
+      # Port 8000 is not a choice: dex registers http://127.0.0.1:8000 as the only
+      # loopback redirect for this client, so an ephemeral port would be refused.
+      # If 8000 is busy, free it or add another URI to dex's staticClients.
+      # --server makes login finish the flow: token, then the one
+      # explicit `create users` call. Drop it (or pass --provision=false) to stop
+      # at the token.
+      # --kcp-server/--certificate-authority are passed even though login never
+      # dials kcp: login is what CACHES the environment, and the cache only fills
+      # empty fields. Leaving them out here means an address remembered against a
+      # previous cluster survives every later login — and since every hostname
+      # here carries the node's IP, recreating the kind cluster changes all of
+      # them. `tenancyctl kubeconfig` then writes a kubeconfig for an address
+      # nothing listens on.
+      - '{{.BIN}}/tenancyctl login --oidc-issuer-url={{.OIDC_ISSUER}} --oidc-client-id={{.OIDC_CLIENT_ID}} --oidc-ca-file={{.DEX_CA}} --server={{.VW_SERVER}} --vw-ca-file={{.VW_CA}} --kcp-server={{.KCP_SERVER}} --certificate-authority={{.KCP_CA}}'
+
+  dev-login-bob:
+    desc: 'Sign in as the SECOND test identity (bob@pm.localhost / dex), cached separately.'
+    deps: [tenancyctl, dev-ca]
+    vars:
+      # A separate cache, so signing in as bob does NOT evict the first identity.
+      # Every read below takes --token-cache, which is what lets two sessions
+      # exist side by side — the point of a second user is to have two callers at
+      # once, and one shared cache would make that a login-per-command dance.
+      BOB_CACHE: '{{.SECRET_DIR}}/bob-token.json'
+    cmds:
+      - |
+        echo "Signing in at {{.OIDC_ISSUER}} as the SECOND identity"
+        echo "  dev credentials: bob@pm.localhost / dex"
+        echo
+        echo "Log out of dex in your browser first, or it will silently reuse the"
+        echo "session you already have and sign you in as the wrong user — dex has"
+        echo "skipApprovalScreen: true, so there is no prompt to catch it."
+        echo
+        echo "Token cache: {{.BOB_CACHE}}"
+        echo "Read as bob with:  --token-cache={{.BOB_CACHE}}"
+        echo
+      - '{{.BIN}}/tenancyctl login --oidc-issuer-url={{.OIDC_ISSUER}} --oidc-client-id={{.OIDC_CLIENT_ID}} --oidc-ca-file={{.DEX_CA}} --server={{.VW_SERVER}} --vw-ca-file={{.VW_CA}} --token-cache={{.BOB_CACHE}}'
+
+  dev-whoami-bob:
+    desc: Show the second identity, and the User the platform holds for it.
+    deps: [tenancyctl, dev-ca]
+    cmds:
+      - '{{.BIN}}/tenancyctl whoami --server={{.VW_SERVER}} --vw-ca-file={{.VW_CA}} --token-cache={{.SECRET_DIR}}/bob-token.json'
+
+  dev-whoami:
+    desc: Show the cached identity, and ask the virtual workspace for its User.
+    deps: [tenancyctl, dev-ca]
+    cmds:
+      # --server makes this the `get users/~` call rather than a
+      # local token decode. Reachable directly: the VW is one more SNI name on
+      # the gateway, at an address that resolves from the host.
+      - '{{.BIN}}/tenancyctl whoami --server={{.VW_SERVER}} --vw-ca-file={{.VW_CA}}'
+
+  dev-provision:
+    desc: Provision the caller's User (the explicit `create users` call).
+    deps: [tenancyctl, dev-ca]
+    cmds:
+      - '{{.BIN}}/tenancyctl users create --server={{.VW_SERVER}} --vw-ca-file={{.VW_CA}}'
+
+  dev-tenants:
+    desc: List the tenants you belong to.
+    deps: [tenancyctl, dev-ca]
+    cmds:
+      - '{{.BIN}}/tenancyctl tenants --server={{.VW_SERVER}} --vw-ca-file={{.VW_CA}}'
+
+  dev-projects:
+    desc: 'List the projects you can work in (TENANT=<uuid|name> to narrow).'
+    deps: [tenancyctl, dev-ca]
+    cmds:
+      - '{{.BIN}}/tenancyctl projects --server={{.VW_SERVER}} --vw-ca-file={{.VW_CA}} {{if .TENANT}}--tenant={{.TENANT}}{{end}}'
+
+  dev-memberships:
+    desc: 'List who belongs to your tenants (TENANT=<uuid|name> to narrow).'
+    deps: [tenancyctl, dev-ca]
+    cmds:
+      # The only path to Memberships. They live in the Tenant workspace,
+      # where no tenant identity has any RBAC — so there is no kubectl equivalent
+      # of this, by design (RFC 010 §2.2).
+      - '{{.BIN}}/tenancyctl memberships --server={{.VW_SERVER}} --vw-ca-file={{.VW_CA}} {{if .TENANT}}--tenant={{.TENANT}}{{end}}'
+
+  dev-grant-group:
+    desc: 'Grant an IdP group access to a tenant (TENANT=<uuid|name> [GROUP=<g>] [ROLE=<role>]).'
+    deps: [tenancyctl, dev-ca]
+    vars:
+      # The group both dev identities carry. Granting THIS one is what makes the
+      # dev environment mode C rather than mode A: bob@ reaches the tenant without
+      # anybody granting bob@ anything, because the grant names a group their token
+      # happens to carry.
+      GROUP: '{{.GROUP | default "acme-engineering"}}'
+      ROLE: '{{.ROLE | default "member"}}'
+    cmds:
+      - |
+        if [ -z "{{.TENANT}}" ]; then
+          echo "TENANT is required — a grant has to say where." >&2
+          echo >&2
+          echo "  task dev-tenants                     # the ones you administer" >&2
+          echo "  TENANT=<uuid|name> task dev-grant-group" >&2
+          echo >&2
+          echo 'You must be an ADMIN of it. After "task dev-login", that is your' >&2
+          echo "own personal tenant." >&2
+          exit 1
+        fi
+      # Nothing verifies the group. There is no object for one and no way to
+      # enumerate it, so a typo is accepted and grants nobody — check with
+      # `task dev-whoami-bob`, which prints the groups bob's token carries.
+      - '{{.BIN}}/tenancyctl memberships add --group={{.GROUP}} --tenant={{.TENANT}} --role={{.ROLE}} --server={{.VW_SERVER}} --vw-ca-file={{.VW_CA}}'
+
+  dev-kubeconfig:
+    desc: 'Write a kubeconfig for one workspace (CLUSTER=<id> task dev-kubeconfig).'
+    deps: [tenancyctl]
+    vars:
+      # No default, deliberately: a platform-chosen "default workspace" funnels
+      # every request into one place. Choosing is the client's job.
+      CLUSTER: '{{.CLUSTER}}'
+      OUTPUT: '{{.OUTPUT | default "-"}}'
+    cmds:
+      - |
+        if [ -z "{{.CLUSTER}}" ]; then
+          echo "CLUSTER is required — there is no default workspace in this model." >&2
+          echo >&2
+          echo "List the workspaces you can reach:" >&2
+          echo "  KUBECONFIG={{.ADMIN_KUBECONFIG}} \\" >&2
+          echo "    kubectl --server {{.KCP_SERVER}}/clusters/root:tenancy:tenants get workspaces" >&2
+          echo >&2
+          echo "Then:  CLUSTER=<id> task dev-kubeconfig" >&2
+          exit 1
+        fi
+      - task: dev-ca
+      # The CLI writes itself in as a credential plugin, so the token refreshes
+      # without a browser. That needs a STABLE path — which is why this depends on
+      # the built binary rather than using `go run`, whose temporary binary is
+      # deleted the moment it exits.
+      - '{{.BIN}}/tenancyctl kubeconfig --kcp-server={{.KCP_SERVER}} --cluster={{.CLUSTER}} --certificate-authority={{.KCP_CA}} --oidc-issuer-url={{.OIDC_ISSUER}} --oidc-client-id={{.OIDC_CLIENT_ID}} --oidc-ca-file={{.DEX_CA}} -o {{.OUTPUT}}'
+  ## Testing
+  fmt:
+    cmds:
+      - go fmt ./...
+  lint:
+    cmds:
+      - task: fmt
+      - task: tools:lint
+  test:
+    desc: Run unit tests. test/e2e is excluded — it needs a real kcp (see test-e2e).
+    cmds:
+      # Every package EXCEPT test/e2e, which starts a kcp and takes minutes. Listed
+      # by exclusion rather than by naming ./internal/... and ./pkg/... so a new
+      # top-level package is covered by default instead of silently untested.
+      - go test -count=1 $(go list ./... | grep -v '/test/e2e$')
+  test-e2e:
+    desc: Run envtest integration tests (uses the shared kcp from the root bin).
+    deps: [tools:kcp]
+    env:
+      TEST_KCP_ASSETS: '{{.BIN}}'
+    cmds:
+      # A real kcp, started by the suite. Slower than the unit tests by an order of
+      # magnitude — the install alone creates five workspaces and waits for each —
+      # so it is a separate target rather than part of `test`.
+      - go test -count=1 -timeout 20m ./test/e2e/... {{.ADDITIONAL_COMMAND_ARGS}}
+  cover:
+    cmds:
+      - go test -count=1 $(go list ./... | grep -v '/test/e2e$') -coverprofile=./cover.out -covermode=atomic -coverpkg=./...

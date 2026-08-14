@@ -1,0 +1,82 @@
+# Copyright The Platform Mesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+{{ $values := .values }}
+{{- range $service, $config := .values.services }}
+{{- if $config.enabled }}
+{{- with $config.imageResources }}
+{{- range . }}
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  {{- if .name }}
+  name: "{{ .name }}"
+  {{- else }}
+  name: "{{ $service }}-image"
+  {{- end }}
+  namespace: {{ $.releaseNamespace }}
+  {{- with .labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  componentRef:
+    name: {{ $values.ocm.component.name }}
+  resource:
+    byReference:
+      resource:
+        name: {{ .resource | default "image" }}
+      referencePath:
+        {{- if .absoluteReferencePath }}
+        {{- toYaml .absoluteReferencePath | nindent 8 }}
+        {{- else if .referencePath }}
+        {{- with $values.ocm.referencePath }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- toYaml .referencePath | nindent 8 }}
+        {{- else if $config.referencePath }}
+        {{- with $values.ocm.referencePath }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- toYaml $config.referencePath | nindent 8 }}
+        {{- else }}
+        {{- with $values.ocm.referencePath }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        - name: {{ $service }}
+        {{- end }}
+        {{- if not .absoluteReferencePath }}
+        {{- if not $config.external }}
+        - name: image
+        {{- end }}
+        {{- end }}
+  additionalStatusFields:
+    registry: resource.access.imageReference.toOCI().registry
+    repository: resource.access.imageReference.toOCI().repository
+    tag: resource.access.imageReference.toOCI().tag
+    digest: resource.access.imageReference.toOCI().digest
+  ocmConfig:
+    - kind: Repository
+      apiVersion: delivery.ocm.software/v1alpha1
+      name: {{ $values.ocm.repo.name }}
+      namespace: {{ $.releaseNamespace }}
+---
+{{- end }}
+{{- end }}
+{{ end -}}
+{{ end -}}

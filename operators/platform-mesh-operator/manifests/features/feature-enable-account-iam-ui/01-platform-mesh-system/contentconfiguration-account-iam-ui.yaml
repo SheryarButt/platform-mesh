@@ -1,0 +1,88 @@
+# Copyright The Platform Mesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: ui.platform-mesh.io/v1alpha1
+kind: ContentConfiguration
+metadata:
+  labels:
+    ui.platform-mesh.io/entity: core_platform-mesh_io_account
+  name: account-iam-ui
+spec:
+  inlineConfiguration:
+    content: |-
+      {
+        "name": "iam-ui",
+        "luigiConfigFragment": {
+          "data": {
+            "nodes": [
+              {
+                "pathSegment": "members",
+                "label": "Members",
+                "icon": "company-view",
+                "order": 800,
+                "entityType": "main.core_platform-mesh_io_account",
+                "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/iam/ui/#/organization/members",
+                "viewGroup": "members",
+                "category": {
+                    "id": "settings",
+                    "isGroup": true,
+                    "label": "Settings & Access",
+                    "order": 1000
+                },
+                "context": {
+                  "resourceDefinition": {
+                    "group": "core.platform-mesh.io",
+                    "kind": "Account"
+                  }
+                }
+              },
+              {
+                "pathSegment": "add-members",
+                "entityType": "main.core_platform-mesh_io_account",
+                "label": "members",
+                "hideFromNav": true,
+                "url": "https://{context.organization}.{{ .baseDomainPort }}/ui/iam/ui/#/organization/add-members",
+                "viewGroup": "members",
+                "context": {
+                  "resourceDefinition": {
+                    "group": "core.platform-mesh.io",
+                    "kind": "Account"
+                  }
+                }
+              }
+            ],
+            "texts": [
+              {
+                "locale": "",
+                "textDictionary": {
+                  "members": "Members"
+                }
+              },
+              {
+                "locale": "en",
+                "textDictionary": {
+                  "members": "Members"
+                }
+              },
+              {
+                "locale": "de",
+                "textDictionary": {
+                  "members": "Mitglieder"
+                }
+              }
+            ]
+          }
+        }
+      }
+    contentType: json

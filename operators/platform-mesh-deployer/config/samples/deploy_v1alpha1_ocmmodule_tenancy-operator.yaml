@@ -1,0 +1,135 @@
+# Copyright The Platform Mesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# The tenancy-operator installed onto a running PlatformMesh.
+#
+# The component is published by .github/workflows/tenancy-operator.yml, which
+# packages the operator's manifests alongside the image; see
+# operators/tenancy-operator/deploy/ocm/README.md for how, and for the local
+# build that produces the same component before a version is tagged.
+apiVersion: deploy.platform-mesh.io/v1alpha1
+kind: OCMModule
+metadata:
+  name: tenancy-operator
+  namespace: platform-mesh-system
+spec:
+  # The installation this module is deployed onto. Must name a PlatformMesh in
+  # this namespace; `dev` is what contrib/tilt and docs/local-kind.md create.
+  platformMeshRef:
+    name: dev
+
+  # post-topology: the operator talks to kcp on startup, so it must not be
+  # scheduled before the front proxy serves.
+  stage: post-topology
+
+  # Where the module component is resolved from. Omit to inherit the
+  # PlatformMesh's own spec.ocm.url.
+  ocm:
+    url: ghcr.io/platform-mesh/platform-mesh
+  component: github.com/platform-mesh/images/tenancy-operator
+  # The first version carrying the `controller-manifests` resource. v0.0.1 is
+  # image + SBOMs only and cannot back a module: the payload download resolves
+  # localBlob access, and an ociArtifact resource fails at render time.
+  version: v0.0.2
+
+  # Read by the payload as ${values.*}. Only what genuinely varies per
+  # installation lives here; everything else is baked into the packaged
+  # manifests by deploy/ocm/values.module.yaml.
+  #
+  # oidc MUST mirror the RootShardTemplate's spec.auth.oidc of this
+  # PlatformMesh. The operator derives every ClusterRoleBinding subject from
+  # these two fields, so a mismatch produces bindings naming a user who never
+  # authenticates — a 403 in a workspace the person owns, with a Membership and
+  # a binding that both look correct.
+  values:
+    oidc:
+      usernameClaim: email
+      usernamePrefix: "pm:"
+    log:
+      level: info
+    # Read by the virtual-workspace payload. MUST be the same issuer kcp
+    # authenticates against — mirror the PlatformMesh's RootShardTemplate
+    # spec.auth.oidc here. The VW verifies the caller's token itself, before kcp
+    # is involved, so a mismatch means a token kcp accepts is rejected (or
+    # resolved to a different identity than RBAC will be enforced against), and
+    # the symptom is a 401 from the VW with nothing wrong at either end.
+    #
+    # THE VALUE BELOW IS A PLACEHOLDER and will reject every real token. There is
+    # no default that could be right: it is a property of the installation.
+    #
+    # REQUIRED alongside this: a secret `tenancy-operator-oidc-ca` (key `ca.crt`)
+    # in the virtual-workspace component's namespace, holding the trust root for
+    # that issuer — its private CA, or the system bundle when the issuer is
+    # publicly trusted. The payload mounts it unconditionally and the pod will not
+    # start without it, so that a trust root is always something someone chose
+    # rather than whatever the image happened to ship. `task dev-oidc-ca` creates
+    # it for the tilt dev environment; see
+    # deploy/ocm/values.module.virtualworkspace.yaml for why it is not optional.
+    virtualWorkspace:
+      oidc:
+        issuerURL: https://idp.example.com
+        clientID: platform-mesh
+
+  # The module's own workspace, root:modules:tenancy-operator. The operator's
+  # installer builds the whole tenancy tree underneath it.
+  #
+  # No `content`: unlike a module that ships plain kcp manifests, this one
+  # installs its APIExports, APIResourceSchemas and WorkspaceTypes itself, with
+  # `tenancy-operator init` — those manifests carry an __EXPORTS_REF__ that is
+  # resolved against the install's own paths and are not directly appliable.
+  workspaces:
+    - name: ""
+
+  # kcp-operator mints this and the deployer copies it into the component's
+  # namespace as `tenancy-operator-kcp`. It is cluster-admin INSIDE
+  # root:modules:tenancy-operator and nothing else, which is exactly the scope
+  # the installer needs — and the reason the payload sets --paths-root to that
+  # workspace rather than to root:tenancy.
+  kubeconfigs:
+    - name: kcp
+      target: front-proxy
+
+  components:
+    - name: controller
+      resource: controller-manifests
+      # The manager is a leader-elected singleton reaching the whole fleet
+      # through APIExport virtual workspaces, so one instance next to the root
+      # shard — not one per shard.
+      placement: root-shard
+      namespace: tenancy-system
+      kubeconfigs:
+        - kcp
+
+    # The tenancy virtual workspace: same image, different command. Stateless
+    # with one watch per caller, so it scales with the front proxies — the
+    # opposite shape of the manager, which is why it is a second component
+    # rather than a second container.
+    - name: virtual-workspace
+      resource: virtualworkspace-manifests
+      placement: per-front-proxy
+      namespace: tenancy-system
+      kubeconfigs:
+        - kcp
+      # Exposes the VW under a front-proxy path. The deployer mints the serving
+      # certificate for the mapped Service — synced into the namespace above as
+      # tenancy-operator-virtual-workspace-serving, which is the secret the
+      # payload mounts — and signed by the root shard's server CA the front
+      # proxy already trusts. The chart's own Certificate and TLSRoute are off
+      # in the packaged values; this mapping is the single owner of exposure.
+      mapping:
+        path: /services/tenancy/
+        # The chart's VW Service name: <release fullname>-vw, and render.sh
+        # templates the release as "tenancy-operator".
+        service: tenancy-operator-vw
+        port: 6443

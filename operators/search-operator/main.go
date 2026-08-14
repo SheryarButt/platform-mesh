@@ -201,7 +201,7 @@ func main() {
 
 	// Setup APIBinding controller: reconciles APIBindings and ensures SearchIndex resources
 	// in the owning org workspace for each bound export.
-	apiBindingReconciler, err := controller.NewAPIBindingReconciler(log, mgr, cfg.OpenSearch.IndexNamePrefix)
+	apiBindingReconciler, err := controller.NewAPIBindingReconciler(log, mgr, cfg)
 	if err != nil {
 		setupLog.Error(err, "unable to create APIBinding reconciler")
 		os.Exit(1)

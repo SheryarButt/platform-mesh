@@ -19,10 +19,12 @@ package authn
 import (
 	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/go-logr/logr/funcr"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 
@@ -30,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 func TestNoopValidatorAcceptsAnyToken(t *testing.T) {
@@ -203,6 +206,75 @@ func TestCacheTTLCappedAtTokenExpiry(t *testing.T) {
 
 	_, _ = v.Validate(t.Context(), shortLivedToken)
 	assert.Equal(t, int32(2), calls.Load(), "should call API after token expired")
+}
+
+func TestNegativeVerdictNotCachedLong(t *testing.T) {
+	old := negativeCacheTTL
+	negativeCacheTTL = 50 * time.Millisecond
+	t.Cleanup(func() { negativeCacheTTL = old })
+
+	var callIdx atomic.Int32
+	cs := fake.NewClientset()
+	cs.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		idx := callIdx.Add(1)
+		tr := action.(k8stesting.CreateAction).GetObject().(*authenticationv1.TokenReview)
+		tr.Status.Authenticated = idx > 1 // first review denies, later ones allow
+		if idx == 1 {
+			tr.Status.Error = "token not yet valid"
+		}
+		return true, tr, nil
+	})
+	v := NewTokenReviewValidatorFromClientset(cs, 5*time.Minute)
+
+	ok, _ := v.Validate(t.Context(), "recovering-token")
+	assert.False(t, ok)
+
+	// Within the negative TTL the deny verdict is served from cache.
+	ok, _ = v.Validate(t.Context(), "recovering-token")
+	assert.False(t, ok)
+	assert.Equal(t, int32(1), callIdx.Load())
+
+	time.Sleep(100 * time.Millisecond)
+
+	// After the short negative TTL a fresh review runs and succeeds.
+	ok, err := v.Validate(t.Context(), "recovering-token")
+	assert.NoError(t, err)
+	assert.True(t, ok, "deny verdict must not outlive the negative TTL")
+	assert.Equal(t, int32(2), callIdx.Load())
+}
+
+func TestDeniedVerdictIsLogged(t *testing.T) {
+	var mu sync.Mutex
+	var lines []string
+	logger := funcr.New(func(prefix, args string) {
+		mu.Lock()
+		defer mu.Unlock()
+		lines = append(lines, args)
+	}, funcr.Options{Verbosity: 5})
+	ctx := log.IntoContext(t.Context(), logger)
+
+	var calls atomic.Int32
+	cs := fake.NewClientset()
+	cs.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		calls.Add(1)
+		tr := action.(k8stesting.CreateAction).GetObject().(*authenticationv1.TokenReview)
+		tr.Status.Authenticated = false
+		tr.Status.Error = "square/go-jose: error in cryptographic primitive"
+		return true, tr, nil
+	})
+	v := NewTokenReviewValidatorFromClientset(cs, 5*time.Minute)
+
+	_, _ = v.Validate(ctx, "bad-token") // fresh denial
+	_, _ = v.Validate(ctx, "bad-token") // cached denial
+
+	mu.Lock()
+	joined := ""
+	for _, l := range lines {
+		joined += l + "\n"
+	}
+	mu.Unlock()
+	assert.Contains(t, joined, "square/go-jose", "fresh denial must log tr.Status.Error")
+	assert.Contains(t, joined, "cached", "cached denial must be distinguishable from a fresh review")
 }
 
 func TestConcurrentValidation(t *testing.T) {

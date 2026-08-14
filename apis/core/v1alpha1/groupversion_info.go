@@ -53,6 +53,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&IdentityProviderConfigurationList{},
 		&Invite{},
 		&InviteList{},
+		&PlatformMesh{},
+		&PlatformMeshList{},
 		&Store{},
 		&StoreList{},
 	)

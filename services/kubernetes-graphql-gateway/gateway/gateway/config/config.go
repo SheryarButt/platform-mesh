@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/authn"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/cluster"
 	"go.platform-mesh.io/kubernetes-graphql-gateway/gateway/gateway/metrics"
 )
 
@@ -65,6 +66,9 @@ type Gateway struct {
 	// Metrics is optional. When non-nil, all components record Prometheus
 	// metrics. Pass nil to disable instrumentation entirely.
 	Metrics *metrics.Collector
+
+	// ClusterOptions holds tuning parameters applied to every cluster connection.
+	ClusterOptions cluster.Options
 }
 
 // GraphQL holds GraphQL handler configuration.

@@ -19,6 +19,11 @@ metadata:
 spec:
   resources:
   - group: search.platform-mesh.io
+    name: searchconfigs
+    schema: v260812-dee5e7d9.searchconfigs.search.platform-mesh.io
+    storage:
+      crd: {}
+  - group: search.platform-mesh.io
     name: searchindices
     schema: v260623-3da051b6.searchindices.search.platform-mesh.io
     storage:

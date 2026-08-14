@@ -58,6 +58,7 @@ func New(
 	tokenReviewCacheTTL time.Duration,
 	injectedValidator authn.Validator,
 	m *metrics.Collector,
+	clusterOpts cluster.Options,
 ) (*Endpoint, error) {
 	var endpointM *metrics.EndpointMetrics
 	var resolverM *metrics.ResolverMetrics
@@ -73,7 +74,7 @@ func New(
 		return nil, fmt.Errorf("failed to parse schema: %w", err)
 	}
 
-	cl, err := cluster.New(ctx, name, schemaData.ClusterMetadata)
+	cl, err := cluster.New(ctx, name, schemaData.ClusterMetadata, clusterOpts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cluster: %w", err)
 	}
@@ -144,6 +145,7 @@ func New(
 
 		token, ok := utilscontext.GetTokenFromCtx(r.Context())
 		if !ok || token == "" {
+			log.FromContext(r.Context()).V(1).Info("request rejected: no bearer token", "cluster", name)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -154,6 +156,9 @@ func New(
 			return
 		}
 		if !authenticated {
+			// Verdict details (TokenReview status.error, cache-hit vs fresh)
+			// are logged by the validator.
+			log.FromContext(r.Context()).V(1).Info("request rejected: token failed TokenReview", "cluster", name)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}

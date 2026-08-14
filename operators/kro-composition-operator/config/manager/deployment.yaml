@@ -1,0 +1,74 @@
+# Copyright The Platform Mesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kro-composition-operator
+  namespace: platform-mesh-system
+  labels:
+    app: kro-composition-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kro-composition-operator
+  template:
+    metadata:
+      labels:
+        app: kro-composition-operator
+    spec:
+      serviceAccountName: kro-composition-operator
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: manager
+          image: kro-composition-operator
+          args:
+            # kcp identity from the ManagedProvider connection (adminAuth). The
+            # operator writes into consumer workspaces as this identity.
+            - --kubeconfig=/kubeconfig/kubeconfig
+            - --provider-workspace=root:providers:kro-provider
+            - --apiexport-endpointslice=kro.run
+            # Leader election defaults off (single active instance); enable it
+            # (--leader-elect) only for a multi-replica HA deployment.
+            - --health-probe-bind-address=:8081
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: kubeconfig
+              mountPath: /kubeconfig
+              readOnly: true
+      volumes:
+        - name: kubeconfig
+          secret:
+            secretName: kcp-kubeconfig

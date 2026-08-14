@@ -20,12 +20,12 @@
 load('ext://cert_manager', 'deploy_cert_manager')
 load('ext://helm_remote', 'helm_remote')
 
-# cert-manager — issues the self-signed CA the kcp shards use.
+# cert-manager — issues the self-signed CAs dex and the kcp shards root from.
 deploy_cert_manager(version='v1.19.2')
 
-# Envoy Gateway controller — programs the `platform-mesh` Gateway (Gateway CR in
-# manifests/gateway.yaml). Production uses traefik; envoy here keeps parity with
-# the kcp reference and is enough to prove the routing.
+# Envoy Gateway controller — programs the `eg` Gateway the deployer brings
+# (config/bases/envoy-gateway). Production uses traefik; envoy here is enough to
+# prove the routing, and it carries every SNI name in the environment.
 namespace_yaml = 'apiVersion: v1\nkind: Namespace\nmetadata:\n  name: envoy-gateway-system\n'
 k8s_yaml(blob(namespace_yaml))
 helm_remote(
@@ -37,32 +37,9 @@ helm_remote(
     version='v1.7.0',
 )
 
-# kcp-operator — reconciles the RootShard/Shard/FrontProxy CRs that deploy_kcp
-# emits. Pinned to a released version.
-#
-# The operator's own config/manager kustomization pins `newTag: e2e` — a
-# floating CI tag, not a release (`:e2e` is not even a stable image). We pull the
-# base at the release ref and override the image tag to the same release via a
-# generated overlay, so we run a reproducible `:vX.Y.Z` image. `kubectl -k`
-# resolves the remote base natively; Tilt's builtin kustomize() does not fetch
-# remote URLs. Override the version with KCP_OPERATOR_VERSION.
-KCP_OPERATOR_VERSION = os.getenv('KCP_OPERATOR_VERSION', 'v0.8.2')
-local_resource(
-    'kcp-operator',
-    cmd='''set -eo pipefail
-tmp=$(mktemp -d)
-cat > "$tmp/kustomization.yaml" <<EOF
-resources:
-  - https://github.com/kcp-dev/kcp-operator/config/default?ref={v}
-images:
-  - name: ghcr.io/kcp-dev/kcp-operator
-    newTag: {v}
-EOF
-kubectl apply --server-side -k "$tmp"
-rm -rf "$tmp"'''.format(v=KCP_OPERATOR_VERSION),
-    labels=['infra'],
-    allow_parallel=True,
-)
+# kcp-operator is NOT here, and is not deployed at all. platform-mesh-deployer
+# runs kcp-operator's config and workload controller groups inside its own
+# manager and installs only their CRDs.
 
 # ---------------------------------------------------------------------------
 # Delivery engines for the provider-operator's ManagedProvider deploy step
@@ -106,13 +83,10 @@ helm_remote(
     version='0.3.0',
 )
 
-# Ingress port-forward to the gateway so root.pm.localhost:8443 is reachable
-# from the host. Mirrors the kcp reference port-forward loop.
-local_resource(
-    'ingress',
-    serve_cmd='kubectl -n envoy-gateway-system wait gateway/platform-mesh --for=condition=Programmed --timeout=5m 2>/dev/null; ' +
-              'while true; do svc=$(kubectl -n envoy-gateway-system get svc -l gateway.envoyproxy.io/owning-gateway-name=platform-mesh -o jsonpath="{.items[0].metadata.name}" 2>/dev/null); ' +
-              '[ -n "$svc" ] && kubectl -n envoy-gateway-system port-forward "svc/$svc" 8443:8443 || true; sleep 2; done',
-    labels=['infra'],
-    allow_parallel=True,
-)
+# NO INGRESS PORT-FORWARD any more.
+#
+# It existed because *.pm.localhost resolves to loopback, so the host could only
+# reach the gateway through a tunnel. Every hostname is now
+# <name>.<node-ip>.sslip.io on the gateway's pinned NodePort, which the host
+# resolves and routes to directly — so there is nothing to forward, and no
+# long-running process whose death silently breaks every kubectl.
