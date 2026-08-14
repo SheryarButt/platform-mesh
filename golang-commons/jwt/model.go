@@ -45,6 +45,8 @@ type WebToken struct {
 	IssuerAttributes
 	UserAttributes
 	ParsedAttributes
+
+	Claims ClaimSet `json:"-"`
 }
 
 // New retrieves a new WebToken from an id_token string provided by OpenID communication
@@ -58,7 +60,8 @@ func New(idToken string, signatureAlgorithms []jose.SignatureAlgorithm) (webToke
 	}
 
 	rawToken := new(rawWebToken)
-	desErr := token.UnsafeClaimsWithoutVerification(&rawToken)
+	claims := make(map[string]any)
+	desErr := token.UnsafeClaimsWithoutVerification(rawToken, &claims)
 	if desErr != nil {
 		err = fmt.Errorf("unable to deserialize claims: %w", desErr)
 		return
@@ -70,6 +73,7 @@ func New(idToken string, signatureAlgorithms []jose.SignatureAlgorithm) (webToke
 	webToken.Mail = rawToken.getMail()
 	webToken.FirstName = rawToken.getFirstName()
 	webToken.LastName = rawToken.getLastName()
+	webToken.Claims = ClaimSet{values: claims}
 
 	return
 }

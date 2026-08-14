@@ -23,11 +23,16 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-jose/go-jose/v4"
+	josejwt "github.com/go-jose/go-jose/v4/jwt"
+
 	pmcontext "go.platform-mesh.io/golang-commons/context"
 	"go.platform-mesh.io/golang-commons/context/keys"
-	"go.platform-mesh.io/golang-commons/jwt"
+	pmjwt "go.platform-mesh.io/golang-commons/jwt"
 	appcontext "go.platform-mesh.io/search-service/internal/context"
 )
+
+var testJWTSigningKey = []byte("0123456789abcdef0123456789abcdef")
 
 type fakeOrgValidator struct {
 	allowed bool
@@ -42,63 +47,145 @@ func (f *fakeOrgValidator) ValidateTokenForOrg(_ context.Context, authHeader, or
 	return f.allowed, f.err
 }
 
-func TestSetRequestContextSuccessUsesMailFallbackToSub(t *testing.T) {
-	validator := &fakeOrgValidator{allowed: true}
-	mw := NewOrgContextMiddleware(validator, false, "local")
+func newWebToken(t *testing.T, claims map[string]any) pmjwt.WebToken {
+	t.Helper()
 
-	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
-	req.Host = "acme.platform-mesh.io:8443"
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.HS256, Key: testJWTSigningKey}, nil)
+	if err != nil {
+		t.Fatalf("create JWT signer: %v", err)
+	}
+	token, err := josejwt.Signed(signer).Claims(claims).Serialize()
+	if err != nil {
+		t.Fatalf("sign JWT: %v", err)
+	}
+	webToken, err := pmjwt.New(token, []jose.SignatureAlgorithm{jose.HS256})
+	if err != nil {
+		t.Fatalf("parse JWT: %v", err)
+	}
+	return webToken
+}
 
-	ctx := pmcontext.AddAuthHeaderToContext(req.Context(), "Bearer abc")
-	ctx = context.WithValue(ctx, keys.WebTokenCtxKey, jwt.WebToken{
-		IssuerAttributes: jwt.IssuerAttributes{
-			Issuer:  "https://idp.example.org/auth/realms/acme-tenant",
-			Subject: "subject-user",
+func TestSetRequestContextUsesConfiguredUserClaim(t *testing.T) {
+	tests := []struct {
+		name      string
+		userClaim string
+		wantUser  string
+	}{
+		{name: "email", userClaim: "email", wantUser: "user@example.org"},
+		{name: "subject", userClaim: "sub", wantUser: "subject-user"},
+		{name: "custom claim", userClaim: "preferred_username", wantUser: "roman"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			validator := &fakeOrgValidator{allowed: true}
+			mw := NewOrgContextMiddleware(validator, false, "local", tt.userClaim)
+
+			req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
+			req.Host = "acme.platform-mesh.io:8443"
+
+			ctx := pmcontext.AddAuthHeaderToContext(req.Context(), "Bearer abc")
+			ctx = context.WithValue(ctx, keys.WebTokenCtxKey, newWebToken(t, map[string]any{
+				"iss":                "https://idp.example.org/auth/realms/acme-tenant",
+				"sub":                "subject-user",
+				"email":              "user@example.org",
+				"preferred_username": "roman",
+			}))
+			req = req.WithContext(ctx)
+
+			rr := httptest.NewRecorder()
+			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				rc, err := appcontext.GetRequestContext(r.Context())
+				if err != nil {
+					t.Fatalf("request context missing: %v", err)
+				}
+				if rc.Organization != "acme" {
+					t.Fatalf("unexpected org: %s", rc.Organization)
+				}
+				if rc.User != tt.wantUser {
+					t.Fatalf("expected configured claim user %q, got %q", tt.wantUser, rc.User)
+				}
+				if rc.IDMTenant != "acme-tenant" {
+					t.Fatalf("unexpected tenant: %s", rc.IDMTenant)
+				}
+				w.WriteHeader(http.StatusNoContent)
+			})
+
+			mw.SetRequestContext()(next).ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusNoContent {
+				t.Fatalf("expected 204, got %d", rr.Code)
+			}
+			if validator.org != "acme" {
+				t.Fatalf("expected org acme in validator, got %s", validator.org)
+			}
+			if validator.auth != "Bearer abc" {
+				t.Fatalf("expected auth header passed to validator")
+			}
+		})
+	}
+}
+
+func TestSetRequestContextReturns401ForInvalidConfiguredUserClaim(t *testing.T) {
+	tests := []struct {
+		name      string
+		userClaim string
+		claims    map[string]any
+	}{
+		{
+			name:      "missing claim",
+			userClaim: "preferred_username",
+			claims:    map[string]any{"email": "user@example.org"},
 		},
-		ParsedAttributes: jwt.ParsedAttributes{Mail: ""},
-	})
-	req = req.WithContext(ctx)
-
-	rr := httptest.NewRecorder()
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rc, err := appcontext.GetRequestContext(r.Context())
-		if err != nil {
-			t.Fatalf("request context missing: %v", err)
-		}
-		if rc.Organization != "acme" {
-			t.Fatalf("unexpected org: %s", rc.Organization)
-		}
-		if rc.User != "subject-user" {
-			t.Fatalf("expected subject fallback user, got %s", rc.User)
-		}
-		if rc.IDMTenant != "acme-tenant" {
-			t.Fatalf("unexpected tenant: %s", rc.IDMTenant)
-		}
-		w.WriteHeader(http.StatusNoContent)
-	})
-
-	mw.SetRequestContext()(next).ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", rr.Code)
+		{
+			name:      "non-string claim",
+			userClaim: "user_id",
+			claims:    map[string]any{"user_id": 42},
+		},
+		{
+			name:      "blank claim",
+			userClaim: "preferred_username",
+			claims:    map[string]any{"preferred_username": "  "},
+		},
+		{
+			name:      "blank claim name",
+			userClaim: "  ",
+			claims:    map[string]any{"email": "user@example.org"},
+		},
 	}
-	if validator.org != "acme" {
-		t.Fatalf("expected org acme in validator, got %s", validator.org)
-	}
-	if validator.auth != "Bearer abc" {
-		t.Fatalf("expected auth header passed to validator")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			validator := &fakeOrgValidator{allowed: false}
+			mw := NewOrgContextMiddleware(validator, true, "local", tt.userClaim)
+
+			req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
+			req.Host = "localhost:8443"
+			tt.claims["iss"] = "https://idp.example.org/auth/realms/acme-tenant"
+			ctx := context.WithValue(req.Context(), keys.WebTokenCtxKey, newWebToken(t, tt.claims))
+			req = req.WithContext(ctx)
+
+			rr := httptest.NewRecorder()
+			mw.SetRequestContext()(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				t.Fatalf("next handler must not be called")
+			})).ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusUnauthorized {
+				t.Fatalf("expected 401, got %d", rr.Code)
+			}
+		})
 	}
 }
 
 func TestSetRequestContextForbiddenWhenOrgCheckFails(t *testing.T) {
 	validator := &fakeOrgValidator{allowed: false}
-	mw := NewOrgContextMiddleware(validator, false, "local")
+	mw := NewOrgContextMiddleware(validator, false, "local", "email")
 
 	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
 	req.Host = "acme.platform-mesh.io"
 	ctx := pmcontext.AddAuthHeaderToContext(req.Context(), "Bearer abc")
-	ctx = context.WithValue(ctx, keys.WebTokenCtxKey, jwt.WebToken{
-		IssuerAttributes: jwt.IssuerAttributes{
+	ctx = context.WithValue(ctx, keys.WebTokenCtxKey, pmjwt.WebToken{
+		IssuerAttributes: pmjwt.IssuerAttributes{
 			Issuer:  "https://idp.example.org/auth/realms/acme-tenant",
 			Subject: "user",
 		},
@@ -117,13 +204,13 @@ func TestSetRequestContextForbiddenWhenOrgCheckFails(t *testing.T) {
 
 func TestSetRequestContextReturns500OnValidatorError(t *testing.T) {
 	validator := &fakeOrgValidator{err: errors.New("boom")}
-	mw := NewOrgContextMiddleware(validator, false, "local")
+	mw := NewOrgContextMiddleware(validator, false, "local", "email")
 
 	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
 	req.Host = "acme.platform-mesh.io"
 	ctx := pmcontext.AddAuthHeaderToContext(req.Context(), "Bearer abc")
-	ctx = context.WithValue(ctx, keys.WebTokenCtxKey, jwt.WebToken{
-		IssuerAttributes: jwt.IssuerAttributes{
+	ctx = context.WithValue(ctx, keys.WebTokenCtxKey, pmjwt.WebToken{
+		IssuerAttributes: pmjwt.IssuerAttributes{
 			Issuer:  "https://idp.example.org/auth/realms/acme-tenant",
 			Subject: "user",
 		},
@@ -142,7 +229,7 @@ func TestSetRequestContextReturns500OnValidatorError(t *testing.T) {
 
 func TestSetRequestContextReturns401ForInvalidTokenContext(t *testing.T) {
 	validator := &fakeOrgValidator{allowed: true}
-	mw := NewOrgContextMiddleware(validator, false, "local")
+	mw := NewOrgContextMiddleware(validator, false, "local", "email")
 
 	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
 	req.Host = "acme.platform-mesh.io"
@@ -160,17 +247,15 @@ func TestSetRequestContextReturns401ForInvalidTokenContext(t *testing.T) {
 
 func TestSetRequestContextReturns401ForInvalidIssuer(t *testing.T) {
 	validator := &fakeOrgValidator{allowed: true}
-	mw := NewOrgContextMiddleware(validator, false, "local")
+	mw := NewOrgContextMiddleware(validator, false, "local", "email")
 
 	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
 	req.Host = "acme.platform-mesh.io"
 	ctx := pmcontext.AddAuthHeaderToContext(req.Context(), "Bearer abc")
-	ctx = context.WithValue(ctx, keys.WebTokenCtxKey, jwt.WebToken{
-		IssuerAttributes: jwt.IssuerAttributes{
-			Issuer:  "https://idp.example.org/no-realms-segment",
-			Subject: "user",
-		},
-	})
+	ctx = context.WithValue(ctx, keys.WebTokenCtxKey, newWebToken(t, map[string]any{
+		"iss":   "https://idp.example.org/no-realms-segment",
+		"email": "user@example.org",
+	}))
 	req = req.WithContext(ctx)
 
 	rr := httptest.NewRecorder()
@@ -185,19 +270,16 @@ func TestSetRequestContextReturns401ForInvalidIssuer(t *testing.T) {
 
 func TestSetRequestContextLocalhostOverridesOrgAndBypassesValidator(t *testing.T) {
 	validator := &fakeOrgValidator{allowed: false}
-	mw := NewOrgContextMiddleware(validator, false, "local-org-test")
+	mw := NewOrgContextMiddleware(validator, false, "local-org-test", "email")
 
 	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
 	req.Host = "localhost:8443"
 
 	ctx := pmcontext.AddAuthHeaderToContext(req.Context(), "bearer\tabc")
-	ctx = context.WithValue(ctx, keys.WebTokenCtxKey, jwt.WebToken{
-		IssuerAttributes: jwt.IssuerAttributes{
-			Issuer:  "https://idp.example.org/auth/realms/acme-tenant",
-			Subject: "subject-user",
-		},
-		ParsedAttributes: jwt.ParsedAttributes{Mail: "user@example.org"},
-	})
+	ctx = context.WithValue(ctx, keys.WebTokenCtxKey, newWebToken(t, map[string]any{
+		"iss":   "https://idp.example.org/auth/realms/acme-tenant",
+		"email": "user@example.org",
+	}))
 	req = req.WithContext(ctx)
 
 	rr := httptest.NewRecorder()
@@ -224,19 +306,16 @@ func TestSetRequestContextLocalhostOverridesOrgAndBypassesValidator(t *testing.T
 
 func TestSetRequestContextBypassesValidatorAndUsesConfiguredOrgInLocalDevelopmentMode(t *testing.T) {
 	validator := &fakeOrgValidator{allowed: false}
-	mw := NewOrgContextMiddleware(validator, true, "local-org-test")
+	mw := NewOrgContextMiddleware(validator, true, "local-org-test", "email")
 
 	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
 	req.Host = "search.portal.localhost"
 
 	ctx := pmcontext.AddAuthHeaderToContext(req.Context(), "Bearer abc")
-	ctx = context.WithValue(ctx, keys.WebTokenCtxKey, jwt.WebToken{
-		IssuerAttributes: jwt.IssuerAttributes{
-			Issuer:  "https://idp.example.org/auth/realms/acme-tenant",
-			Subject: "subject-user",
-		},
-		ParsedAttributes: jwt.ParsedAttributes{Mail: "user@example.org"},
-	})
+	ctx = context.WithValue(ctx, keys.WebTokenCtxKey, newWebToken(t, map[string]any{
+		"iss":   "https://idp.example.org/auth/realms/acme-tenant",
+		"email": "user@example.org",
+	}))
 	req = req.WithContext(ctx)
 
 	rr := httptest.NewRecorder()
@@ -263,14 +342,14 @@ func TestSetRequestContextBypassesValidatorAndUsesConfiguredOrgInLocalDevelopmen
 
 func TestSetRequestContextReturns401ForMalformedAuthorizationHeader(t *testing.T) {
 	validator := &fakeOrgValidator{allowed: true}
-	mw := NewOrgContextMiddleware(validator, false, "local")
+	mw := NewOrgContextMiddleware(validator, false, "local", "email")
 
 	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
 	req.Host = "acme.platform-mesh.io"
 
 	ctx := pmcontext.AddAuthHeaderToContext(req.Context(), "abc")
-	ctx = context.WithValue(ctx, keys.WebTokenCtxKey, jwt.WebToken{
-		IssuerAttributes: jwt.IssuerAttributes{
+	ctx = context.WithValue(ctx, keys.WebTokenCtxKey, pmjwt.WebToken{
+		IssuerAttributes: pmjwt.IssuerAttributes{
 			Issuer:  "https://idp.example.org/auth/realms/acme-tenant",
 			Subject: "subject-user",
 		},
@@ -292,19 +371,16 @@ func TestSetRequestContextReturns401ForMalformedAuthorizationHeader(t *testing.T
 
 func TestNewOrgContextMiddlewareFallsBackToDefaultLocalOrg(t *testing.T) {
 	validator := &fakeOrgValidator{allowed: false}
-	mw := NewOrgContextMiddleware(validator, false, "")
+	mw := NewOrgContextMiddleware(validator, false, "", "email")
 
 	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
 	req.Host = "localhost:8443"
 
 	ctx := pmcontext.AddAuthHeaderToContext(req.Context(), "Bearer abc")
-	ctx = context.WithValue(ctx, keys.WebTokenCtxKey, jwt.WebToken{
-		IssuerAttributes: jwt.IssuerAttributes{
-			Issuer:  "https://idp.example.org/auth/realms/acme-tenant",
-			Subject: "subject-user",
-		},
-		ParsedAttributes: jwt.ParsedAttributes{Mail: "user@example.org"},
-	})
+	ctx = context.WithValue(ctx, keys.WebTokenCtxKey, newWebToken(t, map[string]any{
+		"iss":   "https://idp.example.org/auth/realms/acme-tenant",
+		"email": "user@example.org",
+	}))
 	req = req.WithContext(ctx)
 
 	rr := httptest.NewRecorder()

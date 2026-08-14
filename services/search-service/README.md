@@ -128,6 +128,7 @@ This is intended for local/dev usage only. Keep `--is-local=false` for productio
 Main runtime flags (with defaults):
 
 - `--port` (default: `8080`)
+- `--user-claim` (default: `email`) JWT claim used as the OpenFGA user; must match the Security Operator setting
 - `--opensearch-url` (default: `http://opensearch.platform-mesh-system.svc.cluster.local:9200`)
 - `--opensearch-username` (default: value of env `OPENSEARCH_USERNAME`)
 - `--opensearch-password` (default: value of env `OPENSEARCH_PASSWORD`)
@@ -157,7 +158,8 @@ go test ./...
 ## Security Notes
 
 - JWT signature validation is expected to happen upstream (gateway/mesh).
-- The service consumes parsed claims from context (`mail`, fallback `sub`).
+- The service uses the exact JWT claim configured by `--user-claim` as the OpenFGA user and rejects requests when that claim is missing, blank, or not a string.
+- `--user-claim` must match the Security Operator setting so Search and Kubernetes authorization identify the caller consistently.
 - Search hits missing required authorization hierarchy fields are dropped (fail-closed).
 
 ## Releasing

@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/go-chi/chi/v5 v5.3.0
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/openfga/api/proto v0.0.0-20260319214821-f153694bfc20
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
@@ -23,7 +24,6 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
 	github.com/getsentry/sentry-go v0.47.0 // indirect
 	github.com/go-errors/errors v1.5.1 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-logr/zerologr v1.2.3 // indirect

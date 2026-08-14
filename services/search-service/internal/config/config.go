@@ -24,6 +24,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
+const defaultUserClaim = "email"
+
 type OpenSearchConfig struct {
 	URL      string
 	Username string
@@ -54,6 +56,7 @@ type SearchConfig struct {
 type ServiceConfig struct {
 	Port                int
 	LocalDevelopmentOrg string
+	UserClaim           string
 	OpenSearch          OpenSearchConfig
 	OpenFGA             OpenFGAConfig
 	SearchIndex         SearchIndexConfig
@@ -64,6 +67,7 @@ func NewServiceConfig() *ServiceConfig {
 	return &ServiceConfig{
 		Port:                8080,
 		LocalDevelopmentOrg: localDevelopmentOrgFromEnv(),
+		UserClaim:           defaultUserClaim,
 		OpenSearch: OpenSearchConfig{
 			URL:      "http://opensearch.platform-mesh-system.svc.cluster.local:9200",
 			Username: os.Getenv("OPENSEARCH_USERNAME"),
@@ -93,6 +97,7 @@ func NewServiceConfig() *ServiceConfig {
 func (c *ServiceConfig) AddFlags(fs *pflag.FlagSet) {
 	fs.IntVar(&c.Port, "port", c.Port, "Set the service port")
 	fs.StringVar(&c.LocalDevelopmentOrg, "local-development-org", c.LocalDevelopmentOrg, "Organization to use when request host is localhost")
+	fs.StringVar(&c.UserClaim, "user-claim", c.UserClaim, "Set the ID token claim used as the OpenFGA user")
 
 	fs.StringVar(&c.OpenSearch.URL, "opensearch-url", c.OpenSearch.URL, "Set OpenSearch URL")
 	fs.StringVar(&c.OpenSearch.Username, "opensearch-username", c.OpenSearch.Username, "Set OpenSearch username")
