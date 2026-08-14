@@ -1,86 +1,49 @@
 # search-operator
 
-```mermaid
-flowchart TB
-    subgraph kcp["kcp Cluster"]
-        subgraph PMSys["platform-mesh-system workspace"]
-            APIExport["APIExport<br/>core.platform-mesh.io"]
-        end
+![Platform Mesh Search](PMSearch.svg)
 
-        subgraph OrgWS["Organization Workspace"]
-            OrgBinding["APIBinding<br/>→ core.platform-mesh.io"]
-            OrgAccountInfo["AccountInfo<br/>name: acme-org<br/>type: organization"]
-        end
+## Description
 
-        subgraph AccWS["Account Workspace"]
-            AccBinding["APIBinding<br/>→ core.platform-mesh.io"]
-            AccAccountInfo["AccountInfo<br/>name: dev-team<br/>type: account<br/>org: acme-org"]
-        end
-    end
+The search-operator makes Platform Mesh resources searchable in OpenSearch, scoped and permission-filtered per organization. It watches kcp across workspaces and works in three phases:
 
-    subgraph Operator["search-operator"]
-        Provider["multicluster-provider<br/>(watches APIExport)"]
-        APIBindingCtrl["APIBindingReconciler"]
-        WatcherSub["APIBindingWatcherSubroutine<br/>(logs events)"]
-        IndexingSub["WorkspaceIndexingSubroutine<br/>(indexes to OpenSearch)"]
-    end
+1. **SearchIndex provisioning.** When an `APIBinding` reconciles in an organization-rooted workspace (a workspace under `root:orgs`), the operator lists the other `APIBinding`s bound in that same workspace and resolves the workspace to its organization. For each organization, and for each `APIResourceSchema` those bindings bring in, it creates or updates a `SearchIndex` in the org workspace (`root:orgs`). The searchable fields are derived from the leaf fields of the schema's served version. If a `SearchConfig` (named after the `APIResourceSchema`) exists in the provider workspace where the schema lives, its `excludedFields`, `exactFields`, and `semanticFields` reclassify those fields into filterable, semantic, or excluded. Without a `SearchConfig`, every leaf field becomes a default field. A `SearchConfig` only reclassifies fields already present in the schema, meaning it cannot add new ones. A small set of default filterable fields (kind, name, namespace, cluster_name, workspace_path, account_fga_object) is always added.
 
-    subgraph OS["OpenSearch"]
-        Index["platform-mesh-workspaces<br/>index"]
-        Doc1["Doc: workspace-org-123<br/>name: acme-org<br/>type: organization<br/>permissions: [...]"]
-        Doc2["Doc: workspace-acc-456<br/>name: dev-team<br/>type: account<br/>org: acme-org<br/>permissions: [...]"]
-    end
+2. **OpenSearch index creation.** Each `SearchIndex` is reconciled by the `IndexLifecycleSubroutine`, which manages the corresponding OpenSearch index. The index mapping is built from the `SearchIndex`'s default, semantic, and filterable fields (semantic fields require a configured semantic model), and the resolved index name is written back to the `SearchIndex` status.
 
-    APIExport -.->|exposes APIs| OrgWS
-    APIExport -.->|exposes APIs| AccWS
+3. **Resource indexing.** For every resource whose GVK is configured for indexing, the `IndexableResourceWatcherSubroutine` resolves the current org and the resource's plural name, looks up the matching `SearchIndex`, and stores the resource as a document in that org's index. It populates the document's fields exactly as declared by the `SearchIndex` (default / semantic / filterable), attaches the full payload for full-text search, and embeds permission derived from the resource's `AccountInfo` hierarchy so search results can be permission-filtered per user upon retrieval.
 
-    Provider -->|watches| APIExport
-    Provider -->|receives events from| OrgBinding
-    Provider -->|receives events from| AccBinding
+### Message Sequence
 
-    APIBindingCtrl --> WatcherSub
-    APIBindingCtrl --> IndexingSub
-
-    IndexingSub -->|reads| OrgAccountInfo
-    IndexingSub -->|reads| AccAccountInfo
-    IndexingSub -->|writes| Index
-
-    Index --> Doc1
-    Index --> Doc2
-```
+The following diagram traces the end-to-end flow, from a resource being created through to it being indexed as a searchable, permission-filtered document.
 
 ```mermaid
 sequenceDiagram
     participant User
     participant Platform as Platform Mesh
-    participant kcp as kcp
-    participant AccOp as account-operator
+    participant SProv as Search provider
+    participant GHProv as GitHub provider
     participant SearchOp as search-operator
     participant OS as OpenSearch
 
-    User->>Platform: Create new account "dev-team"
-    Platform->>kcp: Create workspace
-    kcp-->>Platform: Workspace created (cluster: acc-456)
-
-    Platform->>kcp: Create APIBinding to core.platform-mesh.io
-    AccOp->>kcp: Create AccountInfo resource
-
-    Note over SearchOp: multicluster-provider<br/>detects APIBinding
-
-    kcp-->>SearchOp: APIBinding reconcile event
-    SearchOp->>kcp: Get AccountInfo from workspace
-    kcp-->>SearchOp: AccountInfo{name: dev-team, org: acme-org}
-
-    SearchOp->>SearchOp: Build WorkspaceDocument<br/>+ OpenFGA permission tuples
-
-    SearchOp->>OS: Index document (id: workspace-acc-456)
-    OS-->>SearchOp: Indexed successfully
-
-    Note over OS: Document now searchable<br/>with permission filtering
+    User->>Platform: Installs Search provider
+    Platform->>SProv: Binds Search Export
+    User->>Platform: Installs Github provider
+    Platform->>GHProv: Binds Github Export
+    Note over GHProv: Github Export has one resource<br/>schema called `Commit`
+    SearchOp->>GHProv: Reads Github Export's schemas
+    SearchOp->>GHProv: Reads SearchConfig resources
+    SearchOp->>Platform: Creates org-scoped SearchIndex resource `Commit`
+    SearchOp->>OS: Manages org-scoped index for `Commit` resource
+    User->>Platform: Creates new Github resource
+    Note over SearchOp: multicluster-provider<br/>detects Commit resource
+    SearchOp->>Platform: Fetch Github resource
+    SearchOp->>OS: Indexes resource according to SearchIndex
 ```
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+### Custom Resources
+
+- **`SearchIndex`** (`search.platform-mesh.io`): declares an OpenSearch index for one org and one resource type, including its default, semantic, and filterable fields. Managed by the operator; lives in the org workspace.
+- **`SearchConfig`** (`search.platform-mesh.io`): optional, authored in the provider workspace next to an `APIResourceSchema`. Overrides how that schema's fields are classified (`excludedFields`, `exactFields`, `semanticFields`).
 
 ## Getting Started
 
