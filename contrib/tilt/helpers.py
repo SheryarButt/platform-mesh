@@ -23,6 +23,8 @@
 # so the operator actually re-execs on every sync.
 load('ext://restart_process', 'docker_build_with_restart')
 
+BUILD_GOARCH = os.getenv('GOARCH', '') or str(local('go env GOARCH', quiet=True, echo_off=True)).strip()
+
 def chart_path(name, version, oci_repo, cache_dir='.cache/charts'):
     """Resolve a Platform Mesh Helm chart to a local directory path.
 
@@ -81,7 +83,7 @@ def component_binary(name, path, deps, image, labels=['components']):
         # would fail every rebuild after the first.
         # (Subshell, not a `{ ...; }` group: braces would be eaten by .format().)
         cmd='cd ../.. && ( [ -d contrib/tilt/bin/{name} ] || rm -f contrib/tilt/bin/{name} ) && mkdir -p contrib/tilt/bin/{name} && CGO_ENABLED=0 GOOS=linux GOARCH={arch} go build -o contrib/tilt/bin/{name}/entrypoint ./{path}'.format(
-            arch=os.getenv('GOARCH', 'arm64'), name=name, path=path,
+            arch=BUILD_GOARCH, name=name, path=path,
         ),
         deps=['../../{}'.format(d) for d in [path] + deps],
         labels=labels,
