@@ -15,7 +15,7 @@
 apiVersion: apis.kcp.io/v1alpha1
 kind: APIResourceSchema
 metadata:
-  name: v260623-482e10b2.marketplaceentries.marketplace.platform-mesh.io
+  name: v260816-b83d7328.marketplaceentries.marketplace.platform-mesh.io
 spec:
   group: marketplace.platform-mesh.io
   names:
@@ -414,6 +414,19 @@ spec:
                     tags:
                       items:
                         type: string
+                      type: array
+                    uiExtensions:
+                      items:
+                        description: |-
+                          UIExtension describes a provider-owned micro frontend that enriches the
+                          provider details view. The extension is rendered in list order.
+                        properties:
+                          url:
+                            description: URL is the absolute URL of the micro frontend.
+                            type: string
+                        required:
+                        - url
+                        type: object
                       type: array
                   required:
                   - displayName

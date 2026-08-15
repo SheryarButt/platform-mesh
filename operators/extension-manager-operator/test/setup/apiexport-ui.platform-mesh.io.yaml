@@ -25,7 +25,7 @@ spec:
       crd: {}
   - group: ui.platform-mesh.io
     name: providermetadatas
-    schema: v250725-732d200.providermetadatas.ui.platform-mesh.io
+    schema: v260816-b83d7328.providermetadatas.ui.platform-mesh.io
     storage:
       crd: {}
 status: {}
