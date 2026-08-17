@@ -46,9 +46,9 @@ type Contact struct {
 	Role        []string `json:"role,omitempty"`
 }
 
-// UIExtension describes a provider-owned micro frontend that enriches the
-// provider details view. The extension is rendered in list order.
-type UIExtension struct {
+// DetailViewExtension describes a provider-owned micro frontend that enriches
+// the provider details view. The extension is rendered in list order.
+type DetailViewExtension struct {
 	// URL is the absolute URL of the micro frontend.
 	URL string `json:"url"`
 }
@@ -66,10 +66,10 @@ type ProviderMetadataSpec struct {
 	Documentation []Link                `json:"documentation,omitempty"`
 	Icon          *Icon                 `json:"icon,omitempty"`
 
-	Links                    []Link        `json:"links,omitempty"`
-	PreferredSupportChannels []Link        `json:"preferredSupportChannels,omitempty"`
-	HelpCenterData           []Link        `json:"helpCenterData,omitempty"`
-	UIExtensions             []UIExtension `json:"uiExtensions,omitempty"`
+	Links                    []Link                `json:"links,omitempty"`
+	PreferredSupportChannels []Link                `json:"preferredSupportChannels,omitempty"`
+	HelpCenterData           []Link                `json:"helpCenterData,omitempty"`
+	DetailViewExtensions     []DetailViewExtension `json:"detailViewExtensions,omitempty"`
 }
 
 // ProviderMetadataStatus defines the observed state of ProviderMetadata.

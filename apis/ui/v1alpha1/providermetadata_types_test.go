@@ -18,21 +18,21 @@ package v1alpha1
 
 import "testing"
 
-func TestProviderMetadataDeepCopyPreservesUIExtensions(t *testing.T) {
+func TestProviderMetadataDeepCopyPreservesDetailViewExtensions(t *testing.T) {
 	original := &ProviderMetadata{
 		Spec: ProviderMetadataSpec{
 			DisplayName: "Example",
-			UIExtensions: []UIExtension{
+			DetailViewExtensions: []DetailViewExtension{
 				{URL: "https://provider.example/details"},
 				{URL: "https://provider.example/compatibility"},
 			},
 		},
 	}
 
-	copy := original.DeepCopy()
-	copy.Spec.UIExtensions[0].URL = "https://changed.example"
+	copied := original.DeepCopy()
+	copied.Spec.DetailViewExtensions[0].URL = "https://changed.example"
 
-	if got, want := original.Spec.UIExtensions[0].URL, "https://provider.example/details"; got != want {
+	if got, want := original.Spec.DetailViewExtensions[0].URL, "https://provider.example/details"; got != want {
 		t.Fatalf("DeepCopy changed the original URL: got %q, want %q", got, want)
 	}
 }

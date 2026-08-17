@@ -164,11 +164,11 @@ func TestMarketplace_ExportsOfKnownProviders(t *testing.T) {
 	assert.Equal(t, testExportName+"-"+testProviderName, list.Items[0].GetName())
 }
 
-func TestMarketplace_PreservesProviderUIExtensions(t *testing.T) {
+func TestMarketplace_PreservesProviderDetailViewExtensions(t *testing.T) {
 	cfg := config.NewServiceConfig()
 	s := marketplaceTestScheme(t)
 	provider := makeProviderMeta(testProviderClusterID)
-	provider.Spec.UIExtensions = []pmuiv1alpha1.UIExtension{
+	provider.Spec.DetailViewExtensions = []pmuiv1alpha1.DetailViewExtension{
 		{URL: "https://provider.example/details"},
 		{URL: "https://provider.example/compatibility"},
 	}
@@ -182,12 +182,18 @@ func TestMarketplace_PreservesProviderUIExtensions(t *testing.T) {
 
 	require.Len(t, list.Items, 1)
 	extensions, found, err := unstructured.NestedSlice(
-		list.Items[0].Object, "spec", "providerMetadata", "spec", "uiExtensions")
+		list.Items[0].Object, "spec", "providerMetadata", "spec", "detailViewExtensions")
 	require.NoError(t, err)
 	require.True(t, found)
 	require.Len(t, extensions, 2)
-	assert.Equal(t, "https://provider.example/details", extensions[0].(map[string]interface{})["url"])
-	assert.Equal(t, "https://provider.example/compatibility", extensions[1].(map[string]interface{})["url"])
+	assert.Equal(
+		t, "https://provider.example/details",
+		extensions[0].(map[string]any)["url"],
+	)
+	assert.Equal(
+		t, "https://provider.example/compatibility",
+		extensions[1].(map[string]any)["url"],
+	)
 }
 
 func TestMarketplace_InstalledBinding(t *testing.T) {
