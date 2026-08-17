@@ -25,10 +25,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"go.platform-mesh.io/golang-commons/directive/mocks"
 	fgastore "go.platform-mesh.io/golang-commons/fga/store"
 )
+
+func listStoresReq(name, continuationToken string) *openfgav1.ListStoresRequest {
+	return &openfgav1.ListStoresRequest{
+		Name:              name,
+		PageSize:          wrapperspb.Int32(fgastore.ListStoresPageSize),
+		ContinuationToken: continuationToken,
+	}
+}
 
 func TestGetModelIDForTenant(t *testing.T) {
 	ctx := context.Background()
@@ -46,7 +55,7 @@ func TestGetModelIDForTenant(t *testing.T) {
 			name: "FullPath_OK",
 			setupMock: func(client *mocks.OpenFGAServiceClient, cachedStore *fgastore.FgaTenantStore) {
 				client.EXPECT().
-					ListStores(ctx, &openfgav1.ListStoresRequest{}).
+					ListStores(ctx, listStoresReq("tenant-tenant123", "")).
 					Return(&openfgav1.ListStoresResponse{
 						Stores: []*openfgav1.Store{
 							{Id: "store123", Name: "tenant-tenant123"},
@@ -92,7 +101,7 @@ func TestGetModelIDForTenant(t *testing.T) {
 			name: "ListStores_Error",
 			setupMock: func(client *mocks.OpenFGAServiceClient, cachedStore *fgastore.FgaTenantStore) {
 				client.EXPECT().
-					ListStores(ctx, &openfgav1.ListStoresRequest{}).
+					ListStores(ctx, listStoresReq("tenant-tenant123", "")).
 					Return(nil, assert.AnError).
 					Once()
 			},
@@ -102,7 +111,7 @@ func TestGetModelIDForTenant(t *testing.T) {
 			name: "MatchingKeyNotFound_Error",
 			setupMock: func(client *mocks.OpenFGAServiceClient, cachedStore *fgastore.FgaTenantStore) {
 				client.EXPECT().
-					ListStores(ctx, &openfgav1.ListStoresRequest{}).
+					ListStores(ctx, listStoresReq("tenant-tenant123", "")).
 					Return(&openfgav1.ListStoresResponse{Stores: []*openfgav1.Store{}}, nil).
 					Once()
 			},
@@ -143,6 +152,100 @@ func TestGetModelIDForTenant(t *testing.T) {
 			modelID, err := cachedStore.GetModelIDForTenant(ctx, client, tenantID)
 
 			assert.Equal(t, tt.expectedModelID, modelID)
+			assert.Equal(t, tt.expectedError, err)
+
+			client.AssertExpectations(t)
+		})
+	}
+}
+
+func TestGetStoreIDForTenant(t *testing.T) {
+	ctx := context.Background()
+	tenantID := "tenant123"
+	storeName := "tenant-tenant123"
+
+	tests := []struct {
+		name            string
+		setupMock       func(client *mocks.OpenFGAServiceClient, cachedStore *fgastore.FgaTenantStore)
+		expectedStoreID string
+		expectedError   error
+	}{
+		{
+			name: "NameFilterHonored_ResolvesInOneCall",
+			setupMock: func(client *mocks.OpenFGAServiceClient, cachedStore *fgastore.FgaTenantStore) {
+				client.EXPECT().
+					ListStores(ctx, listStoresReq(storeName, "")).
+					Return(&openfgav1.ListStoresResponse{
+						Stores: []*openfgav1.Store{{Id: "store123", Name: storeName}},
+					}, nil).
+					Once()
+			},
+			expectedStoreID: "store123",
+		},
+		{
+			name: "NameFilterIgnored_PaginatedFallbackResolves",
+			setupMock: func(client *mocks.OpenFGAServiceClient, cachedStore *fgastore.FgaTenantStore) {
+				client.EXPECT().
+					ListStores(ctx, listStoresReq(storeName, "")).
+					Return(&openfgav1.ListStoresResponse{
+						Stores:            []*openfgav1.Store{{Id: "other1", Name: "tenant-other1"}},
+						ContinuationToken: "page2",
+					}, nil).
+					Once()
+				client.EXPECT().
+					ListStores(ctx, listStoresReq(storeName, "page2")).
+					Return(&openfgav1.ListStoresResponse{
+						Stores: []*openfgav1.Store{{Id: "store123", Name: storeName}},
+					}, nil).
+					Once()
+			},
+			expectedStoreID: "store123",
+		},
+		{
+			name: "NotFoundAcrossAllPages_Error",
+			setupMock: func(client *mocks.OpenFGAServiceClient, cachedStore *fgastore.FgaTenantStore) {
+				client.EXPECT().
+					ListStores(ctx, listStoresReq(storeName, "")).
+					Return(&openfgav1.ListStoresResponse{
+						Stores:            []*openfgav1.Store{{Id: "other1", Name: "tenant-other1"}},
+						ContinuationToken: "page2",
+					}, nil).
+					Once()
+				client.EXPECT().
+					ListStores(ctx, listStoresReq(storeName, "page2")).
+					Return(&openfgav1.ListStoresResponse{Stores: []*openfgav1.Store{}}, nil).
+					Once()
+			},
+			expectedError: errors.New("could not find store matching key \"tenant-tenant123\""),
+		},
+		{
+			name: "ListStores_Error",
+			setupMock: func(client *mocks.OpenFGAServiceClient, cachedStore *fgastore.FgaTenantStore) {
+				client.EXPECT().
+					ListStores(ctx, listStoresReq(storeName, "")).
+					Return(nil, assert.AnError).
+					Once()
+			},
+			expectedError: assert.AnError,
+		},
+		{
+			name: "CacheHit_NoListStores",
+			setupMock: func(client *mocks.OpenFGAServiceClient, cachedStore *fgastore.FgaTenantStore) {
+				cachedStore.GetCache().Add("tenant-tenant123", "cached-store")
+			},
+			expectedStoreID: "cached-store",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &mocks.OpenFGAServiceClient{}
+			cachedStore := fgastore.NewWithPrefix("tenant-")
+			tt.setupMock(client, cachedStore)
+
+			storeID, err := cachedStore.GetStoreIDForTenant(ctx, client, tenantID)
+
+			assert.Equal(t, tt.expectedStoreID, storeID)
 			assert.Equal(t, tt.expectedError, err)
 
 			client.AssertExpectations(t)

@@ -20,12 +20,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 type FGAStoreHelper interface {
@@ -40,6 +40,9 @@ type FgaTenantStore struct {
 }
 
 var _ FGAStoreHelper = (*FgaTenantStore)(nil)
+
+// ListStoresPageSize is the page size used when paging through ListStores.
+const ListStoresPageSize = 100
 
 // Deprecated: Use NewWithPrefix instead.
 func New() *FgaTenantStore {
@@ -63,21 +66,44 @@ func (c *FgaTenantStore) GetStoreIDForTenant(ctx context.Context, conn openfgav1
 		return s, nil
 	}
 
-	res, err := conn.ListStores(ctx, &openfgav1.ListStoresRequest{})
+	storeName := c.storePrefix + tenantID
+	storeID, found, err := FindStoreIDByName(ctx, conn, storeName)
 	if err != nil {
 		return "", err
 	}
-
-	storeName := c.storePrefix + tenantID
-	idx := slices.IndexFunc(res.GetStores(), func(s *openfgav1.Store) bool { return s.Name == storeName })
-	if idx < 0 {
+	if !found {
 		return "", fmt.Errorf("could not find store matching key %q", storeName)
 	}
 
-	store := res.GetStores()[idx]
-	c.cache.Add(cacheKey, store.Id)
+	c.cache.Add(cacheKey, storeID)
 
-	return store.Id, nil
+	return storeID, nil
+}
+
+// FindStoreIDByName resolves the ID of the store named storeName.
+func FindStoreIDByName(ctx context.Context, conn openfgav1.OpenFGAServiceClient, storeName string) (string, bool, error) {
+	var continuationToken string
+	for {
+		res, err := conn.ListStores(ctx, &openfgav1.ListStoresRequest{
+			Name:              storeName,
+			PageSize:          wrapperspb.Int32(ListStoresPageSize),
+			ContinuationToken: continuationToken,
+		})
+		if err != nil {
+			return "", false, err
+		}
+
+		for _, store := range res.GetStores() {
+			if store.GetName() == storeName {
+				return store.GetId(), true, nil
+			}
+		}
+
+		continuationToken = res.GetContinuationToken()
+		if continuationToken == "" {
+			return "", false, nil
+		}
+	}
 }
 
 func (c *FgaTenantStore) GetModelIDForTenant(ctx context.Context, conn openfgav1.OpenFGAServiceClient, tenantID string) (string, error) {
