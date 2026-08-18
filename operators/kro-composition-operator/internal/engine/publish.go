@@ -21,14 +21,19 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	krov1alpha1 "github.com/kubernetes-sigs/kro/api/v1alpha1"
+	crdcompat "github.com/kubernetes-sigs/kro/pkg/graph/crd/compat"
+	krometadata "github.com/kubernetes-sigs/kro/pkg/metadata"
 
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -37,30 +42,38 @@ import (
 	kcpapisv1alpha2 "github.com/kcp-dev/sdk/apis/apis/v1alpha2"
 )
 
-// publishComposite makes the kro-generated composite type a first-class *bound* API in
-// the consumer workspace instead of a plain reflected CRD. It snapshots the CRD into an
-// APIResourceSchema, exposes it through a per-RGD APIExport, and self-binds that export
-// in the same workspace. Being a boundResource is what makes the platform treat the
-// type as first-class — the graphql-gateway generates its schema and the
-// security-operator generates the OpenFGA authorization model from APIBinding
-// boundResources, neither of which sees a plain workspace CRD. Returns true once the
-// binding is Bound (type served + boundResource present).
-//
-// All three objects are owned by the RGD, so deleting the RGD garbage-collects them and
-// the platform tears the type back down (authz + schema) on its own.
+// publishComposite publishes the composite type as a bound API (APIResourceSchema +
+// per-RGD APIExport + self-binding) rather than a plain CRD, which is what the
+// graphql-gateway and security-operator read. Returns true once the binding is Bound.
 func (e *Engine) publishComposite(ctx context.Context, c ctrlruntimeclient.Client, crd *apiextensionsv1.CustomResourceDefinition, rgd *krov1alpha1.ResourceGraphDefinition) (bool, error) {
-	// APIResourceSchemas are immutable; the content hash in the name means an unchanged
-	// schema re-applies to the same object while a changed schema mints a new one.
+	name := compositeExportName(rgd.Name)
+
+	if err := checkTypeOwnership(ctx, c, rgd, crd); err != nil {
+		return false, err
+	}
+	if err := checkSchemaCompatibility(ctx, c, rgd, crd); err != nil {
+		return false, err
+	}
+
+	// Schemas are immutable, so the content hash in the name mints a new one on any change.
 	ars, err := kcpapisv1alpha1.CRDToAPIResourceSchema(crd, "kroaas-"+schemaHash(crd))
 	if err != nil {
 		return false, fmt.Errorf("convert CRD to APIResourceSchema: %w", err)
 	}
 	setRGDOwner(ars, rgd)
-	if err := c.Create(ctx, ars); err != nil && !apierrors.IsAlreadyExists(err) {
-		return false, fmt.Errorf("apply APIResourceSchema %s: %w", ars.Name, err)
+	applyKROOwnership(ars, rgd)
+	// After the ownership labels, which an RGD must not overwrite.
+	applySchemaMetadata(ars, crd)
+	if err := c.Create(ctx, ars); err != nil {
+		if !apierrors.IsAlreadyExists(err) {
+			return false, fmt.Errorf("apply APIResourceSchema %s: %w", ars.Name, err)
+		}
+		// Same content hash, so only the owner UID can differ: an RGD recreated under the
+		// same name. Pruning and teardown key on that UID.
+		if err := adoptSchema(ctx, c, ars.Name, rgd); err != nil {
+			return false, err
+		}
 	}
-
-	name := compositeExportName(rgd.Name)
 
 	export := &kcpapisv1alpha1.APIExport{ObjectMeta: metav1.ObjectMeta{Name: name}}
 	if _, err := controllerutil.CreateOrUpdate(ctx, c, export, func() error {
@@ -71,9 +84,9 @@ func (e *Engine) publishComposite(ctx context.Context, c ctrlruntimeclient.Clien
 		return false, fmt.Errorf("apply APIExport %s: %w", name, err)
 	}
 
-	// The export now points at the current schema; drop schemas this RGD left behind
+	// The export now points at the current schema, so drop schemas this RGD left behind
 	// on earlier edits (APIResourceSchemas are immutable, so a schema change mints a
-	// new one). Best-effort cleanup — never blocks serving the current type.
+	// new one). Best-effort cleanup that never blocks serving the current type.
 	if err := pruneStaleSchemas(ctx, c, rgd, ars.Name); err != nil {
 		logf.FromContext(ctx).V(1).Info("prune stale APIResourceSchemas", "rgd", rgd.Name, "error", err.Error())
 	}
@@ -98,24 +111,16 @@ func (e *Engine) publishComposite(ctx context.Context, c ctrlruntimeclient.Clien
 	return cur.Status.Phase == kcpapisv1alpha2.APIBindingPhaseBound, nil
 }
 
-// teardownComposite removes the published objects in an order that lets the platform's
-// APIBinding finalizer (account-operator, which strips the type's OpenFGA authz) run
-// while the APIExport + schema still exist: delete the APIBinding and wait until it is
-// fully gone, then delete the APIExport and the RGD's APIResourceSchemas. Returns
-// done=true once all are gone. The objects are also owner-referenced by the RGD as a GC
-// backstop, but the RGD is held Terminating until this completes so nothing is collected
-// out from under the finalizer (which was the cause of the leaked-authz/zombie-binding).
+// teardownComposite deletes the published objects, binding first and only then the export
+// and schemas, so the platform's APIBinding finalizer can strip the type's authz while they
+// still exist. Returns done=true once all are gone.
 //
-// force is set when the whole workspace is terminating (account/workspace deletion). The
-// ordered authz-strip is then moot — the workspace's authz store is being torn down too
-// — and the binding's platform apibinding-finalizer can't be processed mid-teardown, so
-// waiting on it would deadlock workspace (hence account) deletion. In that case we drop
-// the binding's finalizers and proceed without waiting.
+// force skips the wait when the whole workspace is terminating: the binding's finalizer
+// cannot run then, so waiting would deadlock workspace deletion.
 func teardownComposite(ctx context.Context, c ctrlruntimeclient.Client, rgd *krov1alpha1.ResourceGraphDefinition, force bool) (bool, error) {
 	name := compositeExportName(rgd.Name)
 
-	// 1. Delete the APIBinding; wait until it is fully gone before touching the export,
-	//    so its finalizer can strip authz against the still-present export/schema.
+	// 1. Binding first, so its finalizer sees the export and schema still present.
 	binding := &kcpapisv1alpha2.APIBinding{}
 	switch err := c.Get(ctx, types.NamespacedName{Name: name}, binding); {
 	case err == nil:
@@ -127,8 +132,7 @@ func teardownComposite(ctx context.Context, c ctrlruntimeclient.Client, rgd *kro
 		if !force {
 			return false, nil // ordered path: wait until the binding is fully gone
 		}
-		// Workspace terminating: release the stuck finalizer so the binding can go and
-		// stop waiting (race-free merge patch; tolerate the binding already being gone).
+		// Release the stuck finalizer so the binding can go.
 		if len(binding.Finalizers) > 0 {
 			patch := ctrlruntimeclient.RawPatch(types.MergePatchType, []byte(`{"metadata":{"finalizers":null}}`))
 			if err := c.Patch(ctx, binding, patch); err != nil && !apierrors.IsNotFound(err) {
@@ -139,8 +143,27 @@ func teardownComposite(ctx context.Context, c ctrlruntimeclient.Client, rgd *kro
 		return false, fmt.Errorf("get APIBinding %s: %w", name, err)
 	}
 
-	// 2. Binding gone -> delete the APIExport.
+	// 2. Delete the APIExport, reading its identity secret ref first for step 4. kcp always
+	//    sets that ref, so only its location says who owns the secret: kcp's own default is
+	//    ours to delete, anywhere else belongs to whoever put it there.
+	identitySecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
+		Namespace: identitySecretNamespace,
+		Name:      name,
+	}}
+	kcpDefaultSecret := ctrlruntimeclient.ObjectKeyFromObject(identitySecret)
+
 	export := &kcpapisv1alpha1.APIExport{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	switch err := c.Get(ctx, types.NamespacedName{Name: name}, export); {
+	case err == nil:
+		if id := export.Spec.Identity; id != nil && id.SecretRef != nil && id.SecretRef.Name != "" {
+			identitySecret.Name = id.SecretRef.Name
+			if id.SecretRef.Namespace != "" {
+				identitySecret.Namespace = id.SecretRef.Namespace
+			}
+		}
+	case !apierrors.IsNotFound(err):
+		return false, fmt.Errorf("get APIExport %s: %w", name, err)
+	}
 	if err := c.Delete(ctx, export); err != nil && !apierrors.IsNotFound(err) {
 		return false, fmt.Errorf("delete APIExport %s: %w", name, err)
 	}
@@ -159,22 +182,231 @@ func teardownComposite(ctx context.Context, c ctrlruntimeclient.Client, rgd *kro
 			return false, fmt.Errorf("delete APIResourceSchema %s: %w", ars.Name, err)
 		}
 	}
+
+	// 4. Delete kcp's identity secret. It carries no owner reference, so nothing else
+	//    collects it and the workspace would keep one per RGD ever created.
+	if key := ctrlruntimeclient.ObjectKeyFromObject(identitySecret); key == kcpDefaultSecret {
+		if err := c.Delete(ctx, identitySecret); err != nil && !apierrors.IsNotFound(err) {
+			return false, fmt.Errorf("delete APIExport identity secret %s: %w", key, err)
+		}
+	}
 	return true, nil
 }
 
 // compositeExportName is the per-RGD APIExport/APIBinding name in the consumer workspace.
 func compositeExportName(rgdName string) string { return "kro-" + rgdName }
 
-// schemaHash is a short stable digest of the CRD spec, used in the (immutable)
-// APIResourceSchema name so a schema change produces a new schema object.
+// identitySecretNamespace is where kcp puts an APIExport's identity secret, named after the export.
+const identitySecretNamespace = "kcp-system"
+
+// schemaHash digests everything published in the schema, spec plus labels and annotations,
+// so any change mints a new one. An immutable object cannot be relabelled in place.
 func schemaHash(crd *apiextensionsv1.CustomResourceDefinition) string {
-	b, _ := json.Marshal(crd.Spec)
+	b, _ := json.Marshal(struct {
+		Spec        apiextensionsv1.CustomResourceDefinitionSpec
+		Labels      map[string]string
+		Annotations map[string]string
+	}{crd.Spec, crd.Labels, crd.Annotations})
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])[:12]
 }
 
-// pruneStaleSchemas deletes APIResourceSchemas owned by this RGD other than keep —
-// the orphans left when the RGD's (immutable) schema is re-minted after an edit.
+// applySchemaMetadata carries the RGD's spec.schema.metadata onto the schema. Operator-set
+// keys win.
+func applySchemaMetadata(ars *kcpapisv1alpha1.APIResourceSchema, crd *apiextensionsv1.CustomResourceDefinition) {
+	ars.Labels = mergeMissing(ars.Labels, crd.Labels)
+	ars.Annotations = mergeMissing(ars.Annotations, crd.Annotations)
+}
+
+func mergeMissing(into, from map[string]string) map[string]string {
+	if len(from) == 0 {
+		return into
+	}
+	if into == nil {
+		into = make(map[string]string, len(from))
+	}
+	for k, v := range from {
+		if _, taken := into[k]; !taken {
+			into[k] = v
+		}
+	}
+	return into
+}
+
+// typeConflictError reports a composite type already published in this workspace.
+type typeConflictError struct {
+	gvk    string
+	schema string
+	owner  string // owning RGD name, empty when nothing owns the schema
+}
+
+func (e *typeConflictError) Error() string {
+	if e.owner == "" {
+		return fmt.Sprintf("%s is already served from APIResourceSchema %s, which no ResourceGraphDefinition owns",
+			e.gvk, e.schema)
+	}
+	return fmt.Sprintf("%s is already published by ResourceGraphDefinition %q (APIResourceSchema %s)",
+		e.gvk, e.owner, e.schema)
+}
+
+// isTypeConflict reports whether err is a refusal to publish over someone else's type.
+func isTypeConflict(err error) bool {
+	var t *typeConflictError
+	return errors.As(err, &t)
+}
+
+// applyKROOwnership stamps the labels kro's ownership comparison reads.
+func applyKROOwnership(o metav1.Object, rgd *krov1alpha1.ResourceGraphDefinition) {
+	krometadata.NewKROMetaLabeler().ApplyLabels(o)
+	krometadata.NewResourceGraphDefinitionLabeler(rgd).ApplyLabels(o)
+}
+
+// checkTypeOwnership refuses to publish a group/kind another RGD already publishes here.
+// Without it, two RGDs with identical schemas share one content-hashed object and deleting
+// either collects it out from under the other.
+//
+// Matching name with a different id is kro's adoption case and is allowed.
+func checkTypeOwnership(
+	ctx context.Context,
+	c ctrlruntimeclient.Client,
+	rgd *krov1alpha1.ResourceGraphDefinition,
+	crd *apiextensionsv1.CustomResourceDefinition,
+) error {
+	desired := metav1.ObjectMeta{}
+	applyKROOwnership(&desired, rgd)
+
+	list := &kcpapisv1alpha1.APIResourceSchemaList{}
+	if err := c.List(ctx, list); err != nil {
+		return fmt.Errorf("list APIResourceSchemas: %w", err)
+	}
+	for i := range list.Items {
+		ars := &list.Items[i]
+		if ars.Spec.Group != crd.Spec.Group || ars.Spec.Names.Plural != crd.Spec.Names.Plural {
+			continue
+		}
+		kroOwned, nameMatch, _ := krometadata.CompareRGDOwnership(ars.ObjectMeta, desired)
+		if kroOwned && nameMatch {
+			continue
+		}
+		return &typeConflictError{
+			gvk:    crd.Spec.Names.Plural + "." + crd.Spec.Group,
+			schema: ars.Name,
+			owner:  ars.Labels[krometadata.ResourceGraphDefinitionNameLabel],
+		}
+	}
+	return nil
+}
+
+// adoptSchema restamps the owner reference and kro's labels. A stale uid in either makes the
+// schema an orphan to garbage collection. No-op when both match.
+func adoptSchema(ctx context.Context, c ctrlruntimeclient.Client, name string, rgd *krov1alpha1.ResourceGraphDefinition) error {
+	desired := metav1.ObjectMeta{}
+	applyKROOwnership(&desired, rgd)
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		cur := &kcpapisv1alpha1.APIResourceSchema{}
+		if err := c.Get(ctx, types.NamespacedName{Name: name}, cur); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		_, _, idMatch := krometadata.CompareRGDOwnership(cur.ObjectMeta, desired)
+		if idMatch && ownedByRGD(cur, rgd) {
+			return nil
+		}
+		setRGDOwner(cur, rgd)
+		applyKROOwnership(cur, rgd)
+		return c.Update(ctx, cur)
+	})
+}
+
+// breakingSchemaChangeError reports a schema change existing instances cannot survive.
+type breakingSchemaChangeError struct {
+	report *crdcompat.Report
+}
+
+func (e *breakingSchemaChangeError) Error() string {
+	return fmt.Sprintf("breaking schema changes: %s (set the %s annotation to publish anyway)",
+		e.report, krov1alpha1.AllowBreakingChangesAnnotation)
+}
+
+// isBreakingSchemaChange reports whether err is a refused schema change.
+func isBreakingSchemaChange(err error) bool {
+	var b *breakingSchemaChangeError
+	return errors.As(err, &b)
+}
+
+// checkSchemaCompatibility refuses a schema change that breaks the one being served, by kro's
+// rules and its opt-out annotation. kcp validates each schema alone, so nothing else catches
+// it. Returns nil on first publish, when there is nothing to compare against.
+func checkSchemaCompatibility(
+	ctx context.Context,
+	c ctrlruntimeclient.Client,
+	rgd *krov1alpha1.ResourceGraphDefinition,
+	crd *apiextensionsv1.CustomResourceDefinition,
+) error {
+	if rgd.Annotations[krov1alpha1.AllowBreakingChangesAnnotation] == "true" {
+		return nil
+	}
+
+	name := compositeExportName(rgd.Name)
+	export := &kcpapisv1alpha1.APIExport{}
+	if err := c.Get(ctx, types.NamespacedName{Name: name}, export); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("get APIExport %s: %w", name, err)
+	}
+	if len(export.Spec.LatestResourceSchemas) == 0 {
+		return nil
+	}
+
+	servedName := export.Spec.LatestResourceSchemas[0]
+	served := &kcpapisv1alpha1.APIResourceSchema{}
+	if err := c.Get(ctx, types.NamespacedName{Name: servedName}, served); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("get APIResourceSchema %s: %w", servedName, err)
+	}
+
+	current, err := crdVersions(served)
+	if err != nil {
+		return fmt.Errorf("read served schema %s: %w", servedName, err)
+	}
+	report, err := crdcompat.CompareVersions(current, crd.Spec.Versions)
+	if err != nil {
+		return fmt.Errorf("compare schema against served %s: %w", servedName, err)
+	}
+	if report.IsCompatible() {
+		return nil
+	}
+	return &breakingSchemaChangeError{report: report}
+}
+
+// crdVersions converts schema versions back to CRD versions, the form kro's check takes.
+func crdVersions(ars *kcpapisv1alpha1.APIResourceSchema) ([]apiextensionsv1.CustomResourceDefinitionVersion, error) {
+	out := make([]apiextensionsv1.CustomResourceDefinitionVersion, 0, len(ars.Spec.Versions))
+	for i := range ars.Spec.Versions {
+		v := &ars.Spec.Versions[i]
+		props, err := v.GetSchema()
+		if err != nil {
+			return nil, fmt.Errorf("version %s: %w", v.Name, err)
+		}
+		subresources := v.Subresources
+		out = append(out, apiextensionsv1.CustomResourceDefinitionVersion{
+			Name:         v.Name,
+			Served:       v.Served,
+			Storage:      v.Storage,
+			Schema:       &apiextensionsv1.CustomResourceValidation{OpenAPIV3Schema: props},
+			Subresources: &subresources,
+		})
+	}
+	return out, nil
+}
+
+// pruneStaleSchemas deletes this RGD's schemas other than keep, left behind by earlier edits.
 func pruneStaleSchemas(ctx context.Context, c ctrlruntimeclient.Client, rgd *krov1alpha1.ResourceGraphDefinition, keep string) error {
 	list := &kcpapisv1alpha1.APIResourceSchemaList{}
 	if err := c.List(ctx, list); err != nil {
