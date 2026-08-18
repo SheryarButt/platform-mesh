@@ -103,7 +103,8 @@ func (o *OrgContextMiddleware) SetRequestContext() func(http.Handler) http.Handl
 			}
 
 			user, found := token.Claims.String(o.userClaim)
-			if !found || strings.TrimSpace(user) == "" {
+			user = strings.TrimSpace(user)
+			if !found || user == "" {
 				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 				return
 			}

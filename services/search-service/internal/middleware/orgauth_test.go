@@ -74,6 +74,7 @@ func TestSetRequestContextUsesConfiguredUserClaim(t *testing.T) {
 		{name: "email", userClaim: "email", wantUser: "user@example.org"},
 		{name: "subject", userClaim: "sub", wantUser: "subject-user"},
 		{name: "custom claim", userClaim: "preferred_username", wantUser: "roman"},
+		{name: "claim with surrounding whitespace", userClaim: "spaced_user", wantUser: "trimmed-user"},
 	}
 
 	for _, tt := range tests {
@@ -90,6 +91,7 @@ func TestSetRequestContextUsesConfiguredUserClaim(t *testing.T) {
 				"sub":                "subject-user",
 				"email":              "user@example.org",
 				"preferred_username": "roman",
+				"spaced_user":        "  trimmed-user  ",
 			}))
 			req = req.WithContext(ctx)
 
