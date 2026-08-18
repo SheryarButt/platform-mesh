@@ -28,6 +28,7 @@ import (
 	"go.platform-mesh.io/security-operator/internal/fga"
 	"go.platform-mesh.io/subroutines"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
@@ -64,6 +65,14 @@ func (t *tupleSubroutine) Finalize(ctx context.Context, obj ctrlruntimeclient.Ob
 		err = storeCluster.GetClient().Get(ctx, types.NamespacedName{
 			Name: o.Spec.StoreRef.Name,
 		}, &store)
+		if apierrors.IsNotFound(err) {
+			// The Store this AuthorizationModel depended on is already gone, so its
+			// tuples and the FGA store itself are already gone too — nothing left to
+			// clean up. Without this, an AuthorizationModel whose Store was deleted
+			// first (e.g. due to a stale dependency-count read) can never finalize.
+			o.Status.ManagedTuples = nil
+			return subroutines.OK(), nil
+		}
 		if err != nil {
 			return subroutines.OK(), err
 		}

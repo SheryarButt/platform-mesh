@@ -28,7 +28,9 @@ import (
 	"go.platform-mesh.io/security-operator/internal/subroutine"
 	"go.platform-mesh.io/security-operator/internal/subroutine/mocks"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
@@ -410,6 +412,41 @@ func TestTupleFinalizationWithAuthorizationModel(t *testing.T) {
 					}
 					return nil
 				})
+			},
+		},
+		{
+			name: "should finalize successfully when the referenced Store is already gone",
+			store: &pmcorev1alpha1.AuthorizationModel{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						pmcorev1alpha1.StoreRefLabelKey: "store",
+					},
+				},
+				Spec: pmcorev1alpha1.AuthorizationModelSpec{
+					StoreRef: pmcorev1alpha1.WorkspaceStoreRef{
+						Name:    "store",
+						Cluster: "store-cluster",
+					},
+				},
+				Status: pmcorev1alpha1.AuthorizationModelStatus{
+					ManagedTuples: []pmcorev1alpha1.Tuple{
+						{
+							Object:   "foo",
+							Relation: "bar",
+							User:     "user4",
+						},
+					},
+				},
+			},
+			// No fgaMocks: OpenFGA must NOT be called when the Store is already gone.
+			mgrMocks: func(mgr *mocks.MockManager) {
+				storeCluster := mocks.NewMockCluster(t)
+				storeClient := mocks.NewMockClient(t)
+				mgr.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("store-cluster")).Return(storeCluster, nil)
+				storeCluster.EXPECT().GetClient().Return(storeClient)
+				storeClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(
+					apierrors.NewNotFound(schema.GroupResource{Group: "core.platform-mesh.io", Resource: "stores"}, "store"),
+				)
 			},
 		},
 	}
