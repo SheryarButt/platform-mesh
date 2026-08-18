@@ -140,7 +140,7 @@ const templateOwner = "the FrontProxyTemplate"
 //
 // Sorted longest path first, ACROSS both sources. kcp's matcher precedence is
 // not verified here, and a short path is a prefix of every longer one —
-// "/services/" shadows "/services/tenancy/" — so an unsorted merge routes by
+// "/services/" shadows "/services/<module>/" — so an unsorted merge routes by
 // whichever source happened to be appended first. Sorting each source alone is
 // not enough, which is what appending template entries to sorted module entries
 // used to do.

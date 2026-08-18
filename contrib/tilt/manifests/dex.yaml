@@ -28,9 +28,9 @@
 # __CLUSTER__ and __PORT__ are substituted by the Tiltfile with the cluster ID
 # (the node's dashed IP) and the gateway NodePort. They are placeholders rather
 # than a fixed hostname because the issuer URL has to resolve to the SAME address
-# from three places — the host, the kcp shards verifying tokens, and the tenancy
-# virtual workspace — and only a sslip.io name does that without hostAliases.
-# A literal here would be a fourth place to keep in sync with the node's IP.
+# from two places — the host and the kcp shards verifying tokens — and only a
+# sslip.io name does that without hostAliases. A literal here would be a third
+# place to keep in sync with the node's IP.
 #
 # Development-only: in-memory storage, two static test users sharing one password
 # (dex/dex, bob/dex), skipApprovalScreen. Do not use as a template for prod.
@@ -123,8 +123,8 @@ data:
     # downgrade of the image below does not degrade group testing, it silently
     # removes it, and the symptom is an empty `groups` claim rather than an error.
     #
-    # They reach a token only when the client asks for the `groups` scope.
-    # tenancyctl requests it by default; anything else here has to say so too.
+    # They reach a token only when the client asks for the `groups` scope, so a
+    # client that wants group-based authorization has to request it explicitly.
     staticPasswords:
       # email: dex@pm.localhost, password: dex
       #

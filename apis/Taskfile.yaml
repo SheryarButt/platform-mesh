@@ -41,16 +41,11 @@ tasks:
       - task: fmt
       - task: tools:lint
   generate:
-    desc: Regenerate deepcopy and OpenAPI code for the apis types.
+    desc: Regenerate deepcopy code for the apis types.
     cmds:
       - task: tools:generate-deepcopy
         vars:
           PATH: /...
-      # OpenAPI models, needed by anything served through a virtual workspace.
-      - task: tools:generate-openapi
-        vars:
-          PATH: tenancy/v1alpha1
-          PKG: go.platform-mesh.io/apis/tenancy/v1alpha1
   test:
     desc: Run apis unit tests.
     cmds:

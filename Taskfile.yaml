@@ -56,7 +56,6 @@ vars:
     - resource-broker
     - search-operator
     - security-operator
-    - tenancy-operator
     - terminal-controller-manager
 
     # services
@@ -170,39 +169,6 @@ tasks:
           VERSION: '{{.VERSION}}'
           PUSH: '{{.PUSH}}'
           PLATFORMS: '{{.PLATFORMS}}'
-
-  # ---------------------------------------------------------------------------
-  # Local developer flow for the tenancy profile. Thin aliases: the real tasks
-  # live with the component, in operators/tenancy-operator/Taskfile.yaml.
-  # ---------------------------------------------------------------------------
-  dev-login:
-    desc: 'Sign in against the dev IdP (tenancy profile). Credentials: dex@pm.localhost / dex'
-    cmds:
-      - task --dir operators/tenancy-operator dev-login
-  dev-provision:
-    desc: 'Provision the caller''s User (the explicit `create users` of RFC 010 §Part 0).'
-    cmds:
-      - task --dir operators/tenancy-operator dev-provision
-  dev-orgs:
-    desc: List the organizations you belong to.
-    cmds:
-      - task --dir operators/tenancy-operator dev-orgs
-  dev-accounts:
-    desc: 'List the accounts you can work in (ORGANIZATION=<uuid|name> to narrow).'
-    cmds:
-      - task --dir operators/tenancy-operator dev-accounts ORGANIZATION={{.ORGANIZATION}}
-  dev-whoami:
-    desc: Show the identity in the cached token.
-    cmds:
-      - task --dir operators/tenancy-operator dev-whoami
-  dev-grant-group:
-    desc: 'Grant an IdP group access to a tenant (TENANT=<uuid|name> [GROUP=<g>] [ROLE=<role>]).'
-    cmds:
-      - task --dir operators/tenancy-operator dev-grant-group TENANT={{.TENANT}} GROUP={{.GROUP}} ROLE={{.ROLE}}
-  dev-kubeconfig:
-    desc: 'Write a kubeconfig for one workspace (CLUSTER=<id> task dev-kubeconfig).'
-    cmds:
-      - task --dir operators/tenancy-operator dev-kubeconfig CLUSTER={{.CLUSTER}} OUTPUT={{.OUTPUT}}
 
   # ---------------------------------------------------------------------------
   # Per-component targets. Each delegates to the component's own Taskfile.

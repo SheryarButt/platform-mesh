@@ -175,7 +175,7 @@ type OCMModuleSpec struct {
 	// +optional
 	OCM *OCMRepository `json:"ocm,omitempty"`
 
-	// Component is the name of the module's OCM component, e.g. github.com/platform-mesh/platform-mesh/tenancy-operator.
+	// Component is the name of the module's OCM component, e.g. github.com/platform-mesh/platform-mesh/security-operator.
 	// +kubebuilder:validation:MinLength=1
 	Component string `json:"component"`
 
