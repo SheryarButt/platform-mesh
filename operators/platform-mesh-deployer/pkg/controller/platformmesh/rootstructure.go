@@ -31,10 +31,9 @@ import (
 // root:modules.
 //
 // Organisations are NOT here. root:orgs used to be provisioned alongside, but
-// nothing ever reconciled it: the tenancy model roots its own tree at
-// --paths-root (root:tenancy) and holds organisations under root:tenancy:tenants,
-// so root:orgs was an empty workspace whose name claimed something it did not
-// own.
+// nothing ever reconciled it, so it was an empty workspace whose name claimed
+// something it did not own. A tenancy model that wants a tree of its own asks
+// for the workspaces it needs rather than inheriting one nobody fills.
 var roots = []string{ocmmodule.WorkspaceBase}
 
 // reconcileRootStructure creates the kcp workspaces a PlatformMesh needs before

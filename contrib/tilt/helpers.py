@@ -113,7 +113,7 @@ def component_build(name, path, deps, image, chart, namespace, values=[], helm_s
     deps: extra source dirs that should trigger a rebuild (shared modules like
     apis/, subroutines/, golang-commons/).
     labels: Tilt UI grouping for both the build and the deployed workload. Pass the
-    feature name (e.g. ['tenancy']) so a profile's resources stay together.
+    feature name (e.g. ['auth']) so a profile's resources stay together.
     helm_set: list of "key=value" chart overrides passed as helm --set. Use to
     drop parts of a production chart that don't belong on the local kube cluster
     (e.g. crds.enabled=false to skip the kcp APIExport/APIResourceSchema objects,
@@ -135,7 +135,7 @@ def component_build(name, path, deps, image, chart, namespace, values=[], helm_s
     # cluster. `workload` is the actual Deployment/Tilt resource name when the chart
     # doesn't name it after the component (renamed back to `name` for the UI).
     # Called unconditionally: without it the workload lands in Tilt's UI with no
-    # label at all, which is how tenancy-operator ended up ungrouped.
+    # label at all, in Tilt's dependency-less catch-all group.
     wl = workload if workload else name
     if wl != name:
         k8s_resource(wl, new_name=name, objects=objects, resource_deps=resource_deps, labels=labels)

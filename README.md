@@ -80,21 +80,20 @@ For the inner loop, [Tilt](https://tilt.dev) replaces the OCM/Flux delivery pipe
 # context other than kind-platform-mesh, so a stray `tilt up` cannot hit a
 # shared cluster. Override with TILT_ALLOWED_CONTEXT.
 kind create cluster --name platform-mesh
-tilt up -f contrib/tilt/Tiltfile -- --profile=core,tenancy
+tilt up -f contrib/tilt/Tiltfile -- --profile=core,auth
 ```
 
 The `--` matters: everything after it is parsed by the Tiltfile, not by Tilt itself.
 
 ### Profiles
 
-Profiles are independent feature layers, not an ordered ladder — each only ever *adds* resources, so several can be requested at once (`--profile=core,tenancy`, `--profile=core --profile=tenancy`, or `--profile=full` for all of them). An unknown profile fails the Tiltfile rather than being silently ignored, so a typo cannot quietly give you a smaller environment than you asked for.
+Profiles are independent feature layers, not an ordered ladder — each only ever *adds* resources, so several can be requested at once (`--profile=core,auth`, `--profile=core --profile=auth`, or `--profile=full` for all of them). An unknown profile fails the Tiltfile rather than being silently ignored, so a typo cannot quietly give you a smaller environment than you asked for.
 
 | Profile | Adds |
 |---------|------|
 | `infra` | the base environment — namespace, cert-manager issuer, envoy `Gateway`, a mutual-TLS etcd, dex, and kcp, which `platform-mesh-deployer` builds from a `PlatformMesh`. **Always on**; naming it is allowed but redundant |
 | `core` | nothing yet (reserved) |
 | `auth` | the ReBAC authorization webhook secret on kcp (L3) |
-| `tenancy` | the tenancy tree inside kcp plus the `tenancy-operator`, hot-reloaded from source |
 | `full` | shorthand for all of the above |
 
 ### Working against local checkouts
@@ -115,7 +114,7 @@ TILT_NO_INFRA=1 tilt alpha tiltfile-result -f contrib/tilt/Tiltfile -- --profile
 
 This renders the local manifests and the `PlatformMesh` and topology templates kcp is built from, with every substitution applied — no cluster and no remote fetches — so gateway wiring, OIDC issuer and the authorization webhook can be confirmed before deploying.
 
-See [contrib/tilt/README.md](contrib/tilt/README.md) for the full environment: what each resource is, how to poke at the tenancy tree in kcp, and the hooks the kcp static install exposes.
+See [contrib/tilt/README.md](contrib/tilt/README.md) for the full environment: what each resource is, how kcp gets built, and how to poke at it.
 
 ## Releasing
 
