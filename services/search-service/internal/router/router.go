@@ -91,9 +91,6 @@ func CreateRouter(svc SearchService, mws []func(http.Handler) http.Handler) *chi
 			case errors.Is(err, search.ErrInvalidRequest), errors.Is(err, search.ErrInvalidCursor):
 				status = http.StatusBadRequest
 				http.Error(w, err.Error(), status)
-			case errors.Is(err, search.ErrTotalCountUnavailable):
-				status = http.StatusUnprocessableEntity
-				http.Error(w, err.Error(), status)
 			case errors.Is(err, search.ErrUnauthorized):
 				status = http.StatusUnauthorized
 				http.Error(w, http.StatusText(status), status)
@@ -232,9 +229,6 @@ func handleError(w http.ResponseWriter, r *http.Request, rc appcontext.RequestCo
 	switch {
 	case errors.Is(err, search.ErrInvalidRequest), errors.Is(err, search.ErrInvalidCursor):
 		status = http.StatusBadRequest
-		http.Error(w, err.Error(), status)
-	case errors.Is(err, search.ErrTotalCountUnavailable):
-		status = http.StatusUnprocessableEntity
 		http.Error(w, err.Error(), status)
 	case errors.Is(err, search.ErrUnauthorized):
 		status = http.StatusUnauthorized

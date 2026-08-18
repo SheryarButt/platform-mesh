@@ -212,20 +212,6 @@ func TestCreateRouterSearchPageResponseContract(t *testing.T) {
 	}
 }
 
-func TestCreateRouterSearchTotalCountUnavailable(t *testing.T) {
-	svc := &fakeSearchService{err: search.ErrTotalCountUnavailable}
-	r := CreateRouter(svc, []func(http.Handler) http.Handler{
-		withRequestContext(appcontext.RequestContext{Organization: "acme", User: "alice@example.com"}),
-	})
-	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=hello&page=1", nil)
-	rr := httptest.NewRecorder()
-	r.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("expected 422, got %d", rr.Code)
-	}
-}
-
 func TestCreateRouterMissingContextUnauthorized(t *testing.T) {
 	svc := &fakeSearchService{}
 	r := CreateRouter(svc, nil)

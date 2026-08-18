@@ -156,6 +156,25 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 		searchAfter = decoded.SearchAfter
 	}
 
+	accountFGAObjects, err := s.authorizer.ListAccessibleAccounts(ctx, org, user)
+	s.metrics.AddOpenFGACalls(1)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("searchmode", mode).
+			Str("organization", org).
+			Str("queryHash", qHash).
+			Msg("failed to list accessible accounts with OpenFGA")
+		return SearchResponse{}, fmt.Errorf("%w: list accessible accounts: %v", ErrBackend, err)
+	}
+	if len(accountFGAObjects) == 0 {
+		if pageMode {
+			zero := 0
+			return SearchResponse{Results: []SearchHit{}, TotalCount: &zero}, nil
+		}
+		return SearchResponse{Results: []SearchHit{}}, nil
+	}
+
 	var (
 		indices         []string
 		resourceByIndex map[string]string
@@ -210,19 +229,21 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (SearchResponse
 	var nextSearchAfter []any
 	var totalScanned int
 	var authorizedHits int
+	var totalCount int
 	var exhausted bool
 
 outer:
-	for pageMode || len(results) < limit {
+	for len(results) < limit {
 		page, err := s.searcher.Search(ctx, OpenSearchQuery{
-			Indices:        indices,
-			Query:          query,
-			Mode:           mode,
-			Fields:         searchFields,
-			SemanticFields: semanticFields,
-			Filters:        filterQuery,
-			Size:           s.cfg.FetchBatchSize,
-			SearchAfter:    searchAfter,
+			Indices:           indices,
+			Query:             query,
+			Mode:              mode,
+			Fields:            searchFields,
+			SemanticFields:    semanticFields,
+			Filters:           filterQuery,
+			AccountFGAObjects: accountFGAObjects,
+			Size:              s.cfg.FetchBatchSize,
+			SearchAfter:       searchAfter,
 		})
 		s.metrics.AddOpenSearchCalls(1)
 		if err != nil {
@@ -233,15 +254,7 @@ outer:
 			exhausted = true
 			break
 		}
-		if pageMode && totalScanned+len(page.Hits) > s.cfg.MaxScannedHits {
-			// TODO: Replace exhaustive counting with authorization-aware OpenSearch filters
-			// once indexed access scopes are available.
-			return SearchResponse{}, fmt.Errorf(
-				"%w: scan exceeds the maximum of %d hits",
-				ErrTotalCountUnavailable,
-				s.cfg.MaxScannedHits,
-			)
-		}
+		totalCount = page.TotalCount
 
 		authz, err := s.authorizer.FilterAuthorized(ctx, AuthorizationRequest{
 			Organization: org,
@@ -277,12 +290,12 @@ outer:
 				continue
 			}
 			authorizedHits++
-			if authorizedHits <= resultOffset || len(results) == limit {
+			if authorizedHits <= resultOffset {
 				continue
 			}
 
 			results = append(results, mapHit(hit, resolveHitResource(hit, resource, resourceByIndex)))
-			if !pageMode && len(results) == limit {
+			if len(results) == limit {
 				break outer
 			}
 		}
@@ -296,7 +309,7 @@ outer:
 	if pageMode {
 		return SearchResponse{
 			Results:    results,
-			TotalCount: &authorizedHits,
+			TotalCount: &totalCount,
 		}, nil
 	}
 
@@ -403,6 +416,14 @@ func (s *Service) FilterValues(ctx context.Context, req FilterValuesRequest) (Fi
 
 	query := strings.TrimSpace(req.Query)
 	searchFields := searchableFields(indexRef.DefaultFields)
+	accountFGAObjects, err := s.authorizer.ListAccessibleAccounts(ctx, org, user)
+	s.metrics.AddOpenFGACalls(1)
+	if err != nil {
+		return FilterValuesResponse{}, fmt.Errorf("%w: list accessible accounts: %v", ErrBackend, err)
+	}
+	if len(accountFGAObjects) == 0 {
+		return FilterValuesResponse{Values: []string{}}, nil
+	}
 
 	searchAfter := []any(nil)
 	totalScanned := 0
@@ -412,12 +433,13 @@ func (s *Service) FilterValues(ctx context.Context, req FilterValuesRequest) (Fi
 outer:
 	for len(values) < limit {
 		page, err := s.searcher.Search(ctx, OpenSearchQuery{
-			Indices:     []string{indexRef.IndexName},
-			Query:       query,
-			Fields:      searchFields,
-			Filters:     filters,
-			Size:        s.cfg.FetchBatchSize,
-			SearchAfter: searchAfter,
+			Indices:           []string{indexRef.IndexName},
+			Query:             query,
+			Fields:            searchFields,
+			Filters:           filters,
+			AccountFGAObjects: accountFGAObjects,
+			Size:              s.cfg.FetchBatchSize,
+			SearchAfter:       searchAfter,
 		})
 		s.metrics.AddOpenSearchCalls(1)
 		if err != nil {

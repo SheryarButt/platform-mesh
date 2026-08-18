@@ -42,12 +42,10 @@ Query params:
 
 If both `page` and `cursor` are provided, cursor-based pagination takes precedence.
 
-Page-based pagination scans and authorizes the full matching result set to return an exact authorized `totalCount`.
-The scan is bounded by `MaxScannedHits` (1000 hits by default). If the service cannot exhaust the result set within
-that bound, it responds with `422 Unprocessable Entity`; use cursor-based pagination for broader or deeper traversal.
-
-TODO: Replace the exhaustive count with authorization-aware OpenSearch filters after access scopes such as workspace
-and account are indexed. The same fields can then support authorization-safe facet counts.
+Before querying OpenSearch, the service resolves the accounts the caller can access with OpenFGA `ListObjects` and
+adds those exact account objects as an internal `filterable_fields.account_fga_object` filter. OpenSearch therefore
+returns the page-based `totalCount` directly for the caller's accessible account scope. Returned hits are still
+batch-checked with OpenFGA as a defense in depth measure.
 
 Semantic mode behavior:
 
@@ -70,8 +68,8 @@ Response shape:
 - `results[].resource` indicates which resource index produced the hit
 - `source` containing the indexed document source per hit, including `default_fields`, `semantic_fields`, and `filterable_fields`
 - `nextCursor` for cursor-based sequential continuation; omitted for page-based requests
-- `totalCount` with the exact number of authorized matching results for page-based requests; omitted for cursor-based
-  requests
+- `totalCount` with the exact number of OpenSearch matches after account authorization pre-filtering for page-based
+  requests; omitted for cursor-based requests
 
 ### Resource metadata endpoint
 

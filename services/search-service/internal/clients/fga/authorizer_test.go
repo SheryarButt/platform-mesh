@@ -17,12 +17,57 @@ limitations under the License.
 package fga
 
 import (
+	"context"
 	"reflect"
 	"testing"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"google.golang.org/grpc"
 
 	"go.platform-mesh.io/golang-commons/logger/testlogger"
 	"go.platform-mesh.io/search-service/internal/service/search"
 )
+
+type fakeClient struct {
+	listObjectsRequest *openfgav1.ListObjectsRequest
+	listObjectsResult  *openfgav1.ListObjectsResponse
+}
+
+func (f *fakeClient) BatchCheck(context.Context, *openfgav1.BatchCheckRequest, ...grpc.CallOption) (*openfgav1.BatchCheckResponse, error) {
+	return nil, nil
+}
+
+func (f *fakeClient) ListObjects(_ context.Context, req *openfgav1.ListObjectsRequest, _ ...grpc.CallOption) (*openfgav1.ListObjectsResponse, error) {
+	f.listObjectsRequest = req
+	return f.listObjectsResult, nil
+}
+
+func (f *fakeClient) ListStores(context.Context, *openfgav1.ListStoresRequest, ...grpc.CallOption) (*openfgav1.ListStoresResponse, error) {
+	return &openfgav1.ListStoresResponse{Stores: []*openfgav1.Store{{Id: "store-acme", Name: "acme"}}}, nil
+}
+
+func TestAuthorizerListAccessibleAccounts(t *testing.T) {
+	client := &fakeClient{listObjectsResult: &openfgav1.ListObjectsResponse{Objects: []string{
+		"core_platform-mesh_io_account:cluster/team-a",
+		"core_platform-mesh_io_account:cluster/team-a",
+		" core_platform-mesh_io_account:cluster/team-b ",
+		"",
+	}}}
+
+	accounts, err := NewAuthorizer(client).ListAccessibleAccounts(context.Background(), "acme", "system:serviceaccount:default:search")
+	if err != nil {
+		t.Fatalf("ListAccessibleAccounts returned error: %v", err)
+	}
+	if !reflect.DeepEqual(accounts, []string{
+		"core_platform-mesh_io_account:cluster/team-a",
+		"core_platform-mesh_io_account:cluster/team-b",
+	}) {
+		t.Fatalf("unexpected accounts: %v", accounts)
+	}
+	if got := client.listObjectsRequest; got.GetStoreId() != "store-acme" || got.GetType() != accountObjectType || got.GetRelation() != accountMemberRelation || got.GetUser() != "user:system.serviceaccount.default.search" {
+		t.Fatalf("unexpected ListObjects request: %+v", got)
+	}
+}
 
 func TestBuildBatchCheckItemResourceObjectFormat(t *testing.T) {
 	hit := search.OpenSearchHit{Source: map[string]any{
