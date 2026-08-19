@@ -54,6 +54,7 @@ type SearchConfig struct {
 type ServiceConfig struct {
 	Port                int
 	LocalDevelopmentOrg string
+	BatchSize           int
 	OpenSearch          OpenSearchConfig
 	OpenFGA             OpenFGAConfig
 	SearchIndex         SearchIndexConfig
@@ -87,6 +88,7 @@ func NewServiceConfig() *ServiceConfig {
 			FetchBatchSize: 100,
 			MaxScannedHits: 1000,
 		},
+		BatchSize: 50,
 	}
 }
 
@@ -108,6 +110,7 @@ func (c *ServiceConfig) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.SearchIndex.Version, "searchindex-version", c.SearchIndex.Version, "SearchIndex API version")
 	fs.StringVar(&c.SearchIndex.Resource, "searchindex-resource", c.SearchIndex.Resource, "SearchIndex API resource plural")
 
+	fs.IntVar(&c.BatchSize, "batch-size", c.BatchSize, "Batch size for Authorization requests")
 	fs.IntVar(&c.Search.DefaultLimit, "search-default-limit", c.Search.DefaultLimit, "Default search result limit")
 	fs.IntVar(&c.Search.MaxLimit, "search-max-limit", c.Search.MaxLimit, "Maximum search result limit")
 	fs.IntVar(&c.Search.FetchBatchSize, "search-fetch-batch-size", c.Search.FetchBatchSize, "Batch size for OpenSearch fetches")
