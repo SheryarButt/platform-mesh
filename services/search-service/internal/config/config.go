@@ -88,6 +88,7 @@ func NewServiceConfig() *ServiceConfig {
 			FetchBatchSize: 100,
 			MaxScannedHits: 1000,
 		},
+		BatchSize: 50,
 	}
 }
 
