@@ -23,12 +23,6 @@ services/iam-service/pkg/resolver/schema.resolvers.go
 services/kubernetes-graphql-gateway/sdk/schemahandler.pb.go
 services/kubernetes-graphql-gateway/sdk/schemahandler_grpc.pb.go
 
-# Helm templates. They DO carry the licence, as a {{/* */}} template comment —
-# the helm convention, which keeps it out of every rendered manifest. This
-# checker only recognises the `#` form for YAML, which here would mean stamping
-# the licence into real cluster objects.
-operators/tenancy-operator/deploy/helm/tenancy-operator/templates
-
 # Tilt chart/download cache (gitignored, but the checker walks the filesystem)
 contrib/tilt/.cache
 

@@ -23,6 +23,8 @@
 # so the operator actually re-execs on every sync.
 load('ext://restart_process', 'docker_build_with_restart')
 
+BUILD_GOARCH = os.getenv('GOARCH', '') or str(local('go env GOARCH', quiet=True, echo_off=True)).strip()
+
 def chart_path(name, version, oci_repo, cache_dir='.cache/charts'):
     """Resolve a Platform Mesh Helm chart to a local directory path.
 
@@ -81,7 +83,7 @@ def component_binary(name, path, deps, image, labels=['components']):
         # would fail every rebuild after the first.
         # (Subshell, not a `{ ...; }` group: braces would be eaten by .format().)
         cmd='cd ../.. && ( [ -d contrib/tilt/bin/{name} ] || rm -f contrib/tilt/bin/{name} ) && mkdir -p contrib/tilt/bin/{name} && CGO_ENABLED=0 GOOS=linux GOARCH={arch} go build -o contrib/tilt/bin/{name}/entrypoint ./{path}'.format(
-            arch=os.getenv('GOARCH', 'arm64'), name=name, path=path,
+            arch=BUILD_GOARCH, name=name, path=path,
         ),
         deps=['../../{}'.format(d) for d in [path] + deps],
         labels=labels,
@@ -111,7 +113,7 @@ def component_build(name, path, deps, image, chart, namespace, values=[], helm_s
     deps: extra source dirs that should trigger a rebuild (shared modules like
     apis/, subroutines/, golang-commons/).
     labels: Tilt UI grouping for both the build and the deployed workload. Pass the
-    feature name (e.g. ['tenancy']) so a profile's resources stay together.
+    feature name (e.g. ['auth']) so a profile's resources stay together.
     helm_set: list of "key=value" chart overrides passed as helm --set. Use to
     drop parts of a production chart that don't belong on the local kube cluster
     (e.g. crds.enabled=false to skip the kcp APIExport/APIResourceSchema objects,
@@ -133,7 +135,7 @@ def component_build(name, path, deps, image, chart, namespace, values=[], helm_s
     # cluster. `workload` is the actual Deployment/Tilt resource name when the chart
     # doesn't name it after the component (renamed back to `name` for the UI).
     # Called unconditionally: without it the workload lands in Tilt's UI with no
-    # label at all, which is how tenancy-operator ended up ungrouped.
+    # label at all, in Tilt's dependency-less catch-all group.
     wl = workload if workload else name
     if wl != name:
         k8s_resource(wl, new_name=name, objects=objects, resource_deps=resource_deps, labels=labels)

@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc"
 
 	"go.platform-mesh.io/golang-commons/logger/testlogger"
+	"go.platform-mesh.io/search-service/internal/config"
 	"go.platform-mesh.io/search-service/internal/service/search"
 )
 
@@ -54,7 +55,7 @@ func TestAuthorizerListAccessibleAccounts(t *testing.T) {
 		"",
 	}}}
 
-	accounts, err := NewAuthorizer(client).ListAccessibleAccounts(context.Background(), "acme", "system:serviceaccount:default:search")
+	accounts, err := NewAuthorizer(client, config.ServiceConfig{BatchSize: 50}).ListAccessibleAccounts(context.Background(), "acme", "system:serviceaccount:default:search")
 	if err != nil {
 		t.Fatalf("ListAccessibleAccounts returned error: %v", err)
 	}

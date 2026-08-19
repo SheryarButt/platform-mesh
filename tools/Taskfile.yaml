@@ -293,7 +293,10 @@ tasks:
 
   # OpenAPI models for types served by a virtual workspace. The generic apiserver
   # resolves a model for every type it serves and refuses to start without one, so
-  # this is required for any API the tenancy VW exposes — not optional polish.
+  # this is required for any API a VW exposes — not optional polish.
+  #
+  # No caller at the moment: it is kept as the ready-made half of adding a
+  # VW-served API, since the failure it prevents is a server that will not start.
   generate-openapi:
     internal: true
     deps: [openapi-gen]

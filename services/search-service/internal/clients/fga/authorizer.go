@@ -26,11 +26,11 @@ import (
 	"google.golang.org/grpc"
 
 	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/search-service/internal/config"
 	"go.platform-mesh.io/search-service/internal/service/search"
 )
 
 const (
-	batchCheckChunkSize   = 100
 	accountObjectType     = "core_platform-mesh_io_account"
 	accountMemberRelation = "member"
 )
@@ -43,10 +43,11 @@ type client interface {
 
 type Authorizer struct {
 	client client
+	cfg    config.ServiceConfig
 }
 
-func NewAuthorizer(client client) *Authorizer {
-	return &Authorizer{client: client}
+func NewAuthorizer(client client, cfg config.ServiceConfig) *Authorizer {
+	return &Authorizer{client: client, cfg: cfg}
 }
 
 func (a *Authorizer) ListAccessibleAccounts(ctx context.Context, organization, user string) ([]string, error) {
@@ -108,7 +109,7 @@ func (a *Authorizer) FilterAuthorized(ctx context.Context, req search.Authorizat
 
 	result := search.AuthorizationResult{Allowed: allowed}
 
-	for _, chunk := range chunkRanges(len(req.Hits), batchCheckChunkSize) {
+	for _, chunk := range chunkRanges(len(req.Hits), a.cfg.BatchSize) {
 		start := chunk[0]
 		end := chunk[1]
 		items := make([]*openfgav1.BatchCheckItem, 0, end-start)

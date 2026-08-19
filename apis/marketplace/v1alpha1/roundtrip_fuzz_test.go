@@ -17,38 +17,72 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 )
 
-func FuzzMarketplaceEntryRoundTrip(f *testing.F) {
-	f.Add([]byte(`{
-		"apiVersion": "virtual-workspaces.platform-mesh.io/v1alpha1",
+var marketplaceEntrySeeds = []struct {
+	name string
+	json string
+}{
+	{"fullSpec", `{
+		"apiVersion": "marketplace.platform-mesh.io/v1alpha1",
 		"kind": "MarketplaceEntry",
 		"metadata": {"name": "my-extension", "labels": {"app": "test"}},
 		"spec": {
-			"installed": true,
+			"apiBindingName": "my-extension-foo12",
 			"providerMetadata": {
-				"displayName": "My Extension",
-				"description": "An example marketplace extension",
-				"tags": ["networking", "security"],
-				"contacts": [{"displayName": "Support", "email": "support@example.com", "role": ["maintainer"]}],
-				"documentation": [{"displayName": "Docs", "url": "https://example.com/docs"}],
-				"links": [{"displayName": "Homepage", "url": "https://example.com"}]
+				"metadata": {"name": "foo-provider"},
+				"spec": {
+					"displayName": "My Extension",
+					"description": "An example marketplace extension",
+					"tags": ["networking", "security"],
+					"contacts": [{"displayName": "Support", "email": "support@example.com", "role": ["maintainer"]}],
+					"documentation": [{"displayName": "Docs", "url": "https://example.com/docs"}],
+					"links": [{"displayName": "Homepage", "url": "https://example.com"}],
+					"icon": {"light": {"url": "https://example.com/l.png"}, "dark": {"url": "https://example.com/d.png"}},
+					"preferredSupportChannels": [{"displayName": "Slack", "url": "https://example.com/slack"}]
+				}
 			},
 			"apiExport": {
-				"metadata": {"name": "test-api-export"},
-				"spec": {}
+				"metadata": {"name": "test-api-export", "annotations": {"kcp.io/path": "root:providers:foo"}},
+				"spec": {
+					"latestResourceSchemas": ["v260623-482e10b2.widgets.foo.io"],
+					"identity": {"secretRef": {"name": "widgets-identity", "namespace": "kcp-system"}},
+					"maximalPermissionPolicy": {"local": {}},
+					"permissionClaims": [
+						{"group": "", "resource": "secrets", "all": true, "identityHash": "abc123"},
+						{"group": "apps", "resource": "deployments",
+						 "resourceSelector": [{"name": "one", "namespace": "two"}]}
+					]
+				}
 			}
 		}
-	}`))
-	f.Add([]byte(`{}`))
-	f.Add([]byte(`{"spec": {"installed": false, "providerMetadata": {"displayName": ""}}}`))
+	}`},
+	{"emptyObj", `{}`},
+}
+
+func FuzzMarketplaceEntryRoundTrip(f *testing.F) {
+	for _, seed := range marketplaceEntrySeeds {
+		f.Add([]byte(seed.json))
+	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		fuzzRoundTrip(t, data, &MarketplaceEntry{}, &MarketplaceEntry{})
 	})
+}
+
+func TestSeedsDecodeStrictly(t *testing.T) {
+	for _, seed := range marketplaceEntrySeeds {
+		t.Run(seed.name, func(t *testing.T) {
+			var entry MarketplaceEntry
+			if err := strictUnmarshal([]byte(seed.json), &entry); err != nil {
+				t.Errorf("seed does not match MarketplaceEntry: %v", err)
+			}
+		})
+	}
 }
 
 func fuzzRoundTrip[T any](t *testing.T, data []byte, obj *T, obj2 *T) {
@@ -63,11 +97,19 @@ func fuzzRoundTrip[T any](t *testing.T, data []byte, obj *T, obj2 *T) {
 		t.Fatalf("failed to marshal: %v", err)
 	}
 
-	if err := json.Unmarshal(roundtripped, obj2); err != nil {
+	if err := strictUnmarshal(roundtripped, obj2); err != nil {
 		t.Fatalf("failed to unmarshal roundtripped data: %v", err)
 	}
 
 	if !equality.Semantic.DeepEqual(obj, obj2) {
 		t.Errorf("roundtrip mismatch for %T", obj)
 	}
+}
+
+// strictUnmarshal rejects unknown fields so these  fail the tests.
+// Fuzz output not strict on purpose.
+func strictUnmarshal(data []byte, obj any) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	return dec.Decode(obj)
 }

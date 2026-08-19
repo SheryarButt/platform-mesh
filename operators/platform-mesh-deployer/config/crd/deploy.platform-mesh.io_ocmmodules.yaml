@@ -69,7 +69,7 @@ spec:
             properties:
               component:
                 description: Component is the name of the module's OCM component,
-                  e.g. github.com/platform-mesh/platform-mesh/tenancy-operator.
+                  e.g. github.com/platform-mesh/platform-mesh/security-operator.
                 minLength: 1
                 type: string
               components:

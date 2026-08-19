@@ -208,7 +208,12 @@ func (r *DeploymentSubroutine) renderTemplateFile(path string, tmplVars map[stri
 		if err := yaml.Unmarshal([]byte(doc), &objMap); err != nil {
 			return nil, errors.Wrap(err, "Failed to unmarshal rendered YAML from template %s (size: %d bytes)", path, len(doc))
 		}
-		objs = append(objs, &unstructured.Unstructured{Object: objMap})
+
+		// Some templates will, once rendered, leave behind only their boilerplate comment,
+		// which will not trigger the emptiness check above.
+		if objMap != nil {
+			objs = append(objs, &unstructured.Unstructured{Object: objMap})
+		}
 	}
 	return objs, nil
 }

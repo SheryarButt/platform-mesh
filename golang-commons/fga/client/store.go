@@ -23,6 +23,8 @@ import (
 
 	"github.com/jellydator/ttlcache/v3"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	"go.platform-mesh.io/golang-commons/fga/store"
 )
 
 func (c *OpenFGAClient) ModelId(ctx context.Context, tenantId string) (string, error) {
@@ -56,17 +58,15 @@ func (c *OpenFGAClient) StoreId(ctx context.Context, tenantId string) (string, e
 	}
 
 	expectedStoreName := fmt.Sprintf("tenant-%s", tenantId)
-	resp, err := c.client.ListStores(ctx, &openfgav1.ListStoresRequest{})
+
+	storeID, found, err := store.FindStoreIDByName(ctx, c.client, expectedStoreName)
 	if err != nil {
 		return "", err
 	}
-
-	for _, store := range resp.Stores {
-		if store.Name == expectedStoreName {
-			c.cache.Set(cacheKeyForStore(tenantId), store.Id, ttlcache.DefaultTTL)
-			return store.Id, nil
-		}
+	if !found {
+		return "", errors.New("could not determine store. No stores found")
 	}
 
-	return "", errors.New("could not determine store. No stores found")
+	c.cache.Set(cacheKeyForStore(tenantId), storeID, ttlcache.DefaultTTL)
+	return storeID, nil
 }
