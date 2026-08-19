@@ -25,18 +25,17 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/search-service/internal/config"
 	"go.platform-mesh.io/search-service/internal/service/search"
 )
 
-// Currently 50 is the maximum batch size openFGA permits
-const batchCheckChunkSize = 50
-
 type Authorizer struct {
 	client openfgav1.OpenFGAServiceClient
+	cfg    config.ServiceConfig
 }
 
-func NewAuthorizer(client openfgav1.OpenFGAServiceClient) *Authorizer {
-	return &Authorizer{client: client}
+func NewAuthorizer(client openfgav1.OpenFGAServiceClient, cfg config.ServiceConfig) *Authorizer {
+	return &Authorizer{client: client, cfg: cfg}
 }
 
 func (a *Authorizer) FilterAuthorized(ctx context.Context, req search.AuthorizationRequest) (search.AuthorizationResult, error) {
@@ -65,7 +64,7 @@ func (a *Authorizer) FilterAuthorized(ctx context.Context, req search.Authorizat
 
 	result := search.AuthorizationResult{Allowed: allowed}
 
-	for _, chunk := range chunkRanges(len(req.Hits), batchCheckChunkSize) {
+	for _, chunk := range chunkRanges(len(req.Hits), a.cfg.BatchSize) {
 		start := chunk[0]
 		end := chunk[1]
 		items := make([]*openfgav1.BatchCheckItem, 0, end-start)
