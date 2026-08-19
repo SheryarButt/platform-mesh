@@ -28,7 +28,8 @@ import (
 	"go.platform-mesh.io/search-service/internal/service/search"
 )
 
-const batchCheckChunkSize = 100
+// Currently 50 is the maximum batch size openFGA permits
+const batchCheckChunkSize = 50
 
 type Authorizer struct {
 	client openfgav1.OpenFGAServiceClient
