@@ -334,7 +334,7 @@ jobs:
   image-ocm:
     if: startsWith(github.ref, 'refs/tags/kro-composition-operator/')
     needs: [version, docker-build-push]
-    uses: platform-mesh/.github/.github/workflows/job-image-ocm.yml@13f745553db0275a7f5ad6f6c553803a77b3594e # main
+    uses: platform-mesh/.github/.github/workflows/job-image-ocm.yml@a22e08a90be540bb7de3119310bdc8b767c887fb # main
     secrets: inherit # zizmor: ignore[secrets-inherit]
     permissions:
       contents: read # Needed for actions/checkout in the reusable
