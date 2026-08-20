@@ -33,6 +33,8 @@ import (
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
+
+	"github.com/kcp-dev/logicalcluster/v3"
 )
 
 type tupleSubroutine struct {
@@ -68,8 +70,7 @@ func (t *tupleSubroutine) Finalize(ctx context.Context, obj ctrlruntimeclient.Ob
 		if apierrors.IsNotFound(err) {
 			// The Store this AuthorizationModel depended on is already gone, so its
 			// tuples and the FGA store itself are already gone too — nothing left to
-			// clean up. Without this, an AuthorizationModel whose Store was deleted
-			// first (e.g. due to a stale dependency-count read) can never finalize.
+			// clean up.
 			o.Status.ManagedTuples = nil
 			return subroutines.OK(), nil
 		}
@@ -84,6 +85,16 @@ func (t *tupleSubroutine) Finalize(ctx context.Context, obj ctrlruntimeclient.Ob
 	tm := fga.NewTupleManager(t.fga, storeID, authorizationModelID, log)
 	if err := tm.Delete(ctx, managedTuples); err != nil {
 		return subroutines.OK(), err
+	}
+
+	if o, ok := obj.(*pmcorev1alpha1.AuthorizationModel); ok {
+		// Release the Store reservation before this object's own finalizer clears.
+		if err := deregisterAuthorizationModelFromStore(ctx, t.mgr,
+			multicluster.ClusterName(o.Spec.StoreRef.Cluster), o.Spec.StoreRef.Name,
+			logicalcluster.From(o).String(), o.GetName(),
+		); err != nil {
+			return subroutines.OK(), fmt.Errorf("deregistering authorization model from store: %w", err)
+		}
 	}
 
 	switch o := obj.(type) {

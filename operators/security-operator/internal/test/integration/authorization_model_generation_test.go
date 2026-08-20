@@ -55,13 +55,16 @@ func (suite *IntegrationSuite) TestAuthorizationModelGeneration_Process() {
 		testAccount = "test-account"
 	)
 
-	_, testOrgPath := envtest.NewWorkspaceFixture(suite.T(), cli, orgsPath, envtest.WithName(testOrgName), envtest.WithType(core.RootCluster.Path(), "org"))
+	testOrgWorkspace, testOrgPath := envtest.NewWorkspaceFixture(suite.T(), cli, orgsPath, envtest.WithName(testOrgName), envtest.WithType(core.RootCluster.Path(), "org"))
+
+	// the Store must exist in the org's own workspace before a bind can happen
+	suite.createTestStore(ctx, cli.Cluster(testOrgPath), testOrgName, suite.T())
 
 	_, testAccountPath := envtest.NewWorkspaceFixture(suite.T(), cli, testOrgPath, envtest.WithName(testAccount), envtest.WithType(core.RootCluster.Path(), "account"))
 
 	testAccountClient := cli.Cluster(testAccountPath)
 
-	suite.createAccountInfo(ctx, testAccountClient, testAccount, testOrgName, testAccountPath, testOrgPath, suite.T())
+	suite.createAccountInfo(ctx, testAccountClient, testAccount, testOrgName, testOrgWorkspace.Spec.Cluster, testAccountPath, testOrgPath, suite.T())
 
 	_ = suite.createTestAPIBinding(ctx, testAccountClient, apiExportName, suite.platformMeshSysPath.String(), apiExportName)
 
@@ -73,7 +76,7 @@ func (suite *IntegrationSuite) TestAuthorizationModelGeneration_Process() {
 	}, 10*time.Second, 200*time.Millisecond, "authorizationModel should be created by controller")
 
 	suite.Assert().Equal(testOrgName, model.Spec.StoreRef.Name)
-	suite.Assert().Equal(testOrgPath.String(), model.Spec.StoreRef.Cluster)
+	suite.Assert().Equal(testOrgWorkspace.Spec.Cluster, model.Spec.StoreRef.Cluster)
 }
 
 func (suite *IntegrationSuite) TestAuthorizationModelGeneration_Finalize() {
@@ -96,8 +99,11 @@ func (suite *IntegrationSuite) TestAuthorizationModelGeneration_Finalize() {
 		testOrgName      = "generator-test-finalize"
 	)
 
-	_, testOrgPath := envtest.NewWorkspaceFixture(suite.T(), cli, orgsPath, envtest.WithName(testOrgName), envtest.WithType(core.RootCluster.Path(), "org"))
+	testOrgWorkspace, testOrgPath := envtest.NewWorkspaceFixture(suite.T(), cli, orgsPath, envtest.WithName(testOrgName), envtest.WithType(core.RootCluster.Path(), "org"))
 	testClient := cli.Cluster(testOrgPath)
+
+	// the Store must exist in the org's own workspace before a bind can happen
+	suite.createTestStore(ctx, testClient, testOrgName, suite.T())
 
 	suite.createAccount(ctx, testClient, testAccount1Name, pmcorev1alpha1.AccountTypeAccount, suite.T())
 	suite.createAccount(ctx, testClient, testAccount2Name, pmcorev1alpha1.AccountTypeAccount, suite.T())
@@ -108,8 +114,8 @@ func (suite *IntegrationSuite) TestAuthorizationModelGeneration_Finalize() {
 	testAccount1Client := cli.Cluster(testAccount1Path)
 	testAccount2Client := cli.Cluster(testAccount2Path)
 
-	suite.createAccountInfo(ctx, testAccount1Client, testAccount1Name, testOrgName, testAccount1Path, testOrgPath, suite.T())
-	suite.createAccountInfo(ctx, testAccount2Client, testAccount2Name, testOrgName, testAccount2Path, testOrgPath, suite.T())
+	suite.createAccountInfo(ctx, testAccount1Client, testAccount1Name, testOrgName, testOrgWorkspace.Spec.Cluster, testAccount1Path, testOrgPath, suite.T())
+	suite.createAccountInfo(ctx, testAccount2Client, testAccount2Name, testOrgName, testOrgWorkspace.Spec.Cluster, testAccount2Path, testOrgPath, suite.T())
 
 	apiBinding1 := suite.createTestAPIBinding(ctx, testAccount1Client, apiExportName, suite.platformMeshSysPath.String(), apiExportName)
 	apiBinding2 := suite.createTestAPIBinding(ctx, testAccount2Client, apiExportName, suite.platformMeshSysPath.String(), apiExportName)
