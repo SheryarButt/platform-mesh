@@ -312,7 +312,7 @@ func TestCreateRouterResourcesParam(t *testing.T) {
 	}
 
 	// Only the listed resources are searched (blanks trimmed); ListResources is never consulted.
-	var searched []string
+	searched := make([]string, 0, len(svc.reqs))
 	for _, req := range svc.reqs {
 		searched = append(searched, req.Resource)
 	}
