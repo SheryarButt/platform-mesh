@@ -164,6 +164,38 @@ func TestMarketplace_ExportsOfKnownProviders(t *testing.T) {
 	assert.Equal(t, testExportName+"-"+testProviderName, list.Items[0].GetName())
 }
 
+func TestMarketplace_PreservesProviderDetailViewExtensions(t *testing.T) {
+	cfg := config.NewServiceConfig()
+	s := marketplaceTestScheme(t)
+	provider := makeProviderMeta(testProviderClusterID)
+	provider.Spec.DetailViewExtensions = []pmuiv1alpha1.DetailViewExtension{
+		{URL: "https://provider.example/details"},
+		{URL: "https://provider.example/compatibility"},
+	}
+
+	lister := fake.NewClientBuilder().
+		WithScheme(s).
+		WithObjects(provider, makeDefaultExport(cfg)).
+		Build()
+
+	list := listMarketplace(t, lister, fake.NewClientBuilder().WithScheme(s).Build(), cfg)
+
+	require.Len(t, list.Items, 1)
+	extensions, found, err := unstructured.NestedSlice(
+		list.Items[0].Object, "spec", "providerMetadata", "spec", "detailViewExtensions")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Len(t, extensions, 2)
+	assert.Equal(
+		t, "https://provider.example/details",
+		extensions[0].(map[string]any)["url"],
+	)
+	assert.Equal(
+		t, "https://provider.example/compatibility",
+		extensions[1].(map[string]any)["url"],
+	)
+}
+
 func TestMarketplace_InstalledBinding(t *testing.T) {
 	cfg := config.NewServiceConfig()
 	s := marketplaceTestScheme(t)
