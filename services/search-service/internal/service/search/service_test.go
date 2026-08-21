@@ -60,8 +60,24 @@ func (f *fakeSearcher) Search(ctx context.Context, req OpenSearchQuery) (OpenSea
 }
 
 type fakeAuthorizer struct {
-	results []AuthorizationResult
-	calls   int
+	results         []AuthorizationResult
+	calls           int
+	accessible      []string
+	accessibleErr   error
+	accessibleCalls int
+	accessibleReqs  []struct{ organization, user string }
+}
+
+func (f *fakeAuthorizer) ListAccessibleAccounts(ctx context.Context, organization, user string) ([]string, error) {
+	f.accessibleCalls++
+	f.accessibleReqs = append(f.accessibleReqs, struct{ organization, user string }{organization, user})
+	if f.accessibleErr != nil {
+		return nil, f.accessibleErr
+	}
+	if f.accessible == nil {
+		return []string{"core_platform-mesh_io_account:cluster/acme"}, nil
+	}
+	return f.accessible, nil
 }
 
 func (f *fakeAuthorizer) FilterAuthorized(ctx context.Context, req AuthorizationRequest) (AuthorizationResult, error) {
@@ -107,27 +123,34 @@ func TestSearchFillsAuthorizedPageAcrossBatches(t *testing.T) {
 	if resp.NextCursor == nil {
 		t.Fatalf("expected non-nil next cursor")
 	}
+	if resp.TotalCount != nil {
+		t.Fatalf("expected total count to be omitted for cursor pagination, got %d", *resp.TotalCount)
+	}
 }
 
 func TestSearchReturnsRequestedPageOfAuthorizedResults(t *testing.T) {
 	searcher := &fakeSearcher{pages: []OpenSearchPage{
-		{Hits: []OpenSearchHit{
+		{TotalCount: 5, Hits: []OpenSearchHit{
 			{ID: "1", Sort: []any{1.0, "1"}, Source: map[string]any{"id": "1"}},
 			{ID: "2", Sort: []any{0.9, "2"}, Source: map[string]any{"id": "2"}},
 		}},
-		{Hits: []OpenSearchHit{
+		{TotalCount: 5, Hits: []OpenSearchHit{
 			{ID: "3", Sort: []any{0.8, "3"}, Source: map[string]any{"id": "3"}},
 			{ID: "4", Sort: []any{0.7, "4"}, Source: map[string]any{"id": "4"}},
 		}},
-		{Hits: []OpenSearchHit{
+		{TotalCount: 5, Hits: []OpenSearchHit{
 			{ID: "5", Sort: []any{0.6, "5"}, Source: map[string]any{"id": "5"}},
 			{ID: "6", Sort: []any{0.5, "6"}, Source: map[string]any{"id": "6"}},
+		}},
+		{TotalCount: 5, Hits: []OpenSearchHit{
+			{ID: "7", Sort: []any{0.4, "7"}, Source: map[string]any{"id": "7"}},
 		}},
 	}}
 	authorizer := &fakeAuthorizer{results: []AuthorizationResult{
 		{Allowed: []bool{true, false}, Denied: 1, Calls: 1},
 		{Allowed: []bool{true, true}, Calls: 1},
 		{Allowed: []bool{false, true}, Denied: 1, Calls: 1},
+		{Allowed: []bool{true}, Calls: 1},
 	}}
 
 	svc := NewService(
@@ -157,23 +180,58 @@ func TestSearchReturnsRequestedPageOfAuthorizedResults(t *testing.T) {
 	if searcher.calls != 3 {
 		t.Fatalf("expected 3 OpenSearch calls, got %d", searcher.calls)
 	}
-	if resp.NextCursor == nil {
-		t.Fatalf("expected non-nil next cursor")
+	if resp.NextCursor != nil {
+		t.Fatalf("expected next cursor to be omitted for page pagination, got %q", *resp.NextCursor)
+	}
+	if resp.TotalCount == nil || *resp.TotalCount != 5 {
+		t.Fatalf("expected total count 5, got %v", resp.TotalCount)
+	}
+	if got := searcher.reqs[0].AccountFGAObjects; len(got) != 1 || got[0] != "core_platform-mesh_io_account:cluster/acme" {
+		t.Fatalf("expected accessible account filter, got %v", got)
+	}
+}
+
+func TestSearchReturnsEmptyResultWithoutQueryingOpenSearchWhenNoAccountsAreAccessible(t *testing.T) {
+	searcher := &fakeSearcher{}
+	svc := NewService(
+		fakeResolver{index: SearchIndexRef{IndexName: "idx-acme"}},
+		searcher,
+		&fakeAuthorizer{accessible: []string{}},
+		nil,
+		ServiceConfig{},
+	)
+
+	resp, err := svc.Search(context.Background(), SearchRequest{
+		Organization: "acme",
+		User:         "alice@example.com",
+		Query:        "foo",
+		Page:         1,
+	})
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if len(resp.Results) != 0 || resp.TotalCount == nil || *resp.TotalCount != 0 {
+		t.Fatalf("expected empty result with total count zero, got %+v", resp)
+	}
+	if searcher.calls != 0 {
+		t.Fatalf("expected no OpenSearch calls, got %d", searcher.calls)
 	}
 }
 
 func TestSearchPageOneMatchesOmittedPage(t *testing.T) {
 	tests := []struct {
-		name string
-		page int
+		name              string
+		page              int
+		wantTotalCount    int
+		hasWantTotalCount bool
 	}{
 		{name: "page omitted"},
-		{name: "first page", page: 1},
+		{name: "first page", page: 1, wantTotalCount: 3, hasWantTotalCount: true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			searcher := &fakeSearcher{pages: []OpenSearchPage{{Hits: []OpenSearchHit{
+			searcher := &fakeSearcher{pages: []OpenSearchPage{{TotalCount: 3, Hits: []OpenSearchHit{
 				{ID: "1", Sort: []any{1.0, "1"}, Source: map[string]any{"id": "1"}},
 				{ID: "2", Sort: []any{0.9, "2"}, Source: map[string]any{"id": "2"}},
 				{ID: "3", Sort: []any{0.8, "3"}, Source: map[string]any{"id": "3"}},
@@ -211,6 +269,12 @@ func TestSearchPageOneMatchesOmittedPage(t *testing.T) {
 			if !hasFirstPage {
 				t.Fatalf("expected first page results [1 2], got %+v", resp.Results)
 			}
+			if tc.hasWantTotalCount && (resp.TotalCount == nil || *resp.TotalCount != tc.wantTotalCount) {
+				t.Fatalf("expected total count %d, got %v", tc.wantTotalCount, resp.TotalCount)
+			}
+			if !tc.hasWantTotalCount && resp.TotalCount != nil {
+				t.Fatalf("expected total count to be omitted, got %d", *resp.TotalCount)
+			}
 		})
 	}
 }
@@ -246,7 +310,7 @@ func TestSearchRejectsPageBeyondScannedHitsLimit(t *testing.T) {
 }
 
 func TestSearchPageBeyondAvailableResultsIsEmpty(t *testing.T) {
-	searcher := &fakeSearcher{pages: []OpenSearchPage{{Hits: []OpenSearchHit{
+	searcher := &fakeSearcher{pages: []OpenSearchPage{{TotalCount: 1, Hits: []OpenSearchHit{
 		{ID: "1", Sort: []any{1.0, "1"}, Source: map[string]any{"id": "1"}},
 	}}}}
 	svc := NewService(
@@ -277,6 +341,83 @@ func TestSearchPageBeyondAvailableResultsIsEmpty(t *testing.T) {
 	}
 	if resp.NextCursor != nil {
 		t.Fatalf("expected no next cursor, got %q", *resp.NextCursor)
+	}
+	if resp.TotalCount == nil || *resp.TotalCount != 1 {
+		t.Fatalf("expected total count 1, got %v", resp.TotalCount)
+	}
+}
+
+func TestSearchPageReturnsZeroTotalCountForEmptyResults(t *testing.T) {
+	svc := NewService(
+		fakeResolver{index: SearchIndexRef{IndexName: "idx-acme"}},
+		&fakeSearcher{},
+		&fakeAuthorizer{},
+		nil,
+		ServiceConfig{},
+	)
+
+	resp, err := svc.Search(context.Background(), SearchRequest{
+		Organization: "acme",
+		User:         "alice@example.com",
+		Query:        "foo",
+		Page:         1,
+	})
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if len(resp.Results) != 0 {
+		t.Fatalf("expected no results, got %+v", resp.Results)
+	}
+	if resp.TotalCount == nil || *resp.TotalCount != 0 {
+		t.Fatalf("expected total count 0, got %v", resp.TotalCount)
+	}
+	if resp.NextCursor != nil {
+		t.Fatalf("expected next cursor to be omitted, got %q", *resp.NextCursor)
+	}
+}
+
+func TestSearchPageUsesOpenSearchTotalWithoutScanningEveryHit(t *testing.T) {
+	searcher := &fakeSearcher{pages: []OpenSearchPage{
+		{TotalCount: 3, Hits: []OpenSearchHit{
+			{ID: "1", Sort: []any{1.0, "1"}, Source: map[string]any{"id": "1"}},
+			{ID: "2", Sort: []any{0.9, "2"}, Source: map[string]any{"id": "2"}},
+		}},
+		{Hits: []OpenSearchHit{
+			{ID: "3", Sort: []any{0.8, "3"}, Source: map[string]any{"id": "3"}},
+		}},
+	}}
+	authorizer := &fakeAuthorizer{results: []AuthorizationResult{{
+		Allowed: []bool{true, true},
+		Calls:   1,
+	}}}
+	svc := NewService(
+		fakeResolver{index: SearchIndexRef{IndexName: "idx-acme"}},
+		searcher,
+		authorizer,
+		nil,
+		ServiceConfig{
+			DefaultLimit:   20,
+			MaxLimit:       100,
+			FetchBatchSize: 2,
+			MaxScannedHits: 2,
+		},
+	)
+
+	resp, err := svc.Search(context.Background(), SearchRequest{
+		Organization: "acme",
+		User:         "alice@example.com",
+		Query:        "foo",
+		Limit:        1,
+		Page:         1,
+	})
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if resp.TotalCount == nil || *resp.TotalCount != 3 {
+		t.Fatalf("expected total count 3, got %v", resp.TotalCount)
+	}
+	if searcher.calls != 1 || authorizer.calls != 1 {
+		t.Fatalf("expected one search and authorization call, got %d and %d", searcher.calls, authorizer.calls)
 	}
 }
 
@@ -325,6 +466,9 @@ func TestSearchCursorTakesPrecedenceOverPage(t *testing.T) {
 	}
 	if searcher.reqs[0].SearchAfter[1] != "previous" {
 		t.Fatalf("unexpected search_after: %+v", searcher.reqs[0].SearchAfter)
+	}
+	if resp.TotalCount != nil {
+		t.Fatalf("expected total count to be omitted when cursor takes precedence, got %d", *resp.TotalCount)
 	}
 }
 
@@ -541,6 +685,9 @@ func TestFilterValuesPostFiltersAndEnforcesLimit(t *testing.T) {
 	}
 	if resp.Values[0] != "Active" {
 		t.Fatalf("unexpected value: %s", resp.Values[0])
+	}
+	if got := searcher.reqs[0].AccountFGAObjects; len(got) != 1 || got[0] != "core_platform-mesh_io_account:cluster/acme" {
+		t.Fatalf("expected accessible account filter, got %v", got)
 	}
 }
 
