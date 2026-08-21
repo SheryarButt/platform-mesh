@@ -33,7 +33,9 @@ type OpenSearchConfig struct {
 }
 
 type OpenFGAConfig struct {
-	GRPCAddr string
+	GRPCAddr    string
+	ObjectType  string
+	DefaultRole string
 }
 
 type SearchIndexConfig struct {
@@ -73,7 +75,9 @@ func NewServiceConfig() *ServiceConfig {
 			Timeout:  10 * time.Second,
 		},
 		OpenFGA: OpenFGAConfig{
-			GRPCAddr: "openfga:8081",
+			GRPCAddr:    "openfga:8081",
+			ObjectType:  "core_platform-mesh_io_account",
+			DefaultRole: "member",
 		},
 		SearchIndex: SearchIndexConfig{
 			WorkspacePath:    "root:providers:search",
@@ -103,6 +107,8 @@ func (c *ServiceConfig) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&c.OpenSearch.Timeout, "opensearch-timeout", c.OpenSearch.Timeout, "Set OpenSearch HTTP timeout")
 
 	fs.StringVar(&c.OpenFGA.GRPCAddr, "openfga-grpc-addr", c.OpenFGA.GRPCAddr, "Set OpenFGA gRPC address")
+	fs.StringVar(&c.OpenFGA.ObjectType, "openfga-object-type", c.OpenFGA.ObjectType, "Set the OpenFGA object type for accounts")
+	fs.StringVar(&c.OpenFGA.DefaultRole, "openfga-default-role", c.OpenFGA.DefaultRole, "Set the OpenFGA default role for account access")
 
 	fs.StringVar(&c.SearchIndex.WorkspacePath, "searchindex-workspace-path", c.SearchIndex.WorkspacePath, "Workspace path for SearchIndex resources")
 	fs.StringVar(&c.SearchIndex.OrgWorkspacePath, "searchindex-org-workspace-path", c.SearchIndex.OrgWorkspacePath, "Workspace path for organization workspaces")

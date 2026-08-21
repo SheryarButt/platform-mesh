@@ -77,23 +77,44 @@ func TestInitialTuplesForAccount(t *testing.T) {
 }
 
 func TestInitialTuplesForAccount_formatUser(t *testing.T) {
-	in := InitialTuplesForAccountInput{
-		BaseTuplesInput: BaseTuplesInput{
-			Creator:                "system:serviceaccount:ns:name",
-			AccountOriginClusterID: originClusterID,
-			AccountName:            accountName,
-			CreatorRelation:        creatorRelation,
-			ObjectType:             objectType,
+	tests := []struct {
+		name    string
+		creator string
+		want    string
+	}{
+		{
+			name:    "service account replaces colons",
+			creator: "system:serviceaccount:ns:name",
+			want:    "user:system.serviceaccount.ns.name",
 		},
-		ParentOriginClusterID: originClusterID,
-		ParentName:            parentAccountName,
-		ParentRelation:        parentRelation,
+		{
+			name:    "email preserves dots",
+			creator: "john.doe@example.com",
+			want:    "user:john.doe@example.com",
+		},
 	}
-	tuples, err := InitialTuplesForAccount(in)
-	require.NoError(t, err)
-	require.Len(t, tuples, 3)
 
-	assert.Equal(t, "user:system.serviceaccount.ns.name", tuples[0].User)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := InitialTuplesForAccountInput{
+				BaseTuplesInput: BaseTuplesInput{
+					Creator:                tt.creator,
+					AccountOriginClusterID: originClusterID,
+					AccountName:            accountName,
+					CreatorRelation:        creatorRelation,
+					ObjectType:             objectType,
+				},
+				ParentOriginClusterID: originClusterID,
+				ParentName:            parentAccountName,
+				ParentRelation:        parentRelation,
+			}
+			tuples, err := InitialTuplesForAccount(in)
+			require.NoError(t, err)
+			require.Len(t, tuples, 3)
+
+			assert.Equal(t, tt.want, tuples[0].User)
+		})
+	}
 }
 
 func TestInitialTuplesForAccount_nilCreator(t *testing.T) {

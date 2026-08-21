@@ -49,23 +49,26 @@ func (f *fakeClient) ListStores(context.Context, *openfgav1.ListStoresRequest, .
 
 func TestAuthorizerListAccessibleAccounts(t *testing.T) {
 	client := &fakeClient{listObjectsResult: &openfgav1.ListObjectsResponse{Objects: []string{
-		"core_platform-mesh_io_account:cluster/team-a",
-		"core_platform-mesh_io_account:cluster/team-a",
-		" core_platform-mesh_io_account:cluster/team-b ",
+		"custom_account:cluster/team-a",
+		"custom_account:cluster/team-a",
+		" custom_account:cluster/team-b ",
 		"",
 	}}}
+	cfg := config.NewServiceConfig()
+	cfg.OpenFGA.ObjectType = "custom_account"
+	cfg.OpenFGA.DefaultRole = "viewer"
 
-	accounts, err := NewAuthorizer(client, config.ServiceConfig{BatchSize: 50}).ListAccessibleAccounts(context.Background(), "acme", "system:serviceaccount:default:search")
+	accounts, err := NewAuthorizer(client, *cfg).ListAccessibleAccounts(context.Background(), "acme", "john.doe@example.com")
 	if err != nil {
 		t.Fatalf("ListAccessibleAccounts returned error: %v", err)
 	}
 	if !reflect.DeepEqual(accounts, []string{
-		"core_platform-mesh_io_account:cluster/team-a",
-		"core_platform-mesh_io_account:cluster/team-b",
+		"custom_account:cluster/team-a",
+		"custom_account:cluster/team-b",
 	}) {
 		t.Fatalf("unexpected accounts: %v", accounts)
 	}
-	if got := client.listObjectsRequest; got.GetStoreId() != "store-acme" || got.GetType() != accountObjectType || got.GetRelation() != accountMemberRelation || got.GetUser() != "user:system.serviceaccount.default.search" {
+	if got := client.listObjectsRequest; got.GetStoreId() != "store-acme" || got.GetType() != "custom_account" || got.GetRelation() != "viewer" || got.GetUser() != "user:john.doe@example.com" {
 		t.Fatalf("unexpected ListObjects request: %+v", got)
 	}
 }
@@ -163,6 +166,7 @@ func TestFormatUser(t *testing.T) {
 		want string
 	}{
 		{"alice", "alice"},
+		{"john.doe@example.com", "john.doe@example.com"},
 		{"system:serviceaccount:default:auth", "system.serviceaccount.default.auth"},
 	}
 	for _, tt := range tests {

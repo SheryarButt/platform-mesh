@@ -30,11 +30,6 @@ import (
 	"go.platform-mesh.io/search-service/internal/service/search"
 )
 
-const (
-	accountObjectType     = "core_platform-mesh_io_account"
-	accountMemberRelation = "member"
-)
-
 type client interface {
 	BatchCheck(context.Context, *openfgav1.BatchCheckRequest, ...grpc.CallOption) (*openfgav1.BatchCheckResponse, error)
 	ListObjects(context.Context, *openfgav1.ListObjectsRequest, ...grpc.CallOption) (*openfgav1.ListObjectsResponse, error)
@@ -58,8 +53,8 @@ func (a *Authorizer) ListAccessibleAccounts(ctx context.Context, organization, u
 
 	res, err := a.client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
 		StoreId:  storeID,
-		Type:     accountObjectType,
-		Relation: accountMemberRelation,
+		Type:     a.cfg.OpenFGA.ObjectType,
+		Relation: a.cfg.OpenFGA.DefaultRole,
 		User:     fmt.Sprintf("user:%s", formatUser(user)),
 	})
 	if err != nil {
