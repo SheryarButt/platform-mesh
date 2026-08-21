@@ -14,12 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package workspace builds per-workspace clients for the KROaaS operator's write
-// path. Writes (publishing the composite type, materializing children) go directly
-// to the consumer workspace as the operator's own kcp identity — NOT through the
-// APIExport virtual workspace. Deployed as a ManagedProvider with an adminAuth
-// connection, that identity is cluster-admin, so it can act in any consumer
-// workspace with nothing provisioned per Account.
+// Package workspace builds per-workspace clients for the write path. Writes go directly to
+// the consumer workspace as the operator's own kcp identity, not through the virtual
+// workspace. That identity is cluster-admin, so nothing is provisioned per Account.
 package workspace
 
 import (
@@ -28,13 +25,18 @@ import (
 	"strings"
 	"sync"
 
+	kroclient "github.com/kubernetes-sigs/kro/pkg/client"
+
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
+	"k8s.io/client-go/tools/record"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -46,6 +48,14 @@ type Clients struct {
 	Dynamic  dynamic.Interface
 	Metadata metadata.Interface
 	Mapper   meta.RESTMapper
+
+	// KroSet is the client bundle kro's instance controller takes. It is scoped to this
+	// workspace, which is what lets a single-cluster controller run per workspace.
+	KroSet kroclient.SetInterface
+
+	// Recorder writes Events into this workspace, so an instance's own namespace carries
+	// the record of what the operator did to it.
+	Recorder record.EventRecorder
 }
 
 // Provider builds and caches per-workspace Clients.
@@ -61,10 +71,7 @@ func NewProvider(base *rest.Config, scheme *runtime.Scheme) *Provider {
 	return &Provider{Base: base, Scheme: scheme, cache: map[string]*Clients{}}
 }
 
-// For returns Clients for the given logical cluster name — the operator's own kcp
-// identity retargeted at that workspace. Under an adminAuth ManagedProvider
-// connection p.Base carries cluster-admin material, so these can write into the
-// workspace directly with no per-Account provisioning.
+// For returns Clients for a logical cluster: the operator's own identity retargeted there.
 func (p *Provider) For(_ context.Context, clusterName string) (*Clients, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -100,7 +107,27 @@ func (p *Provider) buildClients(clusterName string, cfg *rest.Config) (*Clients,
 	if err != nil {
 		return nil, fmt.Errorf("rest mapper for %s: %w", clusterName, err)
 	}
-	return &Clients{Config: cfg, Client: cl, Dynamic: dyn, Metadata: metaCl, Mapper: mapper}, nil
+	kroSet, err := kroclient.NewSet(kroclient.Config{RestConfig: cfg})
+	if err != nil {
+		return nil, fmt.Errorf("kro client set for %s: %w", clusterName, err)
+	}
+	kube, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("kubernetes client for %s: %w", clusterName, err)
+	}
+	broadcaster := record.NewBroadcaster()
+	broadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kube.CoreV1().Events("")})
+	recorder := broadcaster.NewRecorder(p.Scheme, corev1.EventSource{Component: "kro-composition-operator"})
+
+	return &Clients{
+		Config:   cfg,
+		Client:   cl,
+		Dynamic:  dyn,
+		Metadata: metaCl,
+		Mapper:   mapper,
+		KroSet:   kroSet,
+		Recorder: recorder,
+	}, nil
 }
 
 func clusterHost(baseHost, clusterName string) string {

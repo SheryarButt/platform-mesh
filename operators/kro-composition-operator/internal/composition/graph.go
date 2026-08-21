@@ -27,18 +27,23 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// Limits mirror kro's controller defaults for collection expansion: at most 1000
-// resources per expanded collection, and at most 10 forEach dimensions on a single
-// resource. The dimension cap is validated when the RGD is processed, before any
-// expansion is evaluated — the cheap gate against deeply nested cartesian products
-// in a consumer-authored graph.
+// Collection-expansion limits, mirroring kro's controller defaults. The dimension cap is
+// checked before any expansion runs, gating nested cartesian products cheaply.
 const (
 	maxCollectionSize          = 1000
 	maxCollectionDimensionSize = 10
 )
 
-// Compiler builds kro graphs against a target (a kcp workspace). The rest.Config
-// must point at the workspace whose served APIs the RGD composes, because kro's
+// RGDConfig is shared so compile and reconcile use the same limits.
+func RGDConfig() graph.RGDConfig {
+	return graph.RGDConfig{
+		MaxCollectionSize:          maxCollectionSize,
+		MaxCollectionDimensionSize: maxCollectionDimensionSize,
+	}
+}
+
+// Compiler builds kro graphs for one workspace. The rest.Config must point at the
+// workspace whose served APIs the RGD composes, because kro's
 // builder resolves the RGD's referenced resources via discovery against it.
 type Compiler struct {
 	builder *graph.Builder
@@ -57,15 +62,10 @@ func NewCompiler(cfg *rest.Config) (*Compiler, error) {
 	return &Compiler{builder: b}, nil
 }
 
-// Compile turns an RGD into its processed graph. graph.CRD is the composite type
-// to publish as a bound API in the workspace; graph.TopologicalOrder / Nodes drive
-// child materialization. Fails if the RGD references resources not served by the target
-// workspace (the composed provider APIs must already be available there).
+// Compile turns an RGD into its processed graph. Fails if it references APIs the target
+// workspace does not serve.
 func (c *Compiler) Compile(rgd *krov1alpha1.ResourceGraphDefinition) (*graph.Graph, error) {
-	g, err := c.builder.NewResourceGraphDefinition(rgd, graph.RGDConfig{
-		MaxCollectionSize:          maxCollectionSize,
-		MaxCollectionDimensionSize: maxCollectionDimensionSize,
-	})
+	g, err := c.builder.NewResourceGraphDefinition(rgd, RGDConfig())
 	if err != nil {
 		return nil, fmt.Errorf("compile RGD %q: %w", rgd.Name, err)
 	}

@@ -19,6 +19,7 @@ package composition
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/gobuffalo/flect"
@@ -32,10 +33,30 @@ const AccountEntity = "core_platform-mesh_io_account"
 // this same order, so their relative ordering is left to the portal.
 const navOrder = 860
 
-// BuildContentConfig renders the Luigi navigation JSON for one generated type:
-// a top-level nav node with list / detail / create views driven by the portal's
-// default generic web components. specFields are the type's spec property names
-// (used to populate the list/create forms).
+// graphQLName is the shape a GraphQL identifier must have.
+var graphQLName = regexp.MustCompile(`^[_A-Za-z][_0-9A-Za-z]*$`)
+
+// ValidateAPIGroup rejects an API group the portal could not query. The gateway only
+// replaces dots with underscores, so a hyphen or a leading digit yields an unparseable
+// field. Not fatal: the caller skips the portal wiring and still publishes the type.
+func ValidateAPIGroup(group string) error {
+	if group == "" {
+		return fmt.Errorf("API group is empty")
+	}
+	for _, label := range strings.Split(group, ".") {
+		if !graphQLName.MatchString(label) {
+			return fmt.Errorf(
+				"API group %q cannot be served to the portal: the segment %q is not a valid GraphQL name "+
+					"(letters, digits and underscores only, not starting with a digit). Hyphens are the "+
+					"usual cause, so use something like %q instead",
+				group, label, "vault.demo.io")
+		}
+	}
+	return nil
+}
+
+// BuildContentConfig renders the Luigi nav JSON for one type: list, detail and create
+// views over the portal's generic components. specFields populates the forms.
 func BuildContentConfig(group, version, kind, plural string, namespaced bool, specFields []string) string {
 	ug := strings.ReplaceAll(group, ".", "_") // GraphQL-style underscored group
 	navSeg := fmt.Sprintf("%s_%s", ug, plural)
@@ -44,10 +65,10 @@ func BuildContentConfig(group, version, kind, plural string, namespaced bool, sp
 	field := func(label, prop string) map[string]any { return map[string]any{"label": label, "property": prop} }
 
 	listFields := []any{field("Name", "metadata.name")}
-	createFields := []any{map[string]any{"label": "Name", "property": "metadata.name", "required": true}}
+	createFields := make([]any, 0, 1+len(specFields))
+	createFields = append(createFields, map[string]any{"label": "Name", "property": "metadata.name", "required": true})
 	if namespaced {
 		listFields = append(listFields, field("Namespace", "metadata.namespace"))
-		createFields = append(createFields, map[string]any{"label": "Namespace", "property": "metadata.namespace", "required": true, "values": []any{"default"}})
 	}
 	for _, f := range specFields {
 		listFields = append(listFields, field(title(f), "spec."+f))
