@@ -41,6 +41,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/util/retry"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -143,7 +144,7 @@ func (e *Engine) ReconcileRGD(ctx context.Context, clusterName, rgdName string) 
 		// Drain while the type is still served. Nothing cascades when an APIBinding goes, so
 		// instances would strand behind an unserved API holding kro's finalizer.
 		if gvr, known := e.instanceGVRFor(wc, clusterName, rgd); known {
-			drained, err := drainInstances(ctx, wc.Dynamic, gvr, force)
+			drained, err := drainInstances(ctx, wc.Metadata, wc.Dynamic, gvr, force)
 			if err != nil {
 				return err
 			}
@@ -372,8 +373,10 @@ func (e *Engine) instanceGVRFor(wc *workspace.Clients, clusterName string, rgd *
 //
 // force stops waiting when the workspace is terminating, which would otherwise block
 // workspace and account deletion.
-func drainInstances(ctx context.Context, dyn dynamic.Interface, gvr schema.GroupVersionResource, force bool) (bool, error) {
-	list, err := dyn.Resource(gvr).List(ctx, metav1.ListOptions{})
+func drainInstances(ctx context.Context, metaCl metadata.Interface, dyn dynamic.Interface, gvr schema.GroupVersionResource, force bool) (bool, error) {
+	// Metadata-only: names, deletion timestamps and finalizers are all this needs, and an
+	// instance's spec and status can be large.
+	list, err := metaCl.Resource(gvr).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) || meta.IsNoMatchError(err) {
 			return true, nil // type already gone, nothing to drain
@@ -386,16 +389,18 @@ func drainInstances(ctx context.Context, dyn dynamic.Interface, gvr schema.Group
 
 	for i := range list.Items {
 		inst := &list.Items[i]
-		ri := dyn.Resource(gvr).Namespace(inst.GetNamespace())
+		ri := dyn.Resource(gvr).Namespace(inst.Namespace)
 
-		if inst.GetDeletionTimestamp().IsZero() {
-			if err := ri.Delete(ctx, inst.GetName(), metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-				return false, fmt.Errorf("delete instance %s: %w", inst.GetName(), err)
+		if inst.DeletionTimestamp.IsZero() {
+			if err := ri.Delete(ctx, inst.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+				return false, fmt.Errorf("delete instance %s: %w", inst.Name, err)
 			}
 		}
-		if force {
-			if err := releaseInstanceFinalizer(ctx, ri, inst.GetName()); err != nil {
-				return false, fmt.Errorf("release finalizer on %s: %w", inst.GetName(), err)
+		// The listed metadata already says whether there is a finalizer to strip, so skip the
+		// read-modify-write for the instances that carry none.
+		if force && krometadata.HasInstanceFinalizer(inst) {
+			if err := releaseInstanceFinalizer(ctx, ri, inst.Name); err != nil {
+				return false, fmt.Errorf("release finalizer on %s: %w", inst.Name, err)
 			}
 		}
 	}

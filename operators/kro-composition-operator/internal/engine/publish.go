@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 
 	krov1alpha1 "github.com/kubernetes-sigs/kro/api/v1alpha1"
 	crdcompat "github.com/kubernetes-sigs/kro/pkg/graph/crd/compat"
@@ -218,19 +219,16 @@ func applySchemaMetadata(ars *kcpapisv1alpha1.APIResourceSchema, crd *apiextensi
 	ars.Annotations = mergeMissing(ars.Annotations, crd.Annotations)
 }
 
+// mergeMissing returns from with into layered on top, so into's keys win. Neither input is
+// modified: these are live object label maps, which can be shared between objects.
 func mergeMissing(into, from map[string]string) map[string]string {
 	if len(from) == 0 {
 		return into
 	}
-	if into == nil {
-		into = make(map[string]string, len(from))
-	}
-	for k, v := range from {
-		if _, taken := into[k]; !taken {
-			into[k] = v
-		}
-	}
-	return into
+	out := make(map[string]string, len(from)+len(into))
+	maps.Copy(out, from)
+	maps.Copy(out, into)
+	return out
 }
 
 // typeConflictError reports a composite type already published in this workspace.

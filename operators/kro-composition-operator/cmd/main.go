@@ -21,6 +21,7 @@ package main
 import (
 	"context"
 	"flag"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -98,7 +99,7 @@ func main() {
 	} {
 		if err := add(scheme); err != nil {
 			setupLog.Error(err, "scheme")
-			return
+			os.Exit(1)
 		}
 	}
 
@@ -113,7 +114,7 @@ func main() {
 		cfg, err := rest.InClusterConfig()
 		if err != nil {
 			setupLog.Error(err, "in-cluster config for leader election")
-			return
+			os.Exit(1)
 		}
 		leaderCfg = cfg
 	}
@@ -121,7 +122,7 @@ func main() {
 	provider, err := apiexport.New(providerCfg, sliceName, apiexport.Options{Scheme: scheme})
 	if err != nil {
 		setupLog.Error(err, "apiexport provider")
-		return
+		os.Exit(1)
 	}
 	mgr, err := mcmanager.New(providerCfg, provider, manager.Options{
 		Scheme:                 scheme,
@@ -136,15 +137,15 @@ func main() {
 	})
 	if err != nil {
 		setupLog.Error(err, "mc manager")
-		return
+		os.Exit(1)
 	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "healthz")
-		return
+		os.Exit(1)
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "readyz")
-		return
+		os.Exit(1)
 	}
 
 	ctx := ctrl.SetupSignalHandler()
@@ -183,12 +184,13 @@ func main() {
 		For(&krov1alpha1.ResourceGraphDefinition{}).
 		Complete(rec); err != nil {
 		setupLog.Error(err, "builder")
-		return
+		os.Exit(1)
 	}
 
 	setupLog.Info("starting kro-composition-operator", "endpointslice", sliceName, "providerWorkspace", providerWS, "featureGates", enabledFeatures())
 	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "manager exited")
+		os.Exit(1)
 	}
 }
 

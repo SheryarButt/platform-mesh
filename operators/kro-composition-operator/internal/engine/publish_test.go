@@ -38,6 +38,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
+	"k8s.io/client-go/metadata"
+	metadatafake "k8s.io/client-go/metadata/fake"
+	k8stesting "k8s.io/client-go/testing"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -696,6 +699,21 @@ func TestMergeMissing(t *testing.T) {
 		map[string]string{"ours": "keep", "theirs": "add"},
 		mergeMissing(map[string]string{"ours": "keep"}, map[string]string{"theirs": "add", "ours": "clobber"}),
 		"keys the operator set must not be overwritten by the RGD")
+
+	// These are live label maps off an object, and the same map can back more than one
+	// object, so neither input may be modified.
+	into := map[string]string{"ours": "keep"}
+	from := map[string]string{"theirs": "add"}
+	out := mergeMissing(into, from)
+	require.Equal(t, map[string]string{"ours": "keep"}, into, "into must not be modified")
+	require.Equal(t, map[string]string{"theirs": "add"}, from, "from must not be modified")
+	out["mutated"] = "yes"
+	require.NotContains(t, into, "mutated", "the result must not alias into")
+	require.NotContains(t, from, "mutated", "the result must not alias from")
+
+	// The common call shape: an RGD with no spec.schema.metadata leaves from empty while
+	// into already carries the ownership labels.
+	require.Equal(t, map[string]string{"ours": "keep"}, mergeMissing(map[string]string{"ours": "keep"}, nil))
 }
 
 // drainInstances runs before the composite API is unserved. Its contract is what keeps an
@@ -726,11 +744,29 @@ func TestDrainInstances(t *testing.T) {
 			rt...,
 		)
 	}
+	// drainInstances lists metadata and mutates through the dynamic client, so both fakes are
+	// seeded from the same instances.
+	newMeta := func(objs ...*unstructured.Unstructured) metadata.Interface {
+		scheme := runtime.NewScheme()
+		metav1.AddMetaToScheme(scheme) //nolint:errcheck // test scheme
+		rt := make([]runtime.Object, 0, len(objs))
+		for _, o := range objs {
+			rt = append(rt, &metav1.PartialObjectMetadata{
+				TypeMeta: metav1.TypeMeta{APIVersion: "apps.example.com/v1alpha1", Kind: "Widget"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       o.GetName(),
+					Namespace:  o.GetNamespace(),
+					Finalizers: o.GetFinalizers(),
+				},
+			})
+		}
+		return metadatafake.NewSimpleMetadataClient(scheme, rt...)
+	}
 
 	t.Run("no instances is already drained", func(t *testing.T) {
 		t.Parallel()
 		dyn := newDyn()
-		drained, err := drainInstances(context.Background(), dyn, gvr, false)
+		drained, err := drainInstances(context.Background(), newMeta(), dyn, gvr, false)
 		require.NoError(t, err)
 		require.True(t, drained)
 	})
@@ -741,9 +777,10 @@ func TestDrainInstances(t *testing.T) {
 	// the type while the instance handler still has cleanup to do.
 	t.Run("issues deletes and reports not drained so the caller waits", func(t *testing.T) {
 		t.Parallel()
-		dyn := newDyn(instance("w1", kroInstanceFinalizer), instance("w2"))
+		objs := []*unstructured.Unstructured{instance("w1", kroInstanceFinalizer), instance("w2")}
+		dyn := newDyn(objs...)
 
-		drained, err := drainInstances(context.Background(), dyn, gvr, false)
+		drained, err := drainInstances(context.Background(), newMeta(objs...), dyn, gvr, false)
 		require.NoError(t, err)
 		require.False(t, drained, "must not report drained on the same pass it issues deletes")
 
@@ -760,16 +797,42 @@ func TestDrainInstances(t *testing.T) {
 	t.Run("a second pass over already-drained instances reports drained", func(t *testing.T) {
 		t.Parallel()
 		dyn := newDyn()
-		drained, err := drainInstances(context.Background(), dyn, gvr, false)
+		drained, err := drainInstances(context.Background(), newMeta(), dyn, gvr, false)
 		require.NoError(t, err)
 		require.True(t, drained)
 	})
 
+	// The listed metadata says who has a finalizer, so instances without one must not cost a
+	// read-modify-write. Verified through the fake's recorded actions.
+	t.Run("force skips the read for instances with no finalizer", func(t *testing.T) {
+		t.Parallel()
+		objs := []*unstructured.Unstructured{instance("w1", kroInstanceFinalizer), instance("w2")}
+		dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
+			runtime.NewScheme(),
+			map[schema.GroupVersionResource]string{gvr: "WidgetList"},
+			objs[0], objs[1],
+		)
+
+		drained, err := drainInstances(context.Background(), newMeta(objs...), dyn, gvr, true)
+		require.NoError(t, err)
+		require.True(t, drained)
+
+		var gets []string
+		for _, a := range dyn.Actions() {
+			if a.GetVerb() == "get" {
+				gets = append(gets, a.(k8stesting.GetAction).GetName())
+			}
+		}
+		require.Equal(t, []string{"w1"}, gets,
+			"only the instance carrying the finalizer should be read back")
+	})
+
 	t.Run("force releases our finalizer and does not wait", func(t *testing.T) {
 		t.Parallel()
-		dyn := newDyn(instance("w1", kroInstanceFinalizer, "other/keep"))
+		objs := []*unstructured.Unstructured{instance("w1", kroInstanceFinalizer, "other/keep")}
+		dyn := newDyn(objs...)
 
-		drained, err := drainInstances(context.Background(), dyn, gvr, true)
+		drained, err := drainInstances(context.Background(), newMeta(objs...), dyn, gvr, true)
 		require.NoError(t, err)
 		require.True(t, drained, "a terminating workspace must not be held up")
 
