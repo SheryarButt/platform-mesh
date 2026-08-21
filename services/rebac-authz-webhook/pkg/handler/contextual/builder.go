@@ -77,7 +77,7 @@ func BuildCheckInput(
 
 	group, objectType := BuildObjectType(gvr, singular)
 
-	object := fmt.Sprintf("%s:%s/%s", objectType, clusterName, attrs.Name)
+	object := renderObject(objectType, clusterName, attrs.Name)
 	relation := attrs.Verb
 
 	hasParent := util.ResolveOnParent(attrs.Verb)
@@ -105,14 +105,14 @@ func BuildCheckInput(
 		} else {
 			// parent the object to the namespace
 			contextualTuples = append(contextualTuples, &openfgav1.TupleKey{
-				Object:   fmt.Sprintf("%s:%s/%s", objectType, clusterName, attrs.Name),
+				Object:   renderObject(objectType, clusterName, attrs.Name),
 				Relation: "parent",
 				User:     namespaceObject,
 			})
 		}
 	} else {
 		contextualTuples = append(contextualTuples, &openfgav1.TupleKey{
-			Object:   fmt.Sprintf("%s:%s/%s", objectType, clusterName, attrs.Name),
+			Object:   renderObject(objectType, clusterName, attrs.Name),
 			Relation: "parent",
 			User:     accountObject,
 		})
@@ -127,6 +127,14 @@ func BuildCheckInput(
 	}
 
 	return checkInput, nil
+}
+
+// renderObject builds the FGA object key for a resource. The resource name is
+// encoded because OpenFGA requires an object to contain exactly one colon, and
+// Kubernetes names validated as path segments (ClusterRoles, Roles, and their
+// bindings) may legitimately contain colons themselves.
+func renderObject(objectType, clusterName, name string) string {
+	return fmt.Sprintf("%s:%s/%s", objectType, clusterName, util.EncodeName(name))
 }
 
 // BuildObjectType builds the FGA object type string from GVR and singular resource name.
