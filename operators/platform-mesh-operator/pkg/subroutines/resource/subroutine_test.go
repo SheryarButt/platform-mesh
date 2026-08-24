@@ -1074,7 +1074,6 @@ func (s *ResourceTestSuite) Test_resolveArgoCDSource_GitNoRef() {
 	s.Contains(err.Error(), "no ref, version, or commit found")
 }
 
-
 func Test_firstNonEmpty(t *testing.T) {
 	if got := firstNonEmpty("", "", "c"); got != "c" {
 		t.Errorf("got %q want %q", got, "c")

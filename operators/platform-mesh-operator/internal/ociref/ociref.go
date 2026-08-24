@@ -1,5 +1,5 @@
 /*
-Copyright 2026.
+Copyright The Platform Mesh Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/platform-mesh/platform-mesh-operator/pkg/ocm"
+	"go.platform-mesh.io/platform-mesh-operator/pkg/ocm"
 )
 
 // StripScheme removes the scheme (e.g. "oci://", "http://") from an image reference,

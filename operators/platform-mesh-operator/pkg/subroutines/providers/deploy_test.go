@@ -631,7 +631,6 @@ func (s *DeployTestSuite) TestFinalize_HelmRepo_DeletesHelmRepository() {
 
 // --- ocm (OCM descriptor resolution) tests ---
 
-
 func (s *DeployTestSuite) TestOCMDeploymentName() {
 	s.Equal("explicit", ocmDeploymentName(&pmprovidersv1alpha1.OCMComponentSpec{
 		Name: "explicit", Component: "github.com/x/comp",
@@ -647,7 +646,6 @@ func (s *DeployTestSuite) TestOCMDeploymentName() {
 		Component: "github.com/platform-mesh/comp",
 	}))
 }
-
 
 // newManagedProviderOCM returns a ManagedProvider with a single self-contained ocm
 // RuntimeDeployment; the deployment name is explicit ("wildwest-controller") and the

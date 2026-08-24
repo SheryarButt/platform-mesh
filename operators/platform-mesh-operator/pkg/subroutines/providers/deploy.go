@@ -27,7 +27,7 @@ import (
 	"go.platform-mesh.io/golang-commons/controller/lifecycle/ratelimiter"
 	gcerrors "go.platform-mesh.io/golang-commons/errors"
 	"go.platform-mesh.io/golang-commons/logger"
-	"go.platform-mesh.io/platform-mesh-operator/pkg/ocm"
+	"go.platform-mesh.io/platform-mesh-operator/internal/ociref"
 	"go.platform-mesh.io/subroutines"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -37,7 +37,6 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/ocm"
 )
 
 const (

@@ -29,7 +29,7 @@ import (
 	"go.platform-mesh.io/golang-commons/logger"
 	"go.platform-mesh.io/platform-mesh-operator/internal/config"
 	"go.platform-mesh.io/platform-mesh-operator/internal/metrics"
-	"go.platform-mesh.io/platform-mesh-operator/pkg/ocm"
+	"go.platform-mesh.io/platform-mesh-operator/internal/ociref"
 	"go.platform-mesh.io/platform-mesh-operator/pkg/subroutines"
 	subroutineslib "go.platform-mesh.io/subroutines"
 
@@ -39,7 +39,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
-	"github.com/platform-mesh/platform-mesh-operator/pkg/ocm"
 )
 
 const (
@@ -440,7 +439,6 @@ func (r *ResourceSubroutine) resolveArgoCDSource(inst *unstructured.Unstructured
 	}
 	return repoURL, version, "oci", nil
 }
-
 
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
