@@ -231,7 +231,14 @@ func (a *AuthorizationModelGenerationSubroutine) Finalize(ctx context.Context, o
 		})
 		if err != nil {
 			if apierrors.IsNotFound(err) {
-				// If the model does not exist, we can skip the deletion.
+				// The model was never created, but a reservation finalizer may
+				// still be on the Store — release it.
+				if derr := deregisterAuthorizationModelFromStore(ctx, a.mgr,
+					config.MultiProviderName(config.CoreProviderName, toDeleteAccountInfo.Spec.Organization.OriginClusterId), toDeleteAccountInfo.Spec.Organization.Name,
+					bindingToDelete.Status.APIExportClusterName, authModelName,
+				); derr != nil {
+					return subroutines.OK(), fmt.Errorf("releasing authorization model reservation for %s: %w", authModelName, derr)
+				}
 				log.Info().Msg(fmt.Sprintf("authorization model %s does not exist", authModelName))
 				continue
 			}
@@ -352,9 +359,20 @@ func (a *AuthorizationModelGenerationSubroutine) Process(ctx context.Context, ob
 			return subroutines.OK(), fmt.Errorf("executing model template: %w", err)
 		}
 
+		modelName := toK8sName(resourceSchema.Spec.Group, resourceSchema.Spec.Names.Plural, accountInfo.Spec.Organization.Name)
+
+		// Reserve the model on its Store before creating it, so the bind fails
+		// atomically instead of racing an org deletion.
+		if err := registerAuthorizationModelWithStore(ctx, a.mgr,
+			config.MultiProviderName(config.CoreProviderName, accountInfo.Spec.Organization.OriginClusterId), accountInfo.Spec.Organization.Name,
+			binding.Status.APIExportClusterName, modelName,
+		); err != nil {
+			return subroutines.OK(), fmt.Errorf("registering authorization model %s with store: %w", modelName, err)
+		}
+
 		model := pmcorev1alpha1.AuthorizationModel{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: toK8sName(resourceSchema.Spec.Group, resourceSchema.Spec.Names.Plural, accountInfo.Spec.Organization.Name),
+				Name: modelName,
 			},
 		}
 

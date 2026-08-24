@@ -32,7 +32,6 @@ import (
 	"go.platform-mesh.io/security-operator/internal/subroutine/mocks"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	mccontext "sigs.k8s.io/multicluster-runtime/pkg/context"
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 
@@ -194,11 +193,10 @@ func TestProcess(t *testing.T) {
 
 func TestFinalize(t *testing.T) {
 	tests := []struct {
-		name           string
-		store          *pmcorev1alpha1.Store
-		fgaMocks       func(*mocks.MockOpenFGAServiceClient)
-		kcpHelperMocks func(*mocks.MockLister)
-		expectError    bool
+		name        string
+		store       *pmcorev1alpha1.Store
+		fgaMocks    func(*mocks.MockOpenFGAServiceClient)
+		expectError bool
 	}{
 		{
 			name: "should skip reconciliation if .status.storeId is not set",
@@ -209,61 +207,28 @@ func TestFinalize(t *testing.T) {
 			},
 		},
 		{
-			name: "should deny deletion if at least authorizationModel is referencing the store",
+			name: "should deny deletion if at least one authorization model finalizer is present",
 			store: &pmcorev1alpha1.Store{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "store",
+					Name:       "store",
+					Finalizers: []string{"authzmodel.core.platform-mesh.io/somecluster.somemodel"},
 				},
 				Status: pmcorev1alpha1.StoreStatus{
 					StoreID: "id",
 				},
-			},
-			kcpHelperMocks: func(kcpHelper *mocks.MockLister) {
-				kcpHelper.EXPECT().List(mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, ol ctrlruntimeclient.ObjectList, lo ...ctrlruntimeclient.ListOption) error {
-					if list, ok := ol.(*pmcorev1alpha1.AuthorizationModelList); ok {
-						list.Items = []pmcorev1alpha1.AuthorizationModel{
-							{
-								Spec: pmcorev1alpha1.AuthorizationModelSpec{
-									StoreRef: pmcorev1alpha1.WorkspaceStoreRef{
-										Name:    "store",
-										Cluster: "path",
-									},
-								},
-							},
-						}
-					}
-					return nil
-				}).Once()
 			},
 			expectError: true,
 		},
 		{
-			name: "should deny deletion the list call is failing",
+			name: "should delete the store if no authorization model finalizer is present",
 			store: &pmcorev1alpha1.Store{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "store",
+					Name:       "store",
+					Finalizers: []string{"core.platform-mesh.io/fga-store"},
 				},
 				Status: pmcorev1alpha1.StoreStatus{
 					StoreID: "id",
 				},
-			},
-			kcpHelperMocks: func(kcpHelper *mocks.MockLister) {
-				kcpHelper.EXPECT().List(mock.Anything, mock.Anything).Return(errors.New("error"))
-			},
-			expectError: true,
-		},
-		{
-			name: "should delete the store if no authorizationModel is referencing it",
-			store: &pmcorev1alpha1.Store{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "store",
-				},
-				Status: pmcorev1alpha1.StoreStatus{
-					StoreID: "id",
-				},
-			},
-			kcpHelperMocks: func(kcpHelper *mocks.MockLister) {
-				kcpHelper.EXPECT().List(mock.Anything, mock.Anything).Return(nil)
 			},
 			fgaMocks: func(fga *mocks.MockOpenFGAServiceClient) {
 				fga.EXPECT().DeleteStore(mock.Anything, &openfgav1.DeleteStoreRequest{StoreId: "id"}).Return(nil, nil)
@@ -279,9 +244,6 @@ func TestFinalize(t *testing.T) {
 					StoreID: "id",
 				},
 			},
-			kcpHelperMocks: func(kcpHelper *mocks.MockLister) {
-				kcpHelper.EXPECT().List(mock.Anything, mock.Anything).Return(nil)
-			},
 			fgaMocks: func(fga *mocks.MockOpenFGAServiceClient) {
 				fga.EXPECT().DeleteStore(mock.Anything, &openfgav1.DeleteStoreRequest{StoreId: "id"}).Return(nil, status.Error(codes.Code(openfgav1.NotFoundErrorCode_store_id_not_found), "not found"))
 			},
@@ -295,9 +257,6 @@ func TestFinalize(t *testing.T) {
 				Status: pmcorev1alpha1.StoreStatus{
 					StoreID: "id",
 				},
-			},
-			kcpHelperMocks: func(kcpHelper *mocks.MockLister) {
-				kcpHelper.EXPECT().List(mock.Anything, mock.Anything).Return(nil)
 			},
 			fgaMocks: func(fga *mocks.MockOpenFGAServiceClient) {
 				fga.EXPECT().DeleteStore(mock.Anything, &openfgav1.DeleteStoreRequest{StoreId: "id"}).Return(nil, errors.New("error"))
@@ -314,11 +273,6 @@ func TestFinalize(t *testing.T) {
 
 			manager := mocks.NewMockManager(t)
 			kcpHelper := mocks.NewMockLister(t)
-
-			// Only wire kcpHelper expectations when Finalize will actually query k8s (i.e., StoreID is set)
-			if test.store.Status.StoreID != "" && test.kcpHelperMocks != nil {
-				test.kcpHelperMocks(kcpHelper)
-			}
 
 			subroutine := subroutine.NewStoreSubroutine(fga, manager, kcpHelper)
 
