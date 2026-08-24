@@ -202,7 +202,7 @@ func (c *contextualAuthorizer) handleKCPBindCheck(ctx context.Context, req autho
 
 	_, resourceObjectType := BuildObjectType(gvr, singular)
 
-	resourceToBind := fmt.Sprintf("%s:%s/%s", resourceObjectType, providerClusterName, attrs.Name)
+	resourceToBind := renderObject(resourceObjectType, providerClusterName, attrs.Name)
 	consumerAccountObject := fmt.Sprintf("core_platform-mesh_io_account:%s/%s",
 		consumerInfo.ParentClusterID,
 		consumerInfo.AccountName)
