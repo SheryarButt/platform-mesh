@@ -383,18 +383,6 @@ func templateFuncMap() template.FuncMap {
 			}
 			return result
 		},
-		"or": func(a, b any) any {
-			if !isZeroValue(a) {
-				return a
-			}
-			return b
-		},
-		"and": func(a, b any) bool {
-			return !isZeroValue(a) && !isZeroValue(b)
-		},
-		"not": func(v any) bool {
-			return isZeroValue(v)
-		},
 	}
 }
 
