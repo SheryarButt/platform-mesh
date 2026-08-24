@@ -34,6 +34,7 @@ type fakeSearchService struct {
 	response search.SearchResponse
 	err      error
 	lastReq  search.SearchRequest
+	reqs     []search.SearchRequest
 
 	resourcesResp search.SearchResourcesResponse
 	resourcesErr  error
@@ -46,6 +47,7 @@ type fakeSearchService struct {
 
 func (f *fakeSearchService) Search(ctx context.Context, req search.SearchRequest) (search.SearchResponse, error) {
 	f.lastReq = req
+	f.reqs = append(f.reqs, req)
 	return f.response, f.err
 }
 
@@ -329,5 +331,56 @@ func TestCreateRouterErrorMapping(t *testing.T) {
 				t.Fatalf("expected %d, got %d body=%s", tc.status, rr.Code, strings.TrimSpace(rr.Body.String()))
 			}
 		})
+	}
+}
+
+func TestCreateRouterResourcesParam(t *testing.T) {
+	svc := &fakeSearchService{}
+	r := CreateRouter(svc, []func(http.Handler) http.Handler{withRequestContext(appcontext.RequestContext{Organization: "acme", User: "alice@example.com"})})
+	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=hello&resources=accounts,+components+,", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	// Only the listed resources are searched (blanks trimmed); ListResources is never consulted.
+	searched := make([]string, 0, len(svc.reqs))
+	for _, req := range svc.reqs {
+		searched = append(searched, req.Resource)
+	}
+	if len(searched) != 2 {
+		t.Fatalf("expected 2 resources searched, got %v", searched)
+	}
+	if svc.lastResReq.Organization != "" {
+		t.Fatalf("expected ListResources not to be called")
+	}
+
+	// Multiple resources produce a keyed result map.
+	var payload map[string]search.SearchResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("response is not valid json: %v", err)
+	}
+	if _, ok := payload["accounts"]; !ok {
+		t.Fatalf("missing accounts in response: %v", payload)
+	}
+	if _, ok := payload["components"]; !ok {
+		t.Fatalf("missing components in response: %v", payload)
+	}
+}
+
+func TestCreateRouterResourceParamTakesPrecedence(t *testing.T) {
+	svc := &fakeSearchService{}
+	r := CreateRouter(svc, []func(http.Handler) http.Handler{withRequestContext(appcontext.RequestContext{Organization: "acme", User: "alice@example.com"})})
+	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=hello&resource=accounts&resources=components,services", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if len(svc.reqs) != 1 || svc.reqs[0].Resource != "accounts" {
+		t.Fatalf("expected single search for accounts, got %v", svc.reqs)
 	}
 }
