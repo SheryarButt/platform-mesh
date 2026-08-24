@@ -64,10 +64,10 @@ spec:
   timeout: {{ $values.timeout | default "15m" }}
   install:
     remediation:
-      retries: -1
+      retries: {{ $config.install.remediation.retries | default -1 }}
   upgrade:
     remediation:
-      retries: 3
+      retries: {{ $config.upgrade.remediation.retries | default 3 }}
   values:
 {{ toYaml $config.values | nindent 4 }}
 ---
