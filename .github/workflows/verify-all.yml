@@ -74,6 +74,7 @@ jobs:
       # The DCO app gates pull requests but not the merge queue, and running it
       # here means `task verify` locally catches the same thing before pushing.
       - run: task dco BASE=${BASE}
+        if: ${{ !startsWith(github.event.pull_request.title, '[REBASE] ') }}
       - run: task lint
       - run: task tidy-check
       # Missing headers are fixed locally with `task boilerplate-fix`.

@@ -16,7 +16,27 @@ limitations under the License.
 
 package config
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/spf13/pflag"
+)
+
+func TestUserClaimConfiguration(t *testing.T) {
+	cfg := NewServiceConfig()
+	if cfg.UserClaim != "email" {
+		t.Fatalf("expected default user claim email, got %q", cfg.UserClaim)
+	}
+
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	cfg.AddFlags(flags)
+	if err := flags.Parse([]string{"--user-claim=preferred_username"}); err != nil {
+		t.Fatalf("parse user claim flag: %v", err)
+	}
+	if cfg.UserClaim != "preferred_username" {
+		t.Fatalf("expected configured user claim preferred_username, got %q", cfg.UserClaim)
+	}
+}
 
 func TestNewServiceConfigOpenFGADefaults(t *testing.T) {
 	cfg := NewServiceConfig()

@@ -37,9 +37,10 @@ type OrgContextMiddleware struct {
 	validator        search.OrgAccessValidator
 	localDevelopment bool
 	localOrg         string
+	userClaim        string
 }
 
-func NewOrgContextMiddleware(validator search.OrgAccessValidator, localDevelopment bool, localOrg string) *OrgContextMiddleware {
+func NewOrgContextMiddleware(validator search.OrgAccessValidator, localDevelopment bool, localOrg, userClaim string) *OrgContextMiddleware {
 	localOrg = strings.TrimSpace(localOrg)
 	if localOrg == "" {
 		localOrg = defaultLocalDevelopmentOrg
@@ -48,6 +49,7 @@ func NewOrgContextMiddleware(validator search.OrgAccessValidator, localDevelopme
 		validator:        validator,
 		localDevelopment: localDevelopment,
 		localOrg:         localOrg,
+		userClaim:        strings.TrimSpace(userClaim),
 	}
 }
 
@@ -100,11 +102,9 @@ func (o *OrgContextMiddleware) SetRequestContext() func(http.Handler) http.Handl
 				}
 			}
 
-			user := strings.TrimSpace(token.Mail)
-			if user == "" {
-				user = strings.TrimSpace(token.Subject)
-			}
-			if user == "" {
+			user, found := token.Claims.String(o.userClaim)
+			user = strings.TrimSpace(user)
+			if !found || user == "" {
 				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 				return
 			}

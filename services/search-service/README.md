@@ -130,6 +130,7 @@ This is intended for local/dev usage only. Tokens are not signature- or claims-v
 Main runtime flags (with defaults):
 
 - `--port` (default: `8080`)
+- `--user-claim` (default: `email`) JWT claim used as the OpenFGA user; must match the Security Operator setting
 - `--opensearch-url` (default: `http://opensearch.platform-mesh-system.svc.cluster.local:9200`)
 - `--opensearch-username` (default: value of env `OPENSEARCH_USERNAME`)
 - `--opensearch-password` (default: value of env `OPENSEARCH_PASSWORD`)
@@ -163,7 +164,8 @@ go test ./...
 
 - With `--is-local=false`, every search API request requires a valid bearer JWT. Missing, malformed, expired, or otherwise invalid tokens return `401 Unauthorized`.
 - JWT signature and standard claims validation is delegated to the target organization's kcp authentication configuration. A kcp `403 Forbidden` response still proves that authentication succeeded; result authorization remains enforced by OpenFGA.
-- After validation, the service consumes parsed claims from context (`mail`, fallback `sub`).
+- The service uses the exact JWT claim configured by `--user-claim` as the OpenFGA user and rejects requests when that claim is missing, blank, or not a string.
+- `--user-claim` must match the Security Operator setting so Search and Kubernetes authorization identify the caller consistently.
 - With `--is-local=true`, the service only parses JWT claims and intentionally skips kcp validation. Never enable this mode in production.
 - Search hits missing required authorization hierarchy fields are dropped (fail-closed).
 
