@@ -26,24 +26,27 @@ import (
 	pmcontext "go.platform-mesh.io/golang-commons/context"
 	"go.platform-mesh.io/golang-commons/context/keys"
 	"go.platform-mesh.io/golang-commons/jwt"
+	pmmw "go.platform-mesh.io/golang-commons/middleware"
 	appcontext "go.platform-mesh.io/search-service/internal/context"
 )
 
 type fakeOrgValidator struct {
-	allowed bool
-	err     error
-	org     string
-	auth    string
+	valid bool
+	err   error
+	org   string
+	auth  string
+	calls int
 }
 
 func (f *fakeOrgValidator) ValidateTokenForOrg(_ context.Context, authHeader, org string) (bool, error) {
+	f.calls++
 	f.org = org
 	f.auth = authHeader
-	return f.allowed, f.err
+	return f.valid, f.err
 }
 
 func TestSetRequestContextSuccessUsesMailFallbackToSub(t *testing.T) {
-	validator := &fakeOrgValidator{allowed: true}
+	validator := &fakeOrgValidator{valid: true}
 	mw := NewOrgContextMiddleware(validator, false, "local")
 
 	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
@@ -90,8 +93,8 @@ func TestSetRequestContextSuccessUsesMailFallbackToSub(t *testing.T) {
 	}
 }
 
-func TestSetRequestContextForbiddenWhenOrgCheckFails(t *testing.T) {
-	validator := &fakeOrgValidator{allowed: false}
+func TestSetRequestContextReturns401WhenJWTValidationFails(t *testing.T) {
+	validator := &fakeOrgValidator{valid: false}
 	mw := NewOrgContextMiddleware(validator, false, "local")
 
 	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
@@ -110,8 +113,11 @@ func TestSetRequestContextForbiddenWhenOrgCheckFails(t *testing.T) {
 		t.Fatalf("next handler must not be called")
 	})).ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("expected 403, got %d", rr.Code)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rr.Code)
+	}
+	if validator.calls != 1 {
+		t.Fatalf("expected validator to be called once, got %d", validator.calls)
 	}
 }
 
@@ -141,7 +147,7 @@ func TestSetRequestContextReturns500OnValidatorError(t *testing.T) {
 }
 
 func TestSetRequestContextReturns401ForInvalidTokenContext(t *testing.T) {
-	validator := &fakeOrgValidator{allowed: true}
+	validator := &fakeOrgValidator{valid: true}
 	mw := NewOrgContextMiddleware(validator, false, "local")
 
 	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
@@ -156,10 +162,49 @@ func TestSetRequestContextReturns401ForInvalidTokenContext(t *testing.T) {
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rr.Code)
 	}
+	if validator.calls != 0 {
+		t.Fatalf("validator must not be called without a parsed token")
+	}
+}
+
+func TestSetRequestContextReturns401ForMissingOrUnparseableJWT(t *testing.T) {
+	tests := []struct {
+		name       string
+		authHeader string
+	}{
+		{name: "missing token"},
+		{name: "unparseable token", authHeader: "Bearer not-a-jwt"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			validator := &fakeOrgValidator{valid: true}
+			mw := NewOrgContextMiddleware(validator, false, "local")
+			handler := pmmw.StoreWebToken()(pmmw.StoreAuthHeader()(mw.SetRequestContext()(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				t.Fatalf("next handler must not be called")
+			}))))
+
+			req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
+			req.Host = "acme.platform-mesh.io"
+			if tc.authHeader != "" {
+				req.Header.Set(pmmw.AuthorizationHeader, tc.authHeader)
+			}
+
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusUnauthorized {
+				t.Fatalf("expected 401, got %d", rr.Code)
+			}
+			if validator.calls != 0 {
+				t.Fatalf("validator must not be called without a parsed token")
+			}
+		})
+	}
 }
 
 func TestSetRequestContextReturns401ForInvalidIssuer(t *testing.T) {
-	validator := &fakeOrgValidator{allowed: true}
+	validator := &fakeOrgValidator{valid: true}
 	mw := NewOrgContextMiddleware(validator, false, "local")
 
 	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
@@ -183,8 +228,8 @@ func TestSetRequestContextReturns401ForInvalidIssuer(t *testing.T) {
 	}
 }
 
-func TestSetRequestContextLocalhostOverridesOrgAndBypassesValidator(t *testing.T) {
-	validator := &fakeOrgValidator{allowed: false}
+func TestSetRequestContextLocalhostUsesHostOrgAndValidatesJWT(t *testing.T) {
+	validator := &fakeOrgValidator{valid: true}
 	mw := NewOrgContextMiddleware(validator, false, "local-org-test")
 
 	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
@@ -206,7 +251,7 @@ func TestSetRequestContextLocalhostOverridesOrgAndBypassesValidator(t *testing.T
 		if err != nil {
 			t.Fatalf("request context missing: %v", err)
 		}
-		if rc.Organization != "local-org-test" {
+		if rc.Organization != "localhost" {
 			t.Fatalf("unexpected org: %s", rc.Organization)
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -217,13 +262,13 @@ func TestSetRequestContextLocalhostOverridesOrgAndBypassesValidator(t *testing.T
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d", rr.Code)
 	}
-	if validator.org != "" || validator.auth != "" {
-		t.Fatalf("validator must not be called for localhost requests")
+	if validator.calls != 1 || validator.org != "localhost" || validator.auth != "Bearer abc" {
+		t.Fatalf("unexpected validator call: calls=%d org=%q auth=%q", validator.calls, validator.org, validator.auth)
 	}
 }
 
-func TestSetRequestContextBypassesValidatorAndUsesConfiguredOrgInLocalDevelopmentMode(t *testing.T) {
-	validator := &fakeOrgValidator{allowed: false}
+func TestSetRequestContextBypassesJWTValidationAndUsesConfiguredOrgInLocalDevelopmentMode(t *testing.T) {
+	validator := &fakeOrgValidator{valid: false}
 	mw := NewOrgContextMiddleware(validator, true, "local-org-test")
 
 	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
@@ -256,13 +301,13 @@ func TestSetRequestContextBypassesValidatorAndUsesConfiguredOrgInLocalDevelopmen
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d", rr.Code)
 	}
-	if validator.org != "" || validator.auth != "" {
+	if validator.calls != 0 {
 		t.Fatalf("validator must not be called in local development mode")
 	}
 }
 
 func TestSetRequestContextReturns401ForMalformedAuthorizationHeader(t *testing.T) {
-	validator := &fakeOrgValidator{allowed: true}
+	validator := &fakeOrgValidator{valid: true}
 	mw := NewOrgContextMiddleware(validator, false, "local")
 
 	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
@@ -291,8 +336,8 @@ func TestSetRequestContextReturns401ForMalformedAuthorizationHeader(t *testing.T
 }
 
 func TestNewOrgContextMiddlewareFallsBackToDefaultLocalOrg(t *testing.T) {
-	validator := &fakeOrgValidator{allowed: false}
-	mw := NewOrgContextMiddleware(validator, false, "")
+	validator := &fakeOrgValidator{valid: false}
+	mw := NewOrgContextMiddleware(validator, true, "")
 
 	req := httptest.NewRequest(http.MethodGet, "/rest/v1/search?q=test", nil)
 	req.Host = "localhost:8443"
@@ -323,5 +368,8 @@ func TestNewOrgContextMiddlewareFallsBackToDefaultLocalOrg(t *testing.T) {
 
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d", rr.Code)
+	}
+	if validator.calls != 0 {
+		t.Fatalf("validator must not be called in local development mode")
 	}
 }
