@@ -14,20 +14,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Command kro-composition-operator watches consumer-authored ResourceGraphDefinitions
-// across all workspaces that installed KROaaS (via the kro.run APIExport virtual
-// workspace) and, per workspace, publishes the composite type as a bound API and
-// materializes child resources as the operator's own kcp identity.
+// Command kro-composition-operator watches ResourceGraphDefinitions across every workspace
+// that installed KROaaS and publishes each composite type as a bound API.
 package main
 
 import (
 	"context"
 	"flag"
+	"os"
+	"sort"
 	"strings"
 	"time"
 
 	krov1alpha1 "github.com/kubernetes-sigs/kro/api/v1alpha1"
 	"github.com/kubernetes-sigs/kro/pkg/dynamiccontroller"
+	krofeatures "github.com/kubernetes-sigs/kro/pkg/features"
+	krometrics "github.com/kubernetes-sigs/kro/pkg/metrics"
 
 	"go.platform-mesh.io/kro-composition-operator/internal/engine"
 	"go.platform-mesh.io/kro-composition-operator/internal/workspace"
@@ -42,6 +44,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
@@ -60,8 +63,12 @@ func main() {
 	flag.StringVar(&sliceName, "apiexport-endpointslice", "kro.run", "APIExportEndpointSlice serving the kro.run RGD API")
 	flag.StringVar(&providerWS, "provider-workspace", "root:providers:kro-provider", "workspace path holding the kro.run APIExport + endpointslice")
 	flag.StringVar(&healthAddr, "health-probe-bind-address", ":8081", "address the health/readiness probe endpoint binds to")
-	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "address the metrics endpoint binds to ('0' disables it)")
+	flag.StringVar(&metricsAddr, "metrics-bind-address", ":9090", "address the metrics endpoint binds to ('0' disables it)")
 	flag.BoolVar(&leaderElect, "leader-elect", false, "enable leader election for controller manager (ensures a single active instance)")
+	// The gates belong to the embedded kro engine and are read from its global gate, so
+	// setting them here reaches both the graph builder and the instance reconciler.
+	flag.Func("feature-gates", "comma-separated kro feature gates as key=value ("+
+		strings.Join(krofeatures.FeatureGate.KnownFeatures(), ", ")+")", krofeatures.FeatureGate.Set)
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -92,14 +99,30 @@ func main() {
 	} {
 		if err := add(scheme); err != nil {
 			setupLog.Error(err, "scheme")
-			return
+			os.Exit(1)
 		}
+	}
+
+	// kro defines its collectors but registers them nowhere, so without this its metrics go
+	// nowhere. No name overlap with controller-runtime's.
+	krometrics.Register(crmetrics.Registry)
+
+	// The lease namespace is this pod's, which exists in the host cluster and not in a kcp
+	// workspace, so leader election has to point at the host cluster.
+	var leaderCfg *rest.Config
+	if leaderElect {
+		cfg, err := rest.InClusterConfig()
+		if err != nil {
+			setupLog.Error(err, "in-cluster config for leader election")
+			os.Exit(1)
+		}
+		leaderCfg = cfg
 	}
 
 	provider, err := apiexport.New(providerCfg, sliceName, apiexport.Options{Scheme: scheme})
 	if err != nil {
 		setupLog.Error(err, "apiexport provider")
-		return
+		os.Exit(1)
 	}
 	mgr, err := mcmanager.New(providerCfg, provider, manager.Options{
 		Scheme:                 scheme,
@@ -107,28 +130,30 @@ func main() {
 		HealthProbeBindAddress: healthAddr,
 		LeaderElection:         leaderElect,
 		LeaderElectionID:       "kro-composition-operator.platform-mesh.io",
+		LeaderElectionConfig:   leaderCfg,
+		// Give up the lease on graceful shutdown so a rolling update fails over in seconds
+		// rather than waiting for the lease to expire.
+		LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
 		setupLog.Error(err, "mc manager")
-		return
+		os.Exit(1)
 	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "healthz")
-		return
+		os.Exit(1)
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "readyz")
-		return
+		os.Exit(1)
 	}
 
 	ctx := ctrl.SetupSignalHandler()
 
 	wsProvider := workspace.NewProvider(writeBase, scheme)
 
-	// kro's defaults. Worth knowing before tuning them: kro runs one DynamicController per
-	// cluster, whereas KROaaS runs one per consumer workspace — so the worker count and the
-	// rate-limit budget are per tenant, and their aggregate cost grows with the number of
-	// workspaces rather than with load.
+	// kro's defaults, but applied per consumer workspace rather than per cluster, so these
+	// budgets are per tenant and scale with workspace count.
 	eng := engine.New(ctx, wsProvider, dynamiccontroller.Config{
 		Workers:         1,
 		ResyncPeriod:    10 * time.Hour,
@@ -159,13 +184,27 @@ func main() {
 		For(&krov1alpha1.ResourceGraphDefinition{}).
 		Complete(rec); err != nil {
 		setupLog.Error(err, "builder")
-		return
+		os.Exit(1)
 	}
 
-	setupLog.Info("starting kro-composition-operator", "endpointslice", sliceName, "providerWorkspace", providerWS)
+	setupLog.Info("starting kro-composition-operator", "endpointslice", sliceName, "providerWorkspace", providerWS, "featureGates", enabledFeatures())
 	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "manager exited")
+		os.Exit(1)
 	}
+}
+
+// enabledFeatures lists the kro feature gates that are on, so the startup log shows whether
+// a --feature-gates value took effect.
+func enabledFeatures() []string {
+	var on []string
+	for name := range krofeatures.FeatureGate.GetAll() {
+		if krofeatures.FeatureGate.Enabled(name) {
+			on = append(on, string(name))
+		}
+	}
+	sort.Strings(on)
+	return on
 }
 
 // stripClusters returns the shard base URL (scheme://authority) from a kcp host

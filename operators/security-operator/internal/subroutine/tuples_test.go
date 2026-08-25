@@ -28,7 +28,9 @@ import (
 	"go.platform-mesh.io/security-operator/internal/subroutine"
 	"go.platform-mesh.io/security-operator/internal/subroutine/mocks"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
@@ -400,19 +402,112 @@ func TestTupleFinalizationWithAuthorizationModel(t *testing.T) {
 				storeClient := mocks.NewMockClient(t)
 				mgr.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("store-cluster")).Return(storeCluster, nil)
 				storeCluster.EXPECT().GetClient().Return(storeClient)
+				// First Get is the tuple-cleanup lookup, second is
+				// deregisterAuthorizationModelFromStore's own fetch.
 				storeClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
 					store := o.(*pmcorev1alpha1.Store)
 					*store = pmcorev1alpha1.Store{
+						ObjectMeta: metav1.ObjectMeta{
+							Finalizers: []string{"authzmodel.core.platform-mesh.io/8a5edab282632443219e051e4ade2d1d5bbc671c781051bf1437897cbdfea0", "core.platform-mesh.io/fga-store"},
+						},
 						Status: pmcorev1alpha1.StoreStatus{
 							StoreID:              "store-id",
 							AuthorizationModelID: "auth-model-id",
 						},
 					}
 					return nil
-				})
+				}).Twice()
+				storeClient.EXPECT().Update(mock.Anything, mock.MatchedBy(func(o *pmcorev1alpha1.Store) bool {
+					return len(o.Finalizers) == 1 && o.Finalizers[0] == "core.platform-mesh.io/fga-store"
+				})).Return(nil)
+			},
+		},
+		{
+			name: "should fail to finalize when deregistering from the store errors",
+			store: &pmcorev1alpha1.AuthorizationModel{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						pmcorev1alpha1.StoreRefLabelKey: "store",
+					},
+				},
+				Spec: pmcorev1alpha1.AuthorizationModelSpec{
+					StoreRef: pmcorev1alpha1.WorkspaceStoreRef{
+						Name:    "store",
+						Cluster: "store-cluster",
+					},
+				},
+				Status: pmcorev1alpha1.AuthorizationModelStatus{
+					ManagedTuples: []pmcorev1alpha1.Tuple{
+						{
+							Object:   "foo",
+							Relation: "bar",
+							User:     "user4",
+						},
+					},
+				},
+			},
+			fgaMocks: func(fga *mocks.MockOpenFGAServiceClient) {
+				fga.EXPECT().Write(mock.Anything, mock.Anything).Return(nil, nil)
+			},
+			mgrMocks: func(mgr *mocks.MockManager) {
+				storeCluster := mocks.NewMockCluster(t)
+				storeClient := mocks.NewMockClient(t)
+				mgr.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("store-cluster")).Return(storeCluster, nil)
+				storeCluster.EXPECT().GetClient().Return(storeClient)
+				storeClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
+					store := o.(*pmcorev1alpha1.Store)
+					*store = pmcorev1alpha1.Store{
+						ObjectMeta: metav1.ObjectMeta{
+							Finalizers: []string{"authzmodel.core.platform-mesh.io/8a5edab282632443219e051e4ade2d1d5bbc671c781051bf1437897cbdfea0"},
+						},
+						Status: pmcorev1alpha1.StoreStatus{
+							StoreID:              "store-id",
+							AuthorizationModelID: "auth-model-id",
+						},
+					}
+					return nil
+				}).Twice()
+				storeClient.EXPECT().Update(mock.Anything, mock.Anything).Return(assert.AnError)
+			},
+			expectError: true,
+		},
+		{
+			name: "should finalize successfully when the referenced Store is already gone",
+			store: &pmcorev1alpha1.AuthorizationModel{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						pmcorev1alpha1.StoreRefLabelKey: "store",
+					},
+				},
+				Spec: pmcorev1alpha1.AuthorizationModelSpec{
+					StoreRef: pmcorev1alpha1.WorkspaceStoreRef{
+						Name:    "store",
+						Cluster: "store-cluster",
+					},
+				},
+				Status: pmcorev1alpha1.AuthorizationModelStatus{
+					ManagedTuples: []pmcorev1alpha1.Tuple{
+						{
+							Object:   "foo",
+							Relation: "bar",
+							User:     "user4",
+						},
+					},
+				},
+			},
+			// No fgaMocks: OpenFGA must NOT be called when the Store is already gone.
+			mgrMocks: func(mgr *mocks.MockManager) {
+				storeCluster := mocks.NewMockCluster(t)
+				storeClient := mocks.NewMockClient(t)
+				mgr.EXPECT().GetCluster(mock.Anything, multicluster.ClusterName("store-cluster")).Return(storeCluster, nil)
+				storeCluster.EXPECT().GetClient().Return(storeClient)
+				storeClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(
+					apierrors.NewNotFound(schema.GroupResource{Group: "core.platform-mesh.io", Resource: "stores"}, "store"),
+				)
 			},
 		},
 	}
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			fga := mocks.NewMockOpenFGAServiceClient(t)

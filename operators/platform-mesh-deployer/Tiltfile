@@ -152,10 +152,10 @@ def deploy_deployer(
     # The `eg` gateway the PlatformMesh's ingress stack attaches to, plus the
     # NodePort that makes it reachable at the sslip.io addresses.
     #
-    # The environment's ONLY gateway: dex and the tenancy virtual workspace hang
-    # their TLSRoutes off it too. It has no `hostnames` restriction, which is what
-    # lets one listener carry `fp.<id>.sslip.io`, `idp.<id>.sslip.io` and
-    # `tenancy.<id>.sslip.io` at once — a listener and a route whose hostnames do
+    # The environment's ONLY gateway: dex hangs its TLSRoute off it too, as does
+    # anything else that needs one. It has no `hostnames` restriction, which is
+    # what lets one listener carry `fp.<id>.sslip.io`, `idp.<id>.sslip.io` and
+    # whatever else appears at once — a listener and a route whose hostnames do
     # not intersect simply never attach, with no error on either object.
     k8s_yaml(cfg('bases', 'envoy-gateway', 'gateway.yaml'))
     k8s_resource(
@@ -433,7 +433,7 @@ kubectl -n "$NS" create secret generic "$SECRET" \\
     #
     # Without it kcp has no external authenticator at all: the only identities
     # are the operator's own certificates, so every human is anonymous and every
-    # tenancy binding names a subject that can never authenticate.
+    # RBAC binding for a person names a subject that can never authenticate.
     _oidc_block = ''
     if oidc.get('issuerURL') and oidc.get('clientID'):
         _oidc_block = '\n'.join([
@@ -445,10 +445,11 @@ kubectl -n "$NS" create secret generic "$SECRET" \\
             '      usernamePrefix: "' + oidc.get('usernamePrefix', '') + '"',
             '      groupsClaim: ' + oidc.get('groupsClaim', 'groups'),
             # Rendered ALWAYS, and never allowed to fall through to kcp's own
-            # default, which is `oidc:` rather than empty. The tenancy VW mirrors
-            # this pair to decide what a caller's groups are called; a prefix that
-            # only one of them applies splits every group in two and admits the
-            # holder on one plane while denying them on the other.
+            # default, which is `oidc:` rather than empty. Anything writing RBAC
+            # for an IdP group mirrors this pair to decide what a caller's groups
+            # are called; a prefix that only one side applies splits every group
+            # in two and admits the holder on one plane while denying them on the
+            # other.
             '      groupsPrefix: "' + oidc.get('groupsPrefix', '') + '"',
             '      caFileRef:',
             '        name: ' + oidc.get('caFileRef', {}).get('name', 'dex-ca'),

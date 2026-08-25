@@ -354,7 +354,25 @@ func (suite *IntegrationSuite) createAccount(ctx context.Context, client ctrlrun
 	t.Logf("created account '%s' (type: %s)", accountName, accountType)
 }
 
-func (suite *IntegrationSuite) createAccountInfo(ctx context.Context, accountClient ctrlruntimeclient.Client, accountName, orgName string, accountPath, orgPath logicalcluster.Path, t *testing.T) {
+// createTestStore creates a minimal Store, which must exist before an
+// AuthorizationModel can bind to it.
+func (suite *IntegrationSuite) createTestStore(ctx context.Context, storeClusterClient ctrlruntimeclient.Client, storeName string, t *testing.T) {
+	store := &pmcorev1alpha1.Store{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: storeName,
+		},
+	}
+	err := storeClusterClient.Create(ctx, store)
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		suite.Require().NoError(err)
+	}
+	t.Logf("created store '%s'", storeName)
+}
+
+// orgClusterID is the raw logical cluster ID the org workspace is stored
+// under (not its path) - must match wherever createTestStore created the
+// Store.
+func (suite *IntegrationSuite) createAccountInfo(ctx context.Context, accountClient ctrlruntimeclient.Client, accountName, orgName, orgClusterID string, accountPath, orgPath logicalcluster.Path, t *testing.T) {
 	accountInfo := &pmcorev1alpha1.AccountInfo{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "account",
@@ -363,7 +381,7 @@ func (suite *IntegrationSuite) createAccountInfo(ctx context.Context, accountCli
 			Organization: pmcorev1alpha1.AccountLocation{
 				Name:               orgName,
 				GeneratedClusterId: orgPath.String(),
-				OriginClusterId:    orgPath.String(),
+				OriginClusterId:    orgClusterID,
 				Path:               orgPath.String(),
 				Type:               pmcorev1alpha1.AccountTypeOrg,
 			},

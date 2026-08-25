@@ -32,7 +32,8 @@ type SearchRequest struct {
 
 type SearchResponse struct {
 	Results    []SearchHit `json:"results"`
-	NextCursor *string     `json:"nextCursor"`
+	NextCursor *string     `json:"nextCursor,omitempty"`
+	TotalCount *int        `json:"totalCount,omitempty"`
 }
 
 type SearchHit struct {
@@ -105,18 +106,20 @@ type OpenSearchHit struct {
 type OpenSearchPage struct {
 	Hits              []OpenSearchHit
 	AggregationValues []string
+	TotalCount        int
 }
 
 type OpenSearchQuery struct {
-	Indices          []string
-	Query            string
-	Mode             string
-	Fields           []string
-	SemanticFields   []string
-	Filters          map[string][]string
-	Size             int
-	SearchAfter      []any
-	AggregationField string
+	Indices           []string
+	Query             string
+	Mode              string
+	Fields            []string
+	SemanticFields    []string
+	Filters           map[string][]string
+	AccountFGAObjects []string
+	Size              int
+	SearchAfter       []any
+	AggregationField  string
 }
 
 type AuthorizationRequest struct {
@@ -143,6 +146,7 @@ type OpenSearchSearcher interface {
 }
 
 type FGAAuthorizer interface {
+	ListAccessibleAccounts(ctx context.Context, organization, user string) ([]string, error)
 	FilterAuthorized(ctx context.Context, req AuthorizationRequest) (AuthorizationResult, error)
 }
 

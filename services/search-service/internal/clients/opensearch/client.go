@@ -85,6 +85,7 @@ func BuildQueryBody(req search.OpenSearchQuery) ([]byte, error) {
 	fields := lexicalSearchFields(req.Fields)
 	semanticFields := prefixedFields("semantic_fields", dedupeStrings(req.SemanticFields))
 	filters := normalizeFilters(req.Filters)
+	accountFGAObjects := dedupeStrings(req.AccountFGAObjects)
 
 	var queryClause map[string]any
 	if query == "" {
@@ -109,8 +110,8 @@ func BuildQueryBody(req search.OpenSearchQuery) ([]byte, error) {
 		}
 	}
 
-	if len(filters) > 0 {
-		filterClauses := make([]map[string]any, 0, len(filters))
+	if len(filters) > 0 || len(accountFGAObjects) > 0 {
+		filterClauses := make([]map[string]any, 0, len(filters)+1)
 		keys := slices.Sorted(maps.Keys(filters))
 
 		for _, field := range keys {
@@ -124,6 +125,13 @@ func BuildQueryBody(req search.OpenSearchQuery) ([]byte, error) {
 				},
 			})
 		}
+		if len(accountFGAObjects) > 0 {
+			filterClauses = append(filterClauses, map[string]any{
+				"terms": map[string]any{
+					"filterable_fields.account_fga_object": accountFGAObjects,
+				},
+			})
+		}
 
 		queryClause = map[string]any{
 			"bool": map[string]any{
@@ -134,8 +142,9 @@ func BuildQueryBody(req search.OpenSearchQuery) ([]byte, error) {
 	}
 
 	body := map[string]any{
-		"size":  req.Size,
-		"query": queryClause,
+		"size":             req.Size,
+		"query":            queryClause,
+		"track_total_hits": true,
 		"sort": []map[string]string{
 			{"_score": "desc"},
 			{"_id": "asc"},
@@ -221,14 +230,15 @@ func (c *Client) Search(ctx context.Context, query search.OpenSearchQuery) (sear
 	}
 
 	body, err := BuildQueryBody(search.OpenSearchQuery{
-		Query:            query.Query,
-		Fields:           query.Fields,
-		SemanticFields:   query.SemanticFields,
-		Mode:             query.Mode,
-		Filters:          query.Filters,
-		Size:             query.Size,
-		SearchAfter:      query.SearchAfter,
-		AggregationField: query.AggregationField,
+		Query:             query.Query,
+		Fields:            query.Fields,
+		SemanticFields:    query.SemanticFields,
+		Mode:              query.Mode,
+		Filters:           query.Filters,
+		AccountFGAObjects: query.AccountFGAObjects,
+		Size:              query.Size,
+		SearchAfter:       query.SearchAfter,
+		AggregationField:  query.AggregationField,
 	})
 	if err != nil {
 		return search.OpenSearchPage{}, fmt.Errorf("build OpenSearch query body: %w", err)
@@ -260,6 +270,9 @@ func (c *Client) Search(ctx context.Context, query search.OpenSearchQuery) (sear
 
 	var payload struct {
 		Hits struct {
+			Total struct {
+				Value int `json:"value"`
+			} `json:"total"`
 			Hits []struct {
 				Index  string         `json:"_index"`
 				ID     string         `json:"_id"`
@@ -300,7 +313,11 @@ func (c *Client) Search(ctx context.Context, query search.OpenSearchQuery) (sear
 		slices.Sort(values)
 	}
 
-	return search.OpenSearchPage{Hits: hits, AggregationValues: values}, nil
+	return search.OpenSearchPage{
+		Hits:              hits,
+		AggregationValues: values,
+		TotalCount:        payload.Hits.Total.Value,
+	}, nil
 }
 
 func dedupeStrings(values []string) []string {

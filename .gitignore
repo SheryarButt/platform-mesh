@@ -58,4 +58,3 @@ debug
 # Task context (if using claude code delegation)
 task-context/
 cmd/release/release
-operators/tenancy-operator/.task/checksum/tenancyctl

@@ -14,9 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package engine drives KROaaS composition per consumer workspace: compile an RGD,
-// publish its composite type as a bound API in the workspace, and materialize child
-// resources for each instance — all as the operator's own kcp identity.
+// Package engine drives composition per consumer workspace: compile an RGD, publish its
+// type as a bound API, and reconcile instances as the operator's own kcp identity.
 package engine
 
 import (
@@ -28,8 +27,8 @@ import (
 
 	krov1alpha1 "github.com/kubernetes-sigs/kro/api/v1alpha1"
 	"github.com/kubernetes-sigs/kro/pkg/dynamiccontroller"
-	"github.com/kubernetes-sigs/kro/pkg/graph"
-	"github.com/kubernetes-sigs/kro/pkg/requeue"
+	"github.com/kubernetes-sigs/kro/pkg/graph/revisions"
+	krometadata "github.com/kubernetes-sigs/kro/pkg/metadata"
 
 	"go.platform-mesh.io/kro-composition-operator/internal/composition"
 	"go.platform-mesh.io/kro-composition-operator/internal/workspace"
@@ -41,7 +40,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/metadata"
+	"k8s.io/client-go/util/retry"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -52,26 +53,23 @@ import (
 var ccGVK = schema.GroupVersionKind{Group: "ui.platform-mesh.io", Version: "v1alpha1", Kind: "ContentConfiguration"}
 
 var (
-	errNotEstablished  = fmt.Errorf("composite CRD not established yet")
-	errDepsPending     = fmt.Errorf("composition dependencies pending")
-	errTeardownPending = fmt.Errorf("composite teardown pending")
+	errNotEstablished   = fmt.Errorf("composite CRD not established yet")
+	errTeardownPending  = fmt.Errorf("composite teardown pending")
+	errInstancesPending = fmt.Errorf("composite instances still draining")
 )
 
-// rgdFinalizer holds the RGD in Terminating while the operator tears the published
-// objects down in order — so the platform's APIBinding finalizer (which strips the
-// type's OpenFGA authz) can run while the APIExport + schema still exist, before
-// owner-ref GC would otherwise remove them all at once.
+// rgdFinalizer holds the RGD while teardown runs in order, ahead of owner-ref GC.
 const rgdFinalizer = "kro-composition.platform-mesh.io/teardown"
 
-// instanceRequeueInterval is the fixed delay before retrying an instance whose
-// composition dependencies are not resolvable yet. Matches the default of kro's own
-// instance reconciler, which requeues the same condition on a fixed interval.
+// conditionTypePortalQueryable is False when the API group is not a valid GraphQL
+// identifier. The type still serves over kubectl, it just gets no portal entry.
+// Domain-qualified because it is ours, not kro's.
+const conditionTypePortalQueryable krov1alpha1.ConditionType = "kro-composition.platform-mesh.io/PortalQueryable"
+
+// instanceRequeueInterval matches kro's own instance reconciler default.
 const instanceRequeueInterval = 3 * time.Second
 
-// transientError marks an expected, self-resolving condition (CRD still
-// establishing, kcp openapi aggregation lag, dynamic controller still starting,
-// composed provider API not yet available). Callers requeue quietly instead of
-// logging these as failures.
+// transientError marks a self-resolving condition. Callers requeue quietly.
 type transientError struct{ err error }
 
 func (e transientError) Error() string { return e.err.Error() }
@@ -85,9 +83,7 @@ func IsTransient(err error) bool {
 	return errors.As(err, &t)
 }
 
-// Engine holds per-workspace state: compiled graphs and per-workspace dynamic
-// controllers (one kro DynamicController per workspace, watching that workspace's
-// composite instance types with a per-workspace client).
+// Engine holds per-workspace state: compiled graphs and one kro DynamicController each.
 type Engine struct {
 	Workspaces *workspace.Provider
 	DCConfig   dynamiccontroller.Config
@@ -103,8 +99,10 @@ type Engine struct {
 }
 
 type wsController struct {
-	dc  *dynamiccontroller.DynamicController
-	mat *composition.Materializer
+	dc *dynamiccontroller.DynamicController
+
+	// Per workspace, because kro's registry keys on the RGD name alone.
+	revisions *revisions.Registry
 }
 
 // New returns an Engine. rootCtx must outlive all workspaces (the manager's ctx).
@@ -112,10 +110,8 @@ func New(rootCtx context.Context, ws *workspace.Provider, dcConfig dynamiccontro
 	return &Engine{Workspaces: ws, DCConfig: dcConfig, rootCtx: rootCtx, dcs: map[string]*wsController{}}
 }
 
-// workspaceTerminating reports whether the consumer workspace itself is being deleted
-// (its LogicalCluster carries a deletionTimestamp) — meaning an RGD's teardown is part
-// of the whole-workspace GC, so teardownComposite runs in force mode. Best-effort: if
-// the LogicalCluster can't be read, assume the workspace is healthy (ordered path).
+// workspaceTerminating reports whether the workspace itself is being deleted, which puts
+// teardown in force mode. Unreadable means assume healthy.
 func workspaceTerminating(ctx context.Context, c ctrlruntimeclient.Client) bool {
 	lc := &kcpcorev1alpha1.LogicalCluster{}
 	if err := c.Get(ctx, types.NamespacedName{Name: "cluster"}, lc); err != nil {
@@ -124,9 +120,7 @@ func workspaceTerminating(ctx context.Context, c ctrlruntimeclient.Client) bool 
 	return !lc.DeletionTimestamp.IsZero()
 }
 
-// ReconcileRGD handles one RGD in one workspace: compile it, publish the composite
-// type as a bound API, and register an instance watch so instances materialize their
-// children.
+// ReconcileRGD compiles one RGD, publishes its type, and registers the instance watch.
 func (e *Engine) ReconcileRGD(ctx context.Context, clusterName, rgdName string) error {
 	log := logf.FromContext(ctx).WithValues("cluster", clusterName, "rgd", rgdName)
 
@@ -143,15 +137,26 @@ func (e *Engine) ReconcileRGD(ctx context.Context, clusterName, rgdName string) 
 		return err
 	}
 
-	// Deletion path: tear the published objects down in order (APIBinding first, then
-	// APIExport + schemas) so the platform's binding finalizer can strip authz first,
-	// then release our finalizer to let the RGD (and its ContentConfiguration) be GC'd.
-	//
-	// If the whole workspace is terminating (account/workspace deletion), the RGD is
-	// being GC'd along with everything else: the ordered authz-strip is moot and our
-	// per-RGD APIBinding must not block that deletion, so tear down in force mode.
+	// Tear down in order, then release our finalizer so the RGD can be collected.
 	if !rgd.DeletionTimestamp.IsZero() {
-		done, err := teardownComposite(ctx, wc.Client, rgd, workspaceTerminating(ctx, wc.Client))
+		force := workspaceTerminating(ctx, wc.Client)
+
+		// Drain while the type is still served. Nothing cascades when an APIBinding goes, so
+		// instances would strand behind an unserved API holding kro's finalizer.
+		if gvr, known := e.instanceGVRFor(wc, clusterName, rgd); known {
+			drained, err := drainInstances(ctx, wc.Metadata, wc.Dynamic, gvr, force)
+			if err != nil {
+				return err
+			}
+			if !drained {
+				return transient(errInstancesPending)
+			}
+		} else {
+			// Finish teardown rather than hold the RGD forever, stranding instances.
+			log.Info("cannot determine the instance type; tearing down without draining instances")
+		}
+
+		done, err := teardownComposite(ctx, wc.Client, rgd, force)
 		if err != nil {
 			return err
 		}
@@ -182,12 +187,25 @@ func (e *Engine) ReconcileRGD(ctx context.Context, clusterName, rgdName string) 
 	}
 	g, err := compiler.Compile(rgd)
 	if err != nil {
-		// Usually the kcp openapi aggregation lag right after CRD creation, or a
-		// composed provider API not yet available in the workspace — both resolve.
-		return transient(fmt.Errorf("RGD not compilable yet: %w", err))
+		// Usually aggregation lag or an API not bound yet, so keep retrying. Reported on the
+		// RGD too: a reference that never resolves looks identical from here.
+		notCompilable := fmt.Errorf("RGD not compilable yet: %w", err)
+		if statusErr := writeRGDGraphInvalid(ctx, wc.Client, rgd.Name, notCompilable.Error()); statusErr != nil {
+			return statusErr
+		}
+		return transient(notCompilable)
 	}
 	if g.CRD == nil {
 		return fmt.Errorf("kro produced no CRD for RGD %q", rgdName)
+	}
+
+	// A group the portal cannot query still yields a perfectly usable API over kubectl, so
+	// the type is published either way. What gets skipped is the portal wiring, and the
+	// reason is reported on the RGD. See ensureContentConfiguration and the PortalQueryable
+	// condition below.
+	portalErr := composition.ValidateAPIGroup(g.CRD.Spec.Group)
+	if portalErr != nil {
+		log.Info("composite type will not be shown in the portal", "reason", portalErr.Error())
 	}
 
 	// Publish the composite type as a *bound* API (APIResourceSchema + per-RGD
@@ -195,6 +213,22 @@ func (e *Engine) ReconcileRGD(ctx context.Context, clusterName, rgdName string) 
 	// gateway and security-operator (both boundResource-driven) treat it as first-class.
 	bound, err := e.publishComposite(ctx, wc.Client, g.CRD, rgd)
 	if err != nil {
+		// A refused schema change is terminal: the previously published schema stays served
+		// and only an RGD edit, which re-triggers this reconcile on its own, can resolve it.
+		// Requeueing would just repeat the same refusal.
+		if isBreakingSchemaChange(err) {
+			log.Info("refusing to republish the composite type", "reason", err.Error())
+			return writeRGDKindNotReady(ctx, wc.Client, rgd.Name, err.Error())
+		}
+		// A type conflict is different: deleting the RGD holding the type resolves it without
+		// touching this one, and that does not reconcile this RGD. So report it and keep
+		// retrying. The status write is skipped while the reason is unchanged.
+		if isTypeConflict(err) {
+			if statusErr := writeRGDKindNotReady(ctx, wc.Client, rgd.Name, err.Error()); statusErr != nil {
+				return statusErr
+			}
+			return transient(err)
+		}
 		return err
 	}
 	if !bound {
@@ -206,19 +240,29 @@ func (e *Engine) ReconcileRGD(ctx context.Context, clusterName, rgdName string) 
 	e.rgdGVRs.Store(rgdName+"|"+clusterName, gvr)
 
 	// Emit a portal ContentConfiguration for the generated type (best-effort: skips
-	// where the ui.platform-mesh.io API isn't served, e.g. no portal).
-	if err := e.ensureContentConfiguration(ctx, wc, rgd, g.CRD); err != nil {
+	// where the ui.platform-mesh.io API isn't served, e.g. no portal). Skipped entirely for
+	// a group the portal cannot query, where the nav entry would only lead to a failing
+	// query.
+	if portalErr == nil {
+		if err := e.ensureContentConfiguration(ctx, wc, rgd, g.CRD); err != nil {
+			return err
+		}
+	} else if err := e.deleteContentConfiguration(ctx, wc, rgd); err != nil {
+		// An RGD edited from a queryable group to an unqueryable one would otherwise keep
+		// its old nav entry, pointing at a type that no longer exists.
 		return err
 	}
 
 	wsc := e.ensureController(clusterName, wc)
-	if err := wsc.dc.Register(ctx, gvr, e.instanceHandler(clusterName, gvr, wsc.mat)); err != nil {
+	if err := wsc.dc.Register(ctx, gvr, e.instanceHandler(clusterName, wc, rgd, g, wsc.revisions, wsc.dc)); err != nil {
 		return transient(fmt.Errorf("register instance watch %s: %w", gvr, err))
 	}
 
 	// Report the RGD as Active (state + topological order + readiness conditions) so
-	// the portal and kubectl show it serving — the CRD and controller are up now.
-	if err := writeRGDStatus(ctx, wc.Client, rgd.Name, g.TopologicalOrder); err != nil {
+	// the portal and kubectl show it serving, now that the CRD and controller are up. A
+	// non-nil portalErr additionally records PortalQueryable=False with the reason. The
+	// type is still Active because the API itself works.
+	if err := writeRGDStatus(ctx, wc.Client, rgd.Name, statusFromGraph(g), portalErr); err != nil {
 		return transient(fmt.Errorf("write RGD status: %w", err))
 	}
 
@@ -226,10 +270,8 @@ func (e *Engine) ReconcileRGD(ctx context.Context, clusterName, rgdName string) 
 	return nil
 }
 
-// ensureContentConfiguration writes a portal ContentConfiguration for the generated
-// type into the workspace (owned by the RGD, so it is GC'd with it). It is
-// best-effort: if the ui.platform-mesh.io ContentConfiguration API is not served in
-// the workspace (e.g. a portal-less environment), it logs and skips.
+// ensureContentConfiguration writes the portal nav entry for the type, owned by the RGD.
+// Best-effort: skips where the ui.platform-mesh.io API is not served.
 func (e *Engine) ensureContentConfiguration(ctx context.Context, wc *workspace.Clients, rgd *krov1alpha1.ResourceGraphDefinition, crd *apiextensionsv1.CustomResourceDefinition) error {
 	version := storageVersion(crd)
 	content := composition.BuildContentConfig(
@@ -265,9 +307,7 @@ func (e *Engine) ensureContentConfiguration(ctx context.Context, wc *workspace.C
 	return nil
 }
 
-// handleRGDDeleted stops watching the composite type and drops caches. The
-// composite CRD (and its instances and their children) are removed by owner-ref
-// garbage collection (CRD owned by the RGD; children owned by their instance).
+// handleRGDDeleted stops watching the composite type and drops caches.
 func (e *Engine) handleRGDDeleted(clusterName, rgdName string) error {
 	v, ok := e.rgdGVRs.LoadAndDelete(rgdName + "|" + clusterName)
 	if !ok {
@@ -301,7 +341,7 @@ func (e *Engine) ensureController(clusterName string, wc *workspace.Clients) *ws
 		wc.Metadata,
 		wc.Mapper,
 	)
-	c := &wsController{dc: dc, mat: &composition.Materializer{Dyn: wc.Dynamic, Mapper: wc.Mapper}}
+	c := &wsController{dc: dc, revisions: revisions.NewRegistry()}
 	e.dcs[clusterName] = c
 	go func() {
 		if err := dc.Start(e.rootCtx); err != nil && e.rootCtx.Err() == nil {
@@ -311,44 +351,96 @@ func (e *Engine) ensureController(clusterName string, wc *workspace.Clients) *ws
 	return c
 }
 
-func (e *Engine) instanceHandler(clusterName string, gvr schema.GroupVersionResource, mat *composition.Materializer) dynamiccontroller.Handler {
-	return func(ctx context.Context, req ctrl.Request) error {
-		log := logf.FromContext(ctx).WithValues("cluster", clusterName, "instance", req.String())
+// instanceGVRFor resolves the instance type, compiling the RGD if the in-memory cache
+// misses. A restart would otherwise skip the drain for an already-deleting RGD.
+func (e *Engine) instanceGVRFor(wc *workspace.Clients, clusterName string, rgd *krov1alpha1.ResourceGraphDefinition) (schema.GroupVersionResource, bool) {
+	if v, ok := e.rgdGVRs.Load(rgd.Name + "|" + clusterName); ok {
+		return v.(schema.GroupVersionResource), true
+	}
+	compiler, err := composition.NewCompiler(wc.Config)
+	if err != nil {
+		return schema.GroupVersionResource{}, false
+	}
+	g, err := compiler.Compile(rgd)
+	if err != nil || g.CRD == nil {
+		return schema.GroupVersionResource{}, false
+	}
+	return instanceGVR(g.CRD), true
+}
 
-		wc, err := e.Workspaces.For(ctx, clusterName)
-		if err != nil {
-			return err
+// drainInstances deletes every instance of gvr and reports whether they are all gone.
+// Runs before the type is unserved, so kro's cleanup still can.
+//
+// force stops waiting when the workspace is terminating, which would otherwise block
+// workspace and account deletion.
+func drainInstances(ctx context.Context, metaCl metadata.Interface, dyn dynamic.Interface, gvr schema.GroupVersionResource, force bool) (bool, error) {
+	// Metadata-only: names, deletion timestamps and finalizers are all this needs, and an
+	// instance's spec and status can be large.
+	list, err := metaCl.Resource(gvr).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) || meta.IsNoMatchError(err) {
+			return true, nil // type already gone, nothing to drain
 		}
-		gAny, ok := e.graphs.Load(graphKey(clusterName, gvr))
-		if !ok {
-			return fmt.Errorf("no graph for %s in %s", gvr, clusterName)
-		}
-		g := gAny.(*graph.Graph)
+		return false, fmt.Errorf("list instances of %s: %w", gvr.Resource, err)
+	}
+	if len(list.Items) == 0 {
+		return true, nil
+	}
 
-		inst, err := wc.Dynamic.Resource(gvr).Namespace(req.Namespace).Get(ctx, req.Name, metav1.GetOptions{})
+	for i := range list.Items {
+		inst := &list.Items[i]
+		ri := dyn.Resource(gvr).Namespace(inst.Namespace)
+
+		if inst.DeletionTimestamp.IsZero() {
+			if err := ri.Delete(ctx, inst.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+				return false, fmt.Errorf("delete instance %s: %w", inst.Name, err)
+			}
+		}
+		// The listed metadata already says whether there is a finalizer to strip, so skip the
+		// read-modify-write for the instances that carry none.
+		if force && krometadata.HasInstanceFinalizer(inst) {
+			if err := releaseInstanceFinalizer(ctx, ri, inst.Name); err != nil {
+				return false, fmt.Errorf("release finalizer on %s: %w", inst.Name, err)
+			}
+		}
+	}
+
+	// Deletes are issued. kro's instance reconciler still has to delete the children and
+	// release its finalizer, so report not-drained and let the caller requeue. In force mode
+	// nothing holds the instances any more, so do not hold the RGD either.
+	return force, nil
+}
+
+// releaseInstanceFinalizer strips kro's finalizer, which nothing can process any more.
+func releaseInstanceFinalizer(ctx context.Context, ri dynamic.ResourceInterface, name string) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		cur, err := ri.Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
-			// Instance deleted; its children are garbage-collected by their owner
-			// references to it (set in Materialize), so there is nothing to do here.
 			return nil
 		}
 		if err != nil {
-			return fmt.Errorf("get instance: %w", err)
-		}
-
-		ready, err := mat.Materialize(ctx, g, gvr, inst)
-		if err != nil {
 			return err
 		}
-		if !ready {
-			// A pending dependency is not a failure, so it must not travel the queue's
-			// rate-limited path: that counts against QueueMaxRetries and drops the item
-			// once exhausted, after which nothing reconciles the instance until it is
-			// updated or the informer resyncs. requeue.NeededAfter re-adds the item after
-			// a fixed delay without incrementing the retry count, so an instance waiting
-			// on a slow child keeps converging however long that child takes.
-			return requeue.NeededAfter(errDepsPending, instanceRequeueInterval)
+		if !krometadata.HasInstanceFinalizer(cur) {
+			return nil
 		}
-		log.Info("instance materialized")
-		return nil
+		krometadata.RemoveInstanceFinalizer(cur)
+		_, err = ri.Update(ctx, cur, metav1.UpdateOptions{})
+		return err
+	})
+}
+
+// deleteContentConfiguration removes the portal nav entry, tolerating it being absent.
+func (e *Engine) deleteContentConfiguration(ctx context.Context, wc *workspace.Clients, rgd *krov1alpha1.ResourceGraphDefinition) error {
+	cc := &unstructured.Unstructured{}
+	cc.SetGroupVersionKind(ccGVK)
+	cc.SetName(contentConfigName(rgd.Name))
+
+	if err := wc.Client.Delete(ctx, cc); err != nil {
+		if apierrors.IsNotFound(err) || meta.IsNoMatchError(err) {
+			return nil
+		}
+		return fmt.Errorf("delete ContentConfiguration: %w", err)
 	}
+	return nil
 }

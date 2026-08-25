@@ -73,6 +73,19 @@ spec:
                 x-kubernetes-preserve-unknown-fields: true
               description:
                 type: string
+              detailViewExtensions:
+                items:
+                  description: |-
+                    DetailViewExtension describes a provider-owned micro frontend that enriches
+                    the provider details view. The extension is rendered in list order.
+                  properties:
+                    url:
+                      description: URL is the absolute URL of the micro frontend.
+                      type: string
+                  required:
+                  - url
+                  type: object
+                type: array
               displayName:
                 type: string
               documentation:

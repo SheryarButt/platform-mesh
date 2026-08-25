@@ -17,11 +17,44 @@ limitations under the License.
 package opensearch
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"go.platform-mesh.io/search-service/internal/service/search"
 )
+
+func TestClientSearchReturnsExactTotalCount(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if got := body["track_total_hits"]; got != true {
+			t.Fatalf("track_total_hits = %v, want true", got)
+		}
+		_, _ = w.Write([]byte(`{"hits":{"total":{"value":42,"relation":"eq"},"hits":[]}}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{URL: server.URL})
+	if err != nil {
+		t.Fatalf("NewClient returned error: %v", err)
+	}
+	page, err := client.Search(context.Background(), search.OpenSearchQuery{
+		Indices: []string{"idx"},
+		Query:   "hello",
+		Size:    10,
+	})
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if page.TotalCount != 42 {
+		t.Fatalf("TotalCount = %d, want 42", page.TotalCount)
+	}
+}
 
 func TestBuildQueryBodyWithoutSearchAfter(t *testing.T) {
 	body, err := BuildQueryBody(search.OpenSearchQuery{
@@ -73,6 +106,7 @@ func TestBuildQueryBodyWithSearchAfter(t *testing.T) {
 		Filters: map[string][]string{
 			"status": {"Ready"},
 		},
+		AccountFGAObjects: []string{"core_platform-mesh_io_account:cluster/acme"},
 	})
 	if err != nil {
 		t.Fatalf("BuildQueryBody returned error: %v", err)
@@ -97,6 +131,13 @@ func TestBuildQueryBodyWithSearchAfter(t *testing.T) {
 	terms := filter[0].(map[string]any)["terms"].(map[string]any)
 	if _, ok := terms["filterable_fields.status"]; !ok {
 		t.Fatalf("expected filterable_fields.status filter, got %v", terms)
+	}
+	accountTerms := filter[1].(map[string]any)["terms"].(map[string]any)
+	if got := accountTerms["filterable_fields.account_fga_object"]; len(got.([]any)) != 1 || got.([]any)[0] != "core_platform-mesh_io_account:cluster/acme" {
+		t.Fatalf("unexpected account authorization filter: %v", got)
+	}
+	if got := payload["track_total_hits"]; got != true {
+		t.Fatalf("track_total_hits = %v, want true", got)
 	}
 }
 

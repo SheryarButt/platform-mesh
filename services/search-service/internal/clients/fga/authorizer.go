@@ -23,19 +23,59 @@ import (
 	"strings"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"google.golang.org/grpc"
 
 	"go.platform-mesh.io/golang-commons/logger"
+	"go.platform-mesh.io/search-service/internal/config"
 	"go.platform-mesh.io/search-service/internal/service/search"
 )
 
-const batchCheckChunkSize = 100
-
-type Authorizer struct {
-	client openfgav1.OpenFGAServiceClient
+type client interface {
+	BatchCheck(context.Context, *openfgav1.BatchCheckRequest, ...grpc.CallOption) (*openfgav1.BatchCheckResponse, error)
+	ListObjects(context.Context, *openfgav1.ListObjectsRequest, ...grpc.CallOption) (*openfgav1.ListObjectsResponse, error)
+	ListStores(context.Context, *openfgav1.ListStoresRequest, ...grpc.CallOption) (*openfgav1.ListStoresResponse, error)
 }
 
-func NewAuthorizer(client openfgav1.OpenFGAServiceClient) *Authorizer {
-	return &Authorizer{client: client}
+type Authorizer struct {
+	client client
+	cfg    config.ServiceConfig
+}
+
+func NewAuthorizer(client client, cfg config.ServiceConfig) *Authorizer {
+	return &Authorizer{client: client, cfg: cfg}
+}
+
+func (a *Authorizer) ListAccessibleAccounts(ctx context.Context, organization, user string) ([]string, error) {
+	storeID, err := a.resolveStoreID(ctx, organization)
+	if err != nil {
+		return nil, fmt.Errorf("resolve store ID: %w", err)
+	}
+
+	res, err := a.client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:  storeID,
+		Type:     a.cfg.OpenFGA.ObjectType,
+		Relation: a.cfg.OpenFGA.DefaultRole,
+		User:     fmt.Sprintf("user:%s", formatUser(user)),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list accessible accounts: %w", err)
+	}
+
+	accounts := make([]string, 0, len(res.GetObjects()))
+	seen := make(map[string]struct{}, len(res.GetObjects()))
+	for _, object := range res.GetObjects() {
+		object = strings.TrimSpace(object)
+		if object == "" {
+			continue
+		}
+		if _, ok := seen[object]; ok {
+			continue
+		}
+		seen[object] = struct{}{}
+		accounts = append(accounts, object)
+	}
+
+	return accounts, nil
 }
 
 func (a *Authorizer) FilterAuthorized(ctx context.Context, req search.AuthorizationRequest) (search.AuthorizationResult, error) {
@@ -64,7 +104,7 @@ func (a *Authorizer) FilterAuthorized(ctx context.Context, req search.Authorizat
 
 	result := search.AuthorizationResult{Allowed: allowed}
 
-	for _, chunk := range chunkRanges(len(req.Hits), batchCheckChunkSize) {
+	for _, chunk := range chunkRanges(len(req.Hits), a.cfg.BatchSize) {
 		start := chunk[0]
 		end := chunk[1]
 		items := make([]*openfgav1.BatchCheckItem, 0, end-start)

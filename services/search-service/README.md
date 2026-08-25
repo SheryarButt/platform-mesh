@@ -42,9 +42,10 @@ Query params:
 
 If both `page` and `cursor` are provided, cursor-based pagination takes precedence.
 
-Page-based pagination scans and authorizes preceding hits, so it is bounded by
-`MaxScannedHits / limit` (1000 scanned hits by default). Requests beyond that bound are rejected; use cursor-based
-pagination for deep traversal.
+Before querying OpenSearch, the service resolves the accounts the caller can access with OpenFGA `ListObjects` and
+adds those exact account objects as an internal `filterable_fields.account_fga_object` filter. OpenSearch therefore
+returns the page-based `totalCount` directly for the caller's accessible account scope. Returned hits are still
+batch-checked with OpenFGA as a defense in depth measure.
 
 Semantic mode behavior:
 
@@ -66,8 +67,9 @@ Response shape:
 - `results[]` with compact fields (`id`, `score`, `kind`, `name`, `namespace`, `apiGroup`, `apiVersion`, `workspacePath`, `clusterName`, `organizationId`, `organizationName`, `accountId`, `accountName`)
 - `results[].resource` indicates which resource index produced the hit
 - `source` containing the indexed document source per hit, including `default_fields`, `semantic_fields`, and `filterable_fields`
-- `nextCursor` for sequential continuation. It can also be returned for a page-based request; pass it as `cursor`
-  (without `page`) to continue after that page.
+- `nextCursor` for cursor-based sequential continuation; omitted for page-based requests
+- `totalCount` with the exact number of OpenSearch matches after account authorization pre-filtering for page-based
+  requests; omitted for cursor-based requests
 
 ### Resource metadata endpoint
 
@@ -135,6 +137,9 @@ Main runtime flags (with defaults):
 - `--opensearch-insecure` (default: `false`)
 - `--opensearch-timeout` (default: `10s`)
 - `--openfga-grpc-addr` (default: `openfga:8081`)
+- `--openfga-object-type` (default: `core_platform-mesh_io_account`)
+- `--openfga-default-role` (default: `member`)
+- `--batch-size` (default: `50`)
 - `--searchindex-workspace-path` (default: `root:providers:search`)
 - `--searchindex-org-workspace-path` (default: `root:orgs`)
 - `--searchindex-group` (default: `search.platform-mesh.io`)

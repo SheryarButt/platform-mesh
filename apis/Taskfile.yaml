@@ -41,16 +41,11 @@ tasks:
       - task: fmt
       - task: tools:lint
   generate:
-    desc: Regenerate deepcopy and OpenAPI code for the apis types.
+    desc: Regenerate deepcopy code for the apis types.
     cmds:
       - task: tools:generate-deepcopy
         vars:
           PATH: /...
-      # OpenAPI models, needed by anything served through a virtual workspace.
-      - task: tools:generate-openapi
-        vars:
-          PATH: tenancy/v1alpha1
-          PKG: go.platform-mesh.io/apis/tenancy/v1alpha1
   test:
     desc: Run apis unit tests.
     cmds:
@@ -64,8 +59,8 @@ tasks:
     vars:
       FUZZTIME: '{{.FUZZTIME | default "30s"}}'
     cmds:
-      - go test ./terminal/ -run=^$ -fuzz=FuzzTerminalRoundTrip -fuzztime={{.FUZZTIME}} -count=1
-      - go test ./marketplace/ -run=^$ -fuzz=FuzzMarketplaceEntryRoundTrip -fuzztime={{.FUZZTIME}} -count=1
+      - go test ./terminal/... -run=^$ -fuzz=FuzzTerminalRoundTrip -fuzztime={{.FUZZTIME}} -count=1
+      - go test ./marketplace/... -run=^$ -fuzz=FuzzMarketplaceEntryRoundTrip -fuzztime={{.FUZZTIME}} -count=1
       - go test ./deploy/v1alpha1/ -run=^$ -fuzz=FuzzPlatformMeshRoundTrip -fuzztime={{.FUZZTIME}} -count=1
       - go test ./deploy/v1alpha1/ -run=^$ -fuzz='FuzzModuleRoundTrip$' -fuzztime={{.FUZZTIME}} -count=1
       - go test ./deploy/v1alpha1/ -run=^$ -fuzz=FuzzModuleSetupRoundTrip -fuzztime={{.FUZZTIME}} -count=1

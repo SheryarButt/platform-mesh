@@ -95,7 +95,7 @@ var serverCmd = &cobra.Command{
 		svc := searchservice.NewService(
 			searchIndexResolver,
 			openSearchClient,
-			fgaclient.NewAuthorizer(fgaClient),
+			fgaclient.NewAuthorizer(fgaClient, *serviceCfg),
 			metrics,
 			searchservice.ServiceConfig{
 				DefaultLimit:   serviceCfg.Search.DefaultLimit,

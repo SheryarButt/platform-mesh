@@ -67,51 +67,52 @@ func CreateRouter(svc SearchService, mws []func(http.Handler) http.Handler) *chi
 			return
 		}
 
+		resource := strings.TrimSpace(r.URL.Query().Get("resource"))
+
 		filters, err := parseFilters(r.URL.Query())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		resp, err := svc.Search(r.Context(), search.SearchRequest{
-			Organization: rc.Organization,
-			User:         rc.User,
-			Query:        q,
-			Mode:         strings.TrimSpace(r.URL.Query().Get("mode")),
-			Resource:     strings.TrimSpace(r.URL.Query().Get("resource")),
-			Filters:      filters,
-			Limit:        limit,
-			Page:         page,
-			Cursor:       strings.TrimSpace(r.URL.Query().Get("cursor")),
-		})
-		if err != nil {
-			log := logger.LoadLoggerFromContext(r.Context())
-			status := http.StatusInternalServerError
-			switch {
-			case errors.Is(err, search.ErrInvalidRequest), errors.Is(err, search.ErrInvalidCursor):
-				status = http.StatusBadRequest
-				http.Error(w, err.Error(), status)
-			case errors.Is(err, search.ErrUnauthorized):
-				status = http.StatusUnauthorized
-				http.Error(w, http.StatusText(status), status)
-			case errors.Is(err, search.ErrForbidden):
-				status = http.StatusForbidden
-				http.Error(w, http.StatusText(status), status)
-			default:
-				http.Error(w, http.StatusText(status), status)
-			}
-			log.Error().
-				Err(err).
-				Str("path", r.URL.Path).
-				Str("organization", rc.Organization).
-				Int("statusCode", status).
-				Msg("search request failed")
+		resources := resolveResources(resource, r.URL.Query().Get("resources"), filters)
+		if resources == nil {
+			http.Error(w, "Filtering is not supported for searching across all resources.", http.StatusBadRequest)
 			return
+		}
+
+		resultSet := make(map[string]search.SearchResponse, len(resources))
+		for _, res := range resources {
+			resp, err := svc.Search(r.Context(), search.SearchRequest{
+				Organization: rc.Organization,
+				User:         rc.User,
+				Query:        q,
+				Mode:         strings.TrimSpace(r.URL.Query().Get("mode")),
+				Resource:     res,
+				Filters:      filters,
+				Limit:        limit,
+				Page:         page,
+				Cursor:       strings.TrimSpace(r.URL.Query().Get("cursor")),
+			})
+			if err != nil {
+				handleError(w, r, rc, err)
+				return
+			}
+			resultSet[res] = resp
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(resp)
+
+		if len(resultSet) == 1 {
+			var result search.SearchResponse
+			for _, v := range resultSet {
+				result = v
+			}
+			_ = json.NewEncoder(w).Encode(result)
+		} else {
+			_ = json.NewEncoder(w).Encode(resultSet)
+		}
 	})
 
 	router.With(mws...).Get("/rest/v1/search/resources", func(w http.ResponseWriter, r *http.Request) {
@@ -173,6 +174,36 @@ func CreateRouter(svc SearchService, mws []func(http.Handler) http.Handler) *chi
 	})
 
 	return router
+}
+
+// resolveResources decides which resources a search should run against:
+//   - a single "resource" param wins,
+//   - otherwise a comma-separated "resources" param selects a subset,
+//   - otherwise a single empty resource lets the service search everything.
+func resolveResources(resource, resourcesParam string, filters map[string][]string) []string {
+	if resource != "" {
+		return []string{resource}
+	}
+
+	if resources := parseResources(resourcesParam); len(resources) > 0 {
+		return resources
+	}
+
+	if len(filters) != 0 {
+		return nil
+	}
+
+	return []string{""}
+}
+
+func parseResources(raw string) []string {
+	var resources []string
+	for _, res := range strings.Split(raw, ",") {
+		if res = strings.TrimSpace(res); res != "" {
+			resources = append(resources, res)
+		}
+	}
+	return resources
 }
 
 func parseOptionalLimit(raw string) (int, error) {

@@ -615,6 +615,61 @@ func TestHandler(t *testing.T) {
 				)
 			},
 		},
+		{
+			name: "should encode a colon in the bound resource name",
+			req: authorization.Request{
+				SubjectAccessReview: authorizationv1.SubjectAccessReview{
+					Spec: authorizationv1.SubjectAccessReviewSpec{
+						User: "system:anonymous",
+						Groups: []string{
+							"system:authenticated",
+							"system:cluster:consumer-cluster-id",
+						},
+						Extra: map[string]authorizationv1.ExtraValue{
+							"authorization.kubernetes.io/cluster-name": {"provider-cluster-id"},
+						},
+						ResourceAttributes: &authorizationv1.ResourceAttributes{
+							Group:    "apis.kcp.io",
+							Version:  "v1alpha1",
+							Resource: "apiexports",
+							Verb:     "bind",
+							Name:     "system:export:foo",
+						},
+					},
+				},
+			},
+			res: authorization.Allowed(),
+			clusterCacheMocks: func(cc *mocks.ClusterCacheProvider) {
+				consumerRM := meta.NewDefaultRESTMapper([]schema.GroupVersion{})
+				consumerGV := schema.GroupVersion{
+					Group:   "apis.kcp.io",
+					Version: "v1alpha1",
+				}
+				consumerRM.AddSpecific(
+					consumerGV.WithKind("APIExport"),
+					consumerGV.WithResource("apiexports"),
+					consumerGV.WithResource("apiexport"),
+					meta.RESTScopeRoot,
+				)
+
+				cc.EXPECT().Get(multicluster.ClusterName("consumer-cluster-id")).Return(clustercache.ClusterInfo{
+					StoreID:         "consumer-store-id",
+					RESTMapper:      consumerRM,
+					AccountName:     "consumer-account",
+					ParentClusterID: "consumer-parent",
+				}, true)
+			},
+			fgaMocks: func(openfga *mocks.OpenFGAServiceClient) {
+				openfga.EXPECT().Check(mock.Anything, mock.Anything).RunAndReturn(
+					func(ctx context.Context, in *openfgav1.CheckRequest, opts ...grpc.CallOption) (*openfgav1.CheckResponse, error) {
+						assert.Equal(t, "apis_kcp_io_apiexport:provider-cluster-id/system%3Aexport%3Afoo", in.TupleKey.User)
+						return &openfgav1.CheckResponse{
+							Allowed: true,
+						}, nil
+					},
+				)
+			},
+		},
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {

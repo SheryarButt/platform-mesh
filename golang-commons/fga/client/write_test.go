@@ -63,7 +63,7 @@ func TestOpenFGAClient_Write(t *testing.T) {
 			name: "WriteStoreId_Error",
 			setupMock: func(ctx context.Context, client *OpenFGAClient, openFGAServiceClientMock *mocks.OpenFGAServiceClient) {
 				openFGAServiceClientMock.EXPECT().
-					ListStores(ctx, &openfgav1.ListStoresRequest{}).
+					ListStores(ctx, listStoresReq("tenant-"+tenantId, "")).
 					Return(nil, assert.AnError).
 					Once()
 			},

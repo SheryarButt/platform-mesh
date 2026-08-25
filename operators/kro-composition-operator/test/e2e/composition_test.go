@@ -33,9 +33,9 @@ import (
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// dcConfig is deliberately tuned for tests rather than mirroring main.go: a short
-// MaxRetryDelay and shutdown timeout keep a converging test fast, and the higher rate
-// limit lets a single workspace churn without throttling.
+// dcConfig is tuned for tests, not a mirror of main.go: a short MaxRetryDelay and shutdown
+// timeout keep a converging test fast, and the higher rate limit lets a single workspace churn
+// without throttling.
 func dcConfig() dynamiccontroller.Config {
 	return dynamiccontroller.Config{
 		Workers: 2, ResyncPeriod: 10 * time.Hour, QueueMaxRetries: 20,
@@ -91,14 +91,23 @@ func TestCompositionLifecycle(t *testing.T) {
 		return msg == "hello from e2e"
 	}, 60*time.Second, 2*time.Second, "child ConfigMap never materialized")
 
-	t.Log("instance status is written back")
+	t.Log("instance status is written back: kro's ACTIVE state plus a Ready condition")
 	require.Eventually(t, func() bool {
 		g := greeting("g1", "")
 		if err := c.Client.Get(ctx, types.NamespacedName{Namespace: "default", Name: "g1"}, g); err != nil {
 			return false
 		}
 		state, _, _ := unstructured.NestedString(g.Object, "status", "state")
-		return state == "Active"
+		if state != "ACTIVE" {
+			return false
+		}
+		conds, _, _ := unstructured.NestedSlice(g.Object, "status", "conditions")
+		for _, raw := range conds {
+			if c, ok := raw.(map[string]any); ok && c["type"] == "Ready" {
+				return c["status"] == "True"
+			}
+		}
+		return false
 	}, 60*time.Second, 2*time.Second, "instance status never written")
 
 	t.Log("delete the RGD; ordered teardown removes the APIBinding first, then the export/schema and ContentConfiguration")
