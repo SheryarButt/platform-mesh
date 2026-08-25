@@ -85,6 +85,7 @@ var serverCmd = &cobra.Command{
 		log.Info().
 			Str("openSearchURL", serviceCfg.OpenSearch.URL).
 			Str("openFGAGRPCAddr", serviceCfg.OpenFGA.GRPCAddr).
+			Str("userClaim", serviceCfg.UserClaim).
 			Str("searchIndexWorkspacePath", serviceCfg.SearchIndex.WorkspacePath).
 			Str("searchIndexOrgWorkspacePath", serviceCfg.SearchIndex.OrgWorkspacePath).
 			Str("searchIndexGVR", fmt.Sprintf("%s/%s/%s", serviceCfg.SearchIndex.Group, serviceCfg.SearchIndex.Version, serviceCfg.SearchIndex.Resource)).
@@ -105,7 +106,7 @@ var serverCmd = &cobra.Command{
 		)
 
 		mws := cmw.CreateMiddleware(log, true)
-		orgCtxMW := lmw.NewOrgContextMiddleware(orgValidator, defaultCfg.IsLocal, serviceCfg.LocalDevelopmentOrg)
+		orgCtxMW := lmw.NewOrgContextMiddleware(orgValidator, defaultCfg.IsLocal, serviceCfg.LocalDevelopmentOrg, serviceCfg.UserClaim)
 		mws = append(mws, orgCtxMW.SetRequestContext())
 
 		r := router.CreateRouter(svc, mws)
