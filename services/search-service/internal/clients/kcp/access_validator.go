@@ -31,7 +31,7 @@ import (
 
 const (
 	// maxSnippetBytes defines how much of an unexpected response body to read for logging.
-	maxSnippetBytes = 1 << 10
+	maxSnippetBytes = 1024
 )
 
 type OrgAccessValidator struct {
