@@ -119,11 +119,11 @@ Use `--is-local=true` for local development to match the local behavior of `kube
 
 When enabled:
 
-- org context is still derived from host (`localhost` is mapped to `--local-development-org`)
-- JWT claims are still parsed for user/tenant context
-- kcp org token validation (`ValidateTokenForOrg`) is bypassed
+- org context is set to `--local-development-org`
+- JWT claims are parsed for user/tenant context
+- kcp JWT validation is bypassed
 
-This is intended for local/dev usage only. Keep `--is-local=false` for production-like environments.
+This is intended for local/dev usage only. Tokens are not signature- or claims-validated in this mode. Keep `--is-local=false` for production-like environments.
 
 ### Configuration flags
 
@@ -149,8 +149,8 @@ Main runtime flags (with defaults):
 - `--search-max-limit` (default: `100`)
 - `--search-fetch-batch-size` (default: `100`)
 - `--search-max-scanned-hits` (default: `1000`)
-- `--is-local` (default: `false`) enables local development behavior in auth middleware
-- `--local-development-org` (default: env `SEARCH_LOCAL_ORG`, fallback `local`) org used when host is `localhost`
+- `--is-local` (default: `false`) uses the configured local organization and bypasses kcp JWT validation
+- `--local-development-org` (default: env `SEARCH_LOCAL_ORG`, fallback `local`) org used when `--is-local=true`
 
 Global flags from `golang-commons` are also available (e.g. logging and kubeconfig related flags).
 
@@ -162,9 +162,11 @@ go test ./...
 
 ## Security Notes
 
-- JWT signature validation is expected to happen upstream (gateway/mesh).
+- With `--is-local=false`, every search API request requires a valid bearer JWT. Missing, malformed, expired, or otherwise invalid tokens return `401 Unauthorized`.
+- JWT signature and standard claims validation is delegated to the target organization's kcp authentication configuration. A kcp `403 Forbidden` response still proves that authentication succeeded; result authorization remains enforced by OpenFGA.
 - The service uses the exact JWT claim configured by `--user-claim` as the OpenFGA user and rejects requests when that claim is missing, blank, or not a string.
 - `--user-claim` must match the Security Operator setting so Search and Kubernetes authorization identify the caller consistently.
+- With `--is-local=true`, the service only parses JWT claims and intentionally skips kcp validation. Never enable this mode in production.
 - Search hits missing required authorization hierarchy fields are dropped (fail-closed).
 
 ## Releasing

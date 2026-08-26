@@ -29,6 +29,11 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+const (
+	// maxSnippetBytes defines how much of an unexpected response body to read for logging.
+	maxSnippetBytes = 1024
+)
+
 type OrgAccessValidator struct {
 	http    *http.Client
 	baseURL *url.URL
@@ -56,6 +61,12 @@ func NewOrgAccessValidator(restCfg *rest.Config, log *logger.Logger) (*OrgAccess
 	return &OrgAccessValidator{http: httpClient, baseURL: baseURL, log: log}, nil
 }
 
+// ValidateTokenForOrg returns true when kcp authenticated the JWT for the organization.
+// A forbidden response is valid here because it proves authentication succeeded; OpenFGA
+// remains responsible for authorizing individual search results.
+//
+// Only a kcp 401 means the JWT is invalid. Any other unexpected status is reported
+// as an error.
 func (v *OrgAccessValidator) ValidateTokenForOrg(ctx context.Context, authHeader, org string) (bool, error) {
 	clusterPath := fmt.Sprintf("root:orgs:%s", org)
 	requestURL := fmt.Sprintf("%s://%s/clusters/%s/version", v.baseURL.Scheme, v.baseURL.Host, clusterPath)
@@ -75,7 +86,10 @@ func (v *OrgAccessValidator) ValidateTokenForOrg(ctx context.Context, authHeader
 			Msg("kcp org token validation request failed")
 		return false, fmt.Errorf("execute kcp auth request: %w", err)
 	}
-	defer resp.Body.Close() //nolint:errcheck
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
 
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusCreated, http.StatusForbidden:
@@ -85,10 +99,10 @@ func (v *OrgAccessValidator) ValidateTokenForOrg(ctx context.Context, authHeader
 			Str("organization", org).
 			Str("clusterPath", clusterPath).
 			Int("statusCode", resp.StatusCode).
-			Msg("kcp org token validation denied request")
+			Msg("kcp rejected the JWT")
 		return false, nil
 	default:
-		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, maxSnippetBytes))
 		bodySnippet := strings.TrimSpace(string(bodyBytes))
 		logEvt := v.log.Warn().
 			Str("organization", org).
@@ -99,9 +113,6 @@ func (v *OrgAccessValidator) ValidateTokenForOrg(ctx context.Context, authHeader
 		}
 		logEvt.Msg("kcp org token validation returned unexpected status")
 
-		if strings.HasPrefix(fmt.Sprintf("%d", resp.StatusCode), "5") {
-			return false, fmt.Errorf("kcp auth check failed with status %d", resp.StatusCode)
-		}
-		return false, nil
+		return false, fmt.Errorf("kcp auth check returned unexpected status %d", resp.StatusCode)
 	}
 }

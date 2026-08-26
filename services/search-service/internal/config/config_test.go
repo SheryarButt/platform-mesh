@@ -35,8 +35,13 @@ func TestUserClaimConfiguration(t *testing.T) {
 	}
 	if cfg.UserClaim != "preferred_username" {
 		t.Fatalf("expected configured user claim preferred_username, got %q", cfg.UserClaim)
-  }
-  if cfg.BatchSize != 50 {
+	}
+}
+
+func TestNewServiceConfigOpenFGADefaults(t *testing.T) {
+	cfg := NewServiceConfig()
+
+	if cfg.BatchSize != 50 {
 		t.Errorf("BatchSize = %d, want 50", cfg.BatchSize)
 	}
 	if cfg.OpenFGA.ObjectType != "core_platform-mesh_io_account" {

@@ -29,7 +29,7 @@ import (
 	"go.platform-mesh.io/search-service/internal/service/search"
 )
 
-var issuerRegex = regexp.MustCompile(`^.*\/realms\/(.*?)\/?$`)
+var issuerRegex = regexp.MustCompile(`^.*/realms/(.*?)/?$`)
 
 const defaultLocalDevelopmentOrg = "local"
 
@@ -64,8 +64,8 @@ func (o *OrgContextMiddleware) SetRequestContext() func(http.Handler) http.Handl
 				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 				return
 			}
-			localHost := isLocalHost(r.Host)
-			if o.localDevelopment || localHost {
+
+			if o.localDevelopment {
 				org = o.localOrg
 			}
 
@@ -75,7 +75,7 @@ func (o *OrgContextMiddleware) SetRequestContext() func(http.Handler) http.Handl
 				return
 			}
 
-			if !o.localDevelopment && !localHost {
+			if !o.localDevelopment {
 				authHeader, err := pmcontext.GetAuthHeaderFromContext(ctx)
 				if err != nil {
 					http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
@@ -87,17 +87,17 @@ func (o *OrgContextMiddleware) SetRequestContext() func(http.Handler) http.Handl
 					return
 				}
 
-				allowed, err := o.validator.ValidateTokenForOrg(ctx, authHeader, org)
+				valid, err := o.validator.ValidateTokenForOrg(ctx, authHeader, org)
 				if err != nil {
 					log.Error().
 						Err(err).
 						Str("organization", org).
-						Msg("failed to validate token for org access")
+						Msg("failed to validate JWT")
 					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 					return
 				}
-				if !allowed {
-					http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+				if !valid {
+					http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 					return
 				}
 			}
@@ -138,19 +138,6 @@ func extractSubdomain(host string) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[0])
-}
-
-func isLocalHost(host string) bool {
-	if host == "" {
-		return false
-	}
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
-	} else {
-		host = strings.Split(host, ":")[0]
-	}
-	host = strings.TrimSpace(strings.ToLower(host))
-	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
 func normalizeBearerAuthHeader(header string) (string, error) {
