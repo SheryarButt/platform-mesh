@@ -36,6 +36,9 @@ import (
 	"go.platform-mesh.io/golang-commons/logger"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 type ContentConfigurationSubroutineTestSuite struct {
@@ -56,7 +59,7 @@ func (suite *ContentConfigurationSubroutineTestSuite) SetupTest() {
 	suite.clientMock = new(mocks.Client)
 
 	// create new test object
-	suite.testObj = NewContentConfigurationSubroutine(validation.NewContentConfiguration(), http.DefaultClient)
+	suite.testObj, _ = NewContentConfigurationSubroutine(validation.NewContentConfiguration(), http.DefaultClient, nil, nil)
 }
 
 func (suite *ContentConfigurationSubroutineTestSuite) TestCreateAndUpdate_OK() {
@@ -318,9 +321,11 @@ func TestService_Do(t *testing.T) {
 					httpmock.NewStringResponder(tt.mockStatusCode, tt.mockResponse))
 			}
 
-			r := NewContentConfigurationSubroutine(validation.NewContentConfiguration(), http.DefaultClient)
+			r, err := NewContentConfigurationSubroutine(validation.NewContentConfiguration(), http.DefaultClient, nil, nil)
+			require.NoError(t, err)
 
-			body, err := r.getRemoteConfig(tt.url, log)
+			var body []byte
+			body, err = r.getRemoteConfig(tt.url, log)
 			if tt.expectError {
 				assert.Error(t, err)
 			} else {
@@ -400,4 +405,555 @@ func getCondition(conditions []metav1.Condition, conditionType string) metav1.Co
 		}
 	}
 	return metav1.Condition{}
+}
+
+// validJSONWithEntityType returns a valid CC JSON that references the given entityType
+// in both nodeDefaults and a single node.
+func validJSONWithEntityType(entityType string) string {
+	return `{
+		"name": "test-cc",
+		"luigiConfigFragment": {
+			"data": {
+				"nodeDefaults": {
+					"entityType": "` + entityType + `"
+				},
+				"nodes": [
+					{
+						"entityType": "` + entityType + `",
+						"pathSegment": "home",
+						"label": "Home"
+					}
+				]
+			}
+		}
+	}`
+}
+
+// validJSONDefiningEntityType returns a valid CC JSON that defines a new entity type
+// via defineEntity under a "global" parent.
+func validJSONDefiningEntityType(defineEntityId string) string {
+	return `{
+		"name": "definer-cc",
+		"luigiConfigFragment": {
+			"data": {
+				"nodes": [
+					{
+						"entityType": "global",
+						"pathSegment": "root",
+						"label": "Root",
+						"defineEntity": {
+							"id": "` + defineEntityId + `",
+							"contextKey": "` + defineEntityId + `Id"
+						},
+						"children": []
+					}
+				]
+			}
+		}
+	}`
+}
+
+func newFakeReader(objects ...ctrlruntimeclient.Object) ctrlruntimeclient.Reader {
+	scheme := runtime.NewScheme()
+	err := pmuiv1alpha1.AddToScheme(scheme)
+	if err != nil {
+		panic(err)
+	}
+	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
+}
+
+func TestProcess_EntityTypeValidation(t *testing.T) {
+	tests := []struct {
+		name                   string
+		existingCCs            []ctrlruntimeclient.Object
+		inlineContent          string
+		registry               *validation.EntityTypeRegistry
+		k8sReader              ctrlruntimeclient.Reader
+		expectOperatorError    bool
+		expectValidCondition   string
+		expectValidReason      string
+		expectConfigResult     bool
+		expectRegistryContains []string
+	}{
+		{
+			name: "registry init succeeds and populates from existing CCs",
+			existingCCs: []ctrlruntimeclient.Object{
+				&pmuiv1alpha1.ContentConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: "existing-cc"},
+					Status: pmuiv1alpha1.ContentConfigurationStatus{
+						ConfigurationResult: validJSONDefiningEntityType("project"),
+					},
+				},
+			},
+			inlineContent:          validJSONWithEntityType("project"),
+			registry:               validation.NewEntityTypeRegistry(),
+			expectValidCondition:   ConditionStatusTrue,
+			expectValidReason:      ValidationConditionReasonSuccess,
+			expectConfigResult:     true,
+			expectRegistryContains: []string{"global", "project"},
+		},
+		{
+			name:                   "registry init with empty CC list succeeds",
+			existingCCs:            []ctrlruntimeclient.Object{},
+			inlineContent:          validJSONWithEntityType("global"),
+			registry:               validation.NewEntityTypeRegistry(),
+			expectValidCondition:   ConditionStatusTrue,
+			expectValidReason:      ValidationConditionReasonSuccess,
+			expectConfigResult:     true,
+			expectRegistryContains: []string{"global"},
+		},
+		{
+			name:                 "entity type validation failure sets Valid=False condition",
+			existingCCs:          []ctrlruntimeclient.Object{},
+			inlineContent:        validJSONWithEntityType("nonexistent-type"),
+			registry:             validation.NewEntityTypeRegistry(),
+			expectValidCondition: ConditionStatusFalse,
+			expectValidReason:    ValidationConditionReasonFailed,
+			expectConfigResult:   false,
+		},
+		{
+			name: "entity type validation success updates registry",
+			existingCCs: []ctrlruntimeclient.Object{
+				&pmuiv1alpha1.ContentConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: "definer"},
+					Status: pmuiv1alpha1.ContentConfigurationStatus{
+						ConfigurationResult: validJSONDefiningEntityType("mytype"),
+					},
+				},
+			},
+			inlineContent:          validJSONWithEntityType("mytype"),
+			registry:               validation.NewEntityTypeRegistry(),
+			expectValidCondition:   ConditionStatusTrue,
+			expectValidReason:      ValidationConditionReasonSuccess,
+			expectConfigResult:     true,
+			expectRegistryContains: []string{"global", "mytype"},
+		},
+		{
+			name: "initEntityTypeRegistry skips CC with empty ConfigurationResult",
+			existingCCs: []ctrlruntimeclient.Object{
+				&pmuiv1alpha1.ContentConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: "empty-result"},
+					Status:     pmuiv1alpha1.ContentConfigurationStatus{ConfigurationResult: ""},
+				},
+			},
+			inlineContent:          validJSONWithEntityType("global"),
+			registry:               validation.NewEntityTypeRegistry(),
+			expectValidCondition:   ConditionStatusTrue,
+			expectValidReason:      ValidationConditionReasonSuccess,
+			expectConfigResult:     true,
+			expectRegistryContains: []string{"global"},
+		},
+		{
+			name: "initEntityTypeRegistry skips CC with unparseable ConfigurationResult",
+			existingCCs: []ctrlruntimeclient.Object{
+				&pmuiv1alpha1.ContentConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: "bad-json"},
+					Status: pmuiv1alpha1.ContentConfigurationStatus{
+						ConfigurationResult: "{{not valid json at all",
+					},
+				},
+			},
+			inlineContent:          validJSONWithEntityType("global"),
+			registry:               validation.NewEntityTypeRegistry(),
+			expectValidCondition:   ConditionStatusTrue,
+			expectValidReason:      ValidationConditionReasonSuccess,
+			expectConfigResult:     true,
+			expectRegistryContains: []string{"global"},
+		},
+		{
+			name: "initEntityTypeRegistry skips unparseable but loads valid CCs",
+			existingCCs: []ctrlruntimeclient.Object{
+				&pmuiv1alpha1.ContentConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: "bad"},
+					Status: pmuiv1alpha1.ContentConfigurationStatus{
+						ConfigurationResult: "not json",
+					},
+				},
+				&pmuiv1alpha1.ContentConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: "good"},
+					Status: pmuiv1alpha1.ContentConfigurationStatus{
+						ConfigurationResult: validJSONDefiningEntityType("team"),
+					},
+				},
+			},
+			inlineContent:          validJSONWithEntityType("team"),
+			registry:               validation.NewEntityTypeRegistry(),
+			expectValidCondition:   ConditionStatusTrue,
+			expectValidReason:      ValidationConditionReasonSuccess,
+			expectConfigResult:     true,
+			expectRegistryContains: []string{"global", "team"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var reader ctrlruntimeclient.Reader
+			if tt.k8sReader != nil {
+				reader = tt.k8sReader
+			} else if tt.existingCCs != nil {
+				reader = newFakeReader(tt.existingCCs...)
+			}
+
+			sub, err := NewContentConfigurationSubroutine(
+				validation.NewContentConfiguration(),
+				http.DefaultClient,
+				reader,
+				tt.registry,
+			)
+			require.NoError(t, err)
+
+			cc := &pmuiv1alpha1.ContentConfiguration{
+				Spec: pmuiv1alpha1.ContentConfigurationSpec{
+					InlineConfiguration: &pmuiv1alpha1.InlineConfiguration{
+						Content:     tt.inlineContent,
+						ContentType: "json",
+					},
+				},
+			}
+
+			_, err = sub.Process(context.Background(), cc)
+
+			if tt.expectOperatorError {
+				require.NotNil(t, err, "expected an OperatorError but got nil")
+				return
+			}
+
+			require.Nil(t, err, "unexpected OperatorError: %v", err)
+
+			cond := getCondition(cc.Status.Conditions, ValidationConditionType)
+			assert.Equal(t, tt.expectValidCondition, string(cond.Status), "unexpected Valid condition status")
+			assert.Equal(t, tt.expectValidReason, cond.Reason, "unexpected Valid condition reason")
+
+			if tt.expectConfigResult {
+				assert.NotEmpty(t, cc.Status.ConfigurationResult, "expected ConfigurationResult to be set")
+			} else {
+				assert.Empty(t, cc.Status.ConfigurationResult, "expected ConfigurationResult to be empty")
+			}
+
+			if tt.registry != nil && len(tt.expectRegistryContains) > 0 {
+				known := tt.registry.KnownTypes()
+				for _, et := range tt.expectRegistryContains {
+					assert.True(t, known[et], "expected registry to contain entity type %q", et)
+				}
+			}
+		})
+	}
+}
+
+func TestProcess_RegistryInitOnlyRunsOnce(t *testing.T) {
+	reader := newFakeReader(
+		&pmuiv1alpha1.ContentConfiguration{
+			ObjectMeta: metav1.ObjectMeta{Name: "seed"},
+			Status: pmuiv1alpha1.ContentConfigurationStatus{
+				ConfigurationResult: validJSONDefiningEntityType("project"),
+			},
+		},
+	)
+
+	registry := validation.NewEntityTypeRegistry()
+	sub, err := NewContentConfigurationSubroutine(
+		validation.NewContentConfiguration(),
+		http.DefaultClient,
+		reader,
+		registry,
+	)
+	require.NoError(t, err)
+
+	cc1 := &pmuiv1alpha1.ContentConfiguration{
+		Spec: pmuiv1alpha1.ContentConfigurationSpec{
+			InlineConfiguration: &pmuiv1alpha1.InlineConfiguration{
+				Content:     validJSONWithEntityType("global"),
+				ContentType: "json",
+			},
+		},
+	}
+
+	_, err = sub.Process(context.Background(), cc1)
+	require.Nil(t, err)
+	assert.True(t, registry.KnownTypes()["project"], "registry should contain 'project' after init")
+
+	cc2 := &pmuiv1alpha1.ContentConfiguration{
+		Spec: pmuiv1alpha1.ContentConfigurationSpec{
+			InlineConfiguration: &pmuiv1alpha1.InlineConfiguration{
+				Content:     validJSONWithEntityType("global"),
+				ContentType: "json",
+			},
+		},
+	}
+	_, err = sub.Process(context.Background(), cc2)
+	require.Nil(t, err)
+
+	assert.True(t, registry.KnownTypes()["project"])
+}
+
+func TestNew_RegistryWithoutReaderReturnsError(t *testing.T) {
+	registry := validation.NewEntityTypeRegistry()
+	_, err := NewContentConfigurationSubroutine(
+		validation.NewContentConfiguration(),
+		http.DefaultClient,
+		nil,
+		registry,
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "k8s reader")
+}
+
+func TestProcess_NilRegistrySkipsEntityTypeValidation(t *testing.T) {
+	sub, err := NewContentConfigurationSubroutine(
+		validation.NewContentConfiguration(),
+		http.DefaultClient,
+		nil,
+		nil,
+	)
+	require.NoError(t, err)
+
+	cc := &pmuiv1alpha1.ContentConfiguration{
+		Spec: pmuiv1alpha1.ContentConfigurationSpec{
+			InlineConfiguration: &pmuiv1alpha1.InlineConfiguration{
+				Content:     validJSONWithEntityType("nonexistent"),
+				ContentType: "json",
+			},
+		},
+	}
+
+	_, err = sub.Process(context.Background(), cc)
+	require.Nil(t, err)
+
+	cond := getCondition(cc.Status.Conditions, ValidationConditionType)
+	assert.Equal(t, string(ConditionStatusTrue), string(cond.Status))
+	assert.NotEmpty(t, cc.Status.ConfigurationResult)
+}
+
+func TestProcess_EntityTypeValidationFailure_PreservesExistingConfigResult(t *testing.T) {
+	reader := newFakeReader()
+	registry := validation.NewEntityTypeRegistry()
+
+	sub, err := NewContentConfigurationSubroutine(
+		validation.NewContentConfiguration(),
+		http.DefaultClient,
+		reader,
+		registry,
+	)
+	require.NoError(t, err)
+
+	existingResult := validJSONWithEntityType("global")
+	cc := &pmuiv1alpha1.ContentConfiguration{
+		Spec: pmuiv1alpha1.ContentConfigurationSpec{
+			InlineConfiguration: &pmuiv1alpha1.InlineConfiguration{
+				Content:     validJSONWithEntityType("unknown-type"),
+				ContentType: "json",
+			},
+		},
+		Status: pmuiv1alpha1.ContentConfigurationStatus{
+			ConfigurationResult: existingResult,
+		},
+	}
+
+	_, err = sub.Process(context.Background(), cc)
+	require.Nil(t, err)
+
+	assert.Equal(t, existingResult, cc.Status.ConfigurationResult)
+
+	cond := getCondition(cc.Status.Conditions, ValidationConditionType)
+	assert.Equal(t, string(ConditionStatusFalse), string(cond.Status))
+	assert.Equal(t, ValidationConditionReasonFailed, cond.Reason)
+	assert.Contains(t, cond.Message, "unknown-type")
+}
+
+func TestProcess_ValidCC_UpdatesRegistryWithDefinedEntityTypes(t *testing.T) {
+	reader := newFakeReader()
+	registry := validation.NewEntityTypeRegistry()
+
+	sub, err := NewContentConfigurationSubroutine(
+		validation.NewContentConfiguration(),
+		http.DefaultClient,
+		reader,
+		registry,
+	)
+	require.NoError(t, err)
+
+	cc := &pmuiv1alpha1.ContentConfiguration{
+		ObjectMeta: metav1.ObjectMeta{Name: "definer", UID: "uid-definer"},
+		Spec: pmuiv1alpha1.ContentConfigurationSpec{
+			InlineConfiguration: &pmuiv1alpha1.InlineConfiguration{
+				Content:     validJSONDefiningEntityType("newentity"),
+				ContentType: "json",
+			},
+		},
+	}
+
+	_, err = sub.Process(context.Background(), cc)
+	require.Nil(t, err)
+
+	cond := getCondition(cc.Status.Conditions, ValidationConditionType)
+	assert.Equal(t, string(ConditionStatusTrue), string(cond.Status))
+
+	known := registry.KnownTypes()
+	assert.True(t, known["newentity"], "registry should contain 'newentity' after processing CC that defines it")
+	assert.True(t, known["global"], "registry should always contain 'global'")
+}
+
+func TestProcess_IdempotentRegistryLoad(t *testing.T) {
+	reader := newFakeReader()
+	registry := validation.NewEntityTypeRegistry()
+
+	sub, err := NewContentConfigurationSubroutine(
+		validation.NewContentConfiguration(),
+		http.DefaultClient,
+		reader,
+		registry,
+	)
+	require.NoError(t, err)
+
+	cc := &pmuiv1alpha1.ContentConfiguration{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-cc", UID: "uid-test"},
+		Spec: pmuiv1alpha1.ContentConfigurationSpec{
+			InlineConfiguration: &pmuiv1alpha1.InlineConfiguration{
+				Content:     validJSONDefiningEntityType("project"),
+				ContentType: "json",
+			},
+		},
+	}
+
+	_, err = sub.Process(context.Background(), cc)
+	require.Nil(t, err)
+	_, err = sub.Process(context.Background(), cc)
+	require.Nil(t, err)
+
+	registry.RemoveOwner("uid-test")
+	assert.False(t, registry.KnownTypes()["project"], "project should be gone after single RemoveOwner")
+}
+
+func TestFinalize_RemovesFromRegistry(t *testing.T) {
+	reader := newFakeReader()
+	registry := validation.NewEntityTypeRegistry()
+
+	sub, err := NewContentConfigurationSubroutine(
+		validation.NewContentConfiguration(),
+		http.DefaultClient,
+		reader,
+		registry,
+	)
+	require.NoError(t, err)
+
+	cc := &pmuiv1alpha1.ContentConfiguration{
+		ObjectMeta: metav1.ObjectMeta{Name: "to-delete", UID: "uid-delete"},
+		Spec: pmuiv1alpha1.ContentConfigurationSpec{
+			InlineConfiguration: &pmuiv1alpha1.InlineConfiguration{
+				Content:     validJSONDefiningEntityType("ephemeral"),
+				ContentType: "json",
+			},
+		},
+	}
+
+	_, err = sub.Process(context.Background(), cc)
+	require.Nil(t, err)
+	assert.True(t, registry.KnownTypes()["ephemeral"])
+
+	result, err := sub.Finalize(context.Background(), cc)
+	require.Nil(t, err)
+	assert.True(t, result.IsContinue())
+	assert.False(t, registry.KnownTypes()["ephemeral"], "entity type should be removed after Finalize")
+}
+
+func TestFinalize_NilRegistry_NoOp(t *testing.T) {
+	sub, err := NewContentConfigurationSubroutine(
+		validation.NewContentConfiguration(),
+		http.DefaultClient,
+		nil,
+		nil,
+	)
+	require.NoError(t, err)
+
+	cc := &pmuiv1alpha1.ContentConfiguration{
+		ObjectMeta: metav1.ObjectMeta{Name: "test", UID: "uid-test"},
+	}
+
+	result, err := sub.Finalize(context.Background(), cc)
+	require.Nil(t, err)
+	assert.True(t, result.IsContinue())
+}
+
+func TestFinalizers_ReturnsFinalizerWhenRegistryEnabled(t *testing.T) {
+	registry := validation.NewEntityTypeRegistry()
+	sub, err := NewContentConfigurationSubroutine(
+		validation.NewContentConfiguration(),
+		http.DefaultClient,
+		newFakeReader(),
+		registry,
+	)
+	require.NoError(t, err)
+
+	finalizers := sub.Finalizers(nil)
+	require.Len(t, finalizers, 1)
+	assert.Equal(t, "extension-manager.platform-mesh.io/entity-type-registry", finalizers[0])
+}
+
+func TestFinalizers_ReturnsNilWhenRegistryDisabled(t *testing.T) {
+	sub, err := NewContentConfigurationSubroutine(
+		validation.NewContentConfiguration(),
+		http.DefaultClient,
+		nil,
+		nil,
+	)
+	require.NoError(t, err)
+
+	finalizers := sub.Finalizers(nil)
+	assert.Nil(t, finalizers)
+}
+
+func TestProcess_SelfReferencingCC_DefinesAndUsesOwnEntityType(t *testing.T) {
+	reader := newFakeReader()
+	registry := validation.NewEntityTypeRegistry()
+
+	sub, err := NewContentConfigurationSubroutine(
+		validation.NewContentConfiguration(),
+		http.DefaultClient,
+		reader,
+		registry,
+	)
+	require.NoError(t, err)
+
+	selfReferencingJSON := `{
+		"name": "self-ref-cc",
+		"luigiConfigFragment": {
+			"data": {
+				"nodes": [
+					{
+						"entityType": "global",
+						"pathSegment": "root",
+						"defineEntity": {
+							"id": "project",
+							"contextKey": "projectId"
+						},
+						"children": [
+							{
+								"entityType": "project",
+								"pathSegment": "overview",
+								"label": "Overview"
+							}
+						]
+					}
+				]
+			}
+		}
+	}`
+
+	cc := &pmuiv1alpha1.ContentConfiguration{
+		ObjectMeta: metav1.ObjectMeta{Name: "self-ref", UID: "uid-self-ref"},
+		Spec: pmuiv1alpha1.ContentConfigurationSpec{
+			InlineConfiguration: &pmuiv1alpha1.InlineConfiguration{
+				Content:     selfReferencingJSON,
+				ContentType: "json",
+			},
+		},
+	}
+
+	_, err = sub.Process(context.Background(), cc)
+	require.Nil(t, err)
+
+	cond := getCondition(cc.Status.Conditions, ValidationConditionType)
+	assert.Equal(t, string(ConditionStatusTrue), string(cond.Status),
+		"a CC that defines and references its own entity type should pass validation")
+	assert.NotEmpty(t, cc.Status.ConfigurationResult)
 }

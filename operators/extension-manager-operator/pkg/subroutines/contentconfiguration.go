@@ -22,6 +22,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
+	"sync/atomic"
+
+	"github.com/hashicorp/go-multierror"
 
 	pmuiv1alpha1 "go.platform-mesh.io/apis/ui/v1alpha1"
 	"go.platform-mesh.io/extension-manager-operator/pkg/transformer"
@@ -41,25 +45,37 @@ const (
 	ValidationConditionReasonFailed    = "ValidationFailed"
 	ConditionStatusTrue                = "True"
 	ConditionStatusFalse               = "False"
+	entityTypeFinalizerName            = "extension-manager.platform-mesh.io/entity-type-registry"
 )
 
 var _ subroutines.Processor = (*ContentConfigurationSubroutine)(nil)
+var _ subroutines.Finalizer = (*ContentConfigurationSubroutine)(nil)
 
 type ContentConfigurationSubroutine struct {
-	client      *http.Client
-	validator   validation.ExtensionConfiguration
-	transformer []transformer.ContentConfigurationTransformer
+	httpClient       *http.Client
+	validator        validation.ExtensionConfiguration
+	transformer      []transformer.ContentConfigurationTransformer
+	k8sReader        ctrlruntimeclient.Reader
+	entityRegistry   *validation.EntityTypeRegistry
+	registryInitMu   sync.Mutex
+	registryInitDone atomic.Bool
 }
 
-func NewContentConfigurationSubroutine(validator validation.ExtensionConfiguration, client *http.Client) *ContentConfigurationSubroutine {
+func NewContentConfigurationSubroutine(validator validation.ExtensionConfiguration,
+	httpClient *http.Client, k8sReader ctrlruntimeclient.Reader, registry *validation.EntityTypeRegistry) (*ContentConfigurationSubroutine, error) {
+	if registry != nil && k8sReader == nil {
+		return nil, fmt.Errorf("entity type registry requires a k8s reader")
+	}
 	transformers := []transformer.ContentConfigurationTransformer{
 		&transformer.UrlSuffixTransformer{},
 	}
 	return &ContentConfigurationSubroutine{
-		client:      client,
-		validator:   validator,
-		transformer: transformers,
-	}
+		httpClient:     httpClient,
+		validator:      validator,
+		transformer:    transformers,
+		k8sReader:      k8sReader,
+		entityRegistry: registry,
+	}, nil
 }
 
 func (r *ContentConfigurationSubroutine) GetName() string {
@@ -75,6 +91,19 @@ func (r *ContentConfigurationSubroutine) Process(ctx context.Context, obj ctrlru
 	}
 
 	log.Debug().Str("name", instance.Name).Msg("processing content configuration")
+
+	// Initialize entity type registry on first reconcile
+	if r.entityRegistry != nil && !r.registryInitDone.Load() {
+		r.registryInitMu.Lock()
+		if !r.registryInitDone.Load() {
+			if initErr := r.initEntityTypeRegistry(ctx, log); initErr != nil {
+				r.registryInitMu.Unlock()
+				return subroutines.OK(), initErr
+			}
+			r.registryInitDone.Store(true)
+		}
+		r.registryInitMu.Unlock()
+	}
 
 	// Download or Retrieve ContentConfiguration Json
 	contentType, rawConfig, err := r.retrieveContentConfigurationData(instance, log)
@@ -96,6 +125,33 @@ func (r *ContentConfigurationSubroutine) Process(ctx context.Context, obj ctrlru
 		return subroutines.OK(), nil
 	}
 
+	// Parse the validated JSON into a ContentConfiguration struct
+	contentConfiguration := &validation.ContentConfiguration{}
+	err = json.Unmarshal([]byte(validatedConfig), contentConfiguration)
+	if err != nil {
+		return subroutines.OK(), fmt.Errorf("failed to unmarshal contentConfiguration: %w", err)
+	}
+
+	// Validate entityType references against the parsed struct directly
+	if r.entityRegistry != nil {
+		entityTypeErrs := r.entityRegistry.Validate(*contentConfiguration)
+		if len(entityTypeErrs) > 0 {
+			merr := &multierror.Error{}
+			for _, e := range entityTypeErrs {
+				merr = multierror.Append(merr, e)
+			}
+			log.Err(merr).Msg("failed to validate entity types")
+			condition := metav1.Condition{
+				Type:    ValidationConditionType,
+				Status:  ConditionStatusFalse,
+				Reason:  ValidationConditionReasonFailed,
+				Message: merr.Error(),
+			}
+			meta.SetStatusCondition(&instance.Status.Conditions, condition)
+			return subroutines.OK(), nil
+		}
+	}
+
 	condition := metav1.Condition{
 		Type:    ValidationConditionType,
 		Status:  ConditionStatusTrue,
@@ -104,12 +160,7 @@ func (r *ContentConfigurationSubroutine) Process(ctx context.Context, obj ctrlru
 	}
 	meta.SetStatusCondition(&instance.Status.Conditions, condition)
 
-	// Transform ContentConfiguration Json
-	contentConfiguration := &validation.ContentConfiguration{}
-	err = json.Unmarshal([]byte(validatedConfig), contentConfiguration)
-	if err != nil {
-		return subroutines.OK(), fmt.Errorf("failed to unmarshal contentConfiguration: %w", err)
-	}
+	// Transform ContentConfiguration
 	for _, configurationTransformer := range r.transformer {
 		err := configurationTransformer.Transform(contentConfiguration, instance)
 		if err != nil {
@@ -125,7 +176,65 @@ func (r *ContentConfigurationSubroutine) Process(ctx context.Context, obj ctrlru
 
 	// Store resulting configuration in the status
 	instance.Status.ConfigurationResult = validatedConfig
+
+	// Update entity type registry with this CC's definitions
+	if r.entityRegistry != nil {
+		r.entityRegistry.LoadForOwner(ownerKey(instance), *contentConfiguration)
+	}
+
 	return subroutines.OK(), nil
+}
+
+func (r *ContentConfigurationSubroutine) Finalizers(_ ctrlruntimeclient.Object) []string {
+	if r.entityRegistry == nil {
+		return nil
+	}
+	return []string{entityTypeFinalizerName}
+}
+
+func (r *ContentConfigurationSubroutine) Finalize(_ context.Context, obj ctrlruntimeclient.Object) (subroutines.Result, error) {
+	if r.entityRegistry == nil {
+		return subroutines.OK(), nil
+	}
+	instance, ok := obj.(*pmuiv1alpha1.ContentConfiguration)
+	if !ok {
+		return subroutines.OK(), fmt.Errorf("expected *v1alpha1.ContentConfiguration, got %T", obj)
+	}
+	r.entityRegistry.RemoveOwner(ownerKey(instance))
+	return subroutines.OK(), nil
+}
+
+func ownerKey(cc *pmuiv1alpha1.ContentConfiguration) string {
+	if cc.UID != "" {
+		return string(cc.UID)
+	}
+	return cc.Namespace + "/" + cc.Name
+}
+
+func (r *ContentConfigurationSubroutine) initEntityTypeRegistry(ctx context.Context, log *logger.Logger) error {
+	var ccList pmuiv1alpha1.ContentConfigurationList
+	if err := r.k8sReader.List(ctx, &ccList); err != nil {
+		log.Warn().Err(err).Msg("failed to list ContentConfigurations for entity type registry initialization, registry will be populated incrementally")
+		return nil
+	}
+
+	configs := make(map[string]validation.ContentConfiguration)
+	for i := range ccList.Items {
+		cc := &ccList.Items[i]
+		if cc.Status.ConfigurationResult == "" {
+			continue
+		}
+		var parsed validation.ContentConfiguration
+		if err := json.Unmarshal([]byte(cc.Status.ConfigurationResult), &parsed); err != nil {
+			log.Warn().Err(err).Str("name", cc.Name).Msg("failed to parse ConfigurationResult for entity type registry")
+			continue
+		}
+		configs[ownerKey(cc)] = parsed
+	}
+
+	r.entityRegistry.BulkloadWithOwners(configs)
+	log.Info().Int("entityTypes", len(r.entityRegistry.KnownTypes())).Msg("initialized entity type registry")
+	return nil
 }
 
 func (r *ContentConfigurationSubroutine) retrieveContentConfigurationData(instance *pmuiv1alpha1.ContentConfiguration, log *logger.Logger) (string, []byte, error) {
@@ -162,7 +271,7 @@ func (r *ContentConfigurationSubroutine) getRemoteConfig(url string, log *logger
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
 
-	resp, err := r.client.Do(req)
+	resp, err := r.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %v", err)
 	}

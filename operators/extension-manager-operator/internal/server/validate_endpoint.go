@@ -20,6 +20,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/hashicorp/go-multierror"
+
 	"go.platform-mesh.io/extension-manager-operator/pkg/validation"
 	"go.platform-mesh.io/golang-commons/logger"
 	"go.platform-mesh.io/golang-commons/sentry"
@@ -39,16 +41,18 @@ type validationError struct {
 	Message string `json:"message"`
 }
 
-func NewHttpValidateHandler(log *logger.Logger, validator validation.ExtensionConfiguration) *HttpValidateHandler {
+func NewHttpValidateHandler(log *logger.Logger, validator validation.ExtensionConfiguration, registry *validation.EntityTypeRegistry) *HttpValidateHandler {
 	return &HttpValidateHandler{
-		validator: validator,
-		log:       log,
+		validator:      validator,
+		log:            log,
+		entityRegistry: registry,
 	}
 }
 
 type HttpValidateHandler struct {
-	validator validation.ExtensionConfiguration
-	log       *logger.Logger
+	validator      validation.ExtensionConfiguration
+	log            *logger.Logger
+	entityRegistry *validation.EntityTypeRegistry
 }
 
 func (h *HttpValidateHandler) HandlerHealthz(w http.ResponseWriter, _ *http.Request) {
@@ -95,22 +99,17 @@ func (h *HttpValidateHandler) HandlerValidate(w http.ResponseWriter, r *http.Req
 	// validation
 	parsedConfig, merr := h.validator.Validate([]byte(request.ContentConfiguration), request.ContentType)
 	if merr != nil && merr.Len() > 0 {
-		var responseErr Response
-		for _, e := range merr.Errors {
-			responseErr.ValidationErrors = append(responseErr.ValidationErrors, validationError{
-				Message: e.Error(),
-			})
-		}
-
-		responseBytes, _ := json.Marshal(responseErr)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write(responseBytes)
-		if err != nil {
-			h.log.Error().Err(err).Msg("Writing response failed")
-			sentry.CaptureError(err, sentry.Tags{"error": "Writing response failed"}, sentry.Extras{"data": responseErr})
-		}
+		h.writeValidationErrors(w, merr)
 		return
+	}
+
+	// entity type validation
+	if h.entityRegistry != nil {
+		entityTypeErr := h.validator.ValidateEntityTypes([]byte(parsedConfig), "json", h.entityRegistry)
+		if entityTypeErr != nil && entityTypeErr.Len() > 0 {
+			h.writeValidationErrors(w, entityTypeErr)
+			return
+		}
 	}
 
 	// send response
@@ -122,5 +121,23 @@ func (h *HttpValidateHandler) HandlerValidate(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		h.log.Error().Err(err).Msg("Writing response failed")
 		sentry.CaptureError(err, sentry.Tags{"error": "Writing response failed"}, sentry.Extras{"data": rValid})
+	}
+}
+
+func (h *HttpValidateHandler) writeValidationErrors(w http.ResponseWriter, merr *multierror.Error) {
+	var responseErr Response
+	for _, e := range merr.Errors {
+		responseErr.ValidationErrors = append(responseErr.ValidationErrors, validationError{
+			Message: e.Error(),
+		})
+	}
+
+	responseBytes, _ := json.Marshal(responseErr)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnprocessableEntity)
+	_, err := w.Write(responseBytes)
+	if err != nil {
+		h.log.Error().Err(err).Msg("Writing response failed")
+		sentry.CaptureError(err, sentry.Tags{"error": "Writing response failed"}, sentry.Extras{"data": responseErr})
 	}
 }

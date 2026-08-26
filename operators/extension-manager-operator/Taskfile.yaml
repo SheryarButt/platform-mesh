@@ -131,7 +131,7 @@ tasks:
   test:
     deps: [tools:kcp]
     cmds:
-      - go test ./...
+      - go test -race -count=1 ./...
   test-e2e:
     deps: [tools:kcp, tools:envtest, clean]
     env:
