@@ -1,3 +1,19 @@
+/*
+Copyright The Platform Mesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package validation
 
 import (
@@ -8,7 +24,7 @@ import (
 
 type EntityTypeRegistry struct {
 	mu     sync.RWMutex
-	types  map[string]int            // entity type → reference count
+	types  map[string]int             // entity type → reference count
 	owners map[string]map[string]bool // owner key → set of entity types it contributes
 }
 
@@ -146,15 +162,10 @@ func collectDefinedEntityTypesFromNode(node Node, defaultEntityType string, type
 		entityType = defaultEntityType
 	}
 
-	if node.DefineEntity != nil && node.DefineEntity.Id != "" {
-		fullType := buildEntityTypeName(entityType, node.DefineEntity.Id)
-		types[fullType] = true
-	}
-
-	// Determine the entity type context for children
 	childEntityType := entityType
-	if node.DefineEntity != nil && node.DefineEntity.Id != "" {
-		childEntityType = buildEntityTypeName(entityType, node.DefineEntity.Id)
+	if entity := node.DefineEntity; entity != nil && entity.Id != "" {
+		childEntityType = buildEntityTypeName(entityType, entity.Id)
+		types[childEntityType] = true
 	}
 
 	for _, child := range node.Children {
@@ -197,8 +208,5 @@ func collectReferencedEntityTypesFromNode(node Node, refs *[]string) {
 // normalizeEntityType strips any "::" suffix (e.g. "project.overview::compound"
 // becomes "project.overview").
 func normalizeEntityType(entityType string) string {
-	if base, _, found := strings.Cut(entityType, "::"); found {
-		return base
-	}
-	return entityType
+	return strings.SplitN(entityType, "::", 2)[0]
 }

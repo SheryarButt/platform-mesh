@@ -134,7 +134,7 @@ func (h *HttpValidateHandler) writeValidationErrors(w http.ResponseWriter, merr 
 
 	responseBytes, _ := json.Marshal(responseErr)
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusUnprocessableEntity)
 	_, err := w.Write(responseBytes)
 	if err != nil {
 		h.log.Error().Err(err).Msg("Writing response failed")

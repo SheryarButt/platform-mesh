@@ -62,7 +62,10 @@ type ContentConfigurationSubroutine struct {
 }
 
 func NewContentConfigurationSubroutine(validator validation.ExtensionConfiguration,
-	httpClient *http.Client, k8sReader ctrlruntimeclient.Reader, registry *validation.EntityTypeRegistry) *ContentConfigurationSubroutine {
+	httpClient *http.Client, k8sReader ctrlruntimeclient.Reader, registry *validation.EntityTypeRegistry) (*ContentConfigurationSubroutine, error) {
+	if registry != nil && k8sReader == nil {
+		return nil, fmt.Errorf("entity type registry requires a k8s reader")
+	}
 	transformers := []transformer.ContentConfigurationTransformer{
 		&transformer.UrlSuffixTransformer{},
 	}
@@ -72,7 +75,7 @@ func NewContentConfigurationSubroutine(validator validation.ExtensionConfigurati
 		transformer:    transformers,
 		k8sReader:      k8sReader,
 		entityRegistry: registry,
-	}
+	}, nil
 }
 
 func (r *ContentConfigurationSubroutine) GetName() string {
@@ -209,10 +212,6 @@ func ownerKey(cc *pmuiv1alpha1.ContentConfiguration) string {
 }
 
 func (r *ContentConfigurationSubroutine) initEntityTypeRegistry(ctx context.Context, log *logger.Logger) error {
-	if r.k8sReader == nil {
-		return fmt.Errorf("entity type registry requires a k8s reader but none was provided")
-	}
-
 	var ccList pmuiv1alpha1.ContentConfigurationList
 	if err := r.k8sReader.List(ctx, &ccList); err != nil {
 		log.Warn().Err(err).Msg("failed to list ContentConfigurations for entity type registry initialization, registry will be populated incrementally")

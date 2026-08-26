@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -33,8 +32,6 @@ import (
 	platformmeshcontext "go.platform-mesh.io/golang-commons/context"
 	"go.platform-mesh.io/golang-commons/traces"
 
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -116,9 +113,9 @@ func RunServer(_ *cobra.Command, _ []string) { // coverage-ignore
 func initServerEntityTypeRegistry(ctx context.Context) *validation.EntityTypeRegistry { // coverage-ignore
 	registry := validation.NewEntityTypeRegistry()
 
-	k8sClient := buildServerK8sClient()
-	if k8sClient == nil {
-		return registry
+	k8sClient, err := buildServerK8sClient()
+	if err != nil {
+		log.Fatal().Err(err).Msg("entity type validation is enabled but failed to connect to cluster")
 	}
 
 	loadRegistryFromCluster(ctx, k8sClient, registry)
@@ -127,30 +124,17 @@ func initServerEntityTypeRegistry(ctx context.Context) *validation.EntityTypeReg
 	return registry
 }
 
-func buildServerK8sClient() ctrlruntimeclient.Reader { // coverage-ignore
-	kubeconfigPath := os.Getenv("KUBECONFIG")
-	var restCfg *rest.Config
-	var err error
-	if kubeconfigPath != "" {
-		restCfg, err = clientcmd.BuildConfigFromFlags("", kubeconfigPath)
-		if err != nil {
-			log.Warn().Err(err).Msg("failed to load kubeconfig, entity type validation will only recognize 'global'")
-			return nil
-		}
-	} else {
-		restCfg, err = rest.InClusterConfig()
-		if err != nil {
-			log.Warn().Err(err).Msg("not running in cluster, entity type validation will only recognize 'global'")
-			return nil
-		}
+func buildServerK8sClient() (ctrlruntimeclient.Reader, error) { // coverage-ignore
+	restCfg, err := ctrl.GetConfig()
+	if err != nil {
+		return nil, err
 	}
 
 	k8sClient, err := ctrlruntimeclient.New(restCfg, ctrlruntimeclient.Options{Scheme: scheme})
 	if err != nil {
-		log.Warn().Err(err).Msg("failed to create k8s client, entity type validation will only recognize 'global'")
-		return nil
+		return nil, err
 	}
-	return k8sClient
+	return k8sClient, nil
 }
 
 func loadRegistryFromCluster(ctx context.Context, k8sClient ctrlruntimeclient.Reader, registry *validation.EntityTypeRegistry) { // coverage-ignore

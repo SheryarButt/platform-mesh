@@ -175,7 +175,7 @@ func TestCreateRouter_WithEntityTypeRegistry(t *testing.T) {
 				"contentType": "json",
 				"contentConfiguration": "{\"name\": \"test\", \"luigiConfigFragment\": {\"data\": {\"nodes\": [{\"entityType\": \"nonexistent\", \"pathSegment\": \"home\"}]}}}"
 			}`,
-			expectCode:       http.StatusOK,
+			expectCode:       http.StatusUnprocessableEntity,
 			expectValidation: true,
 		},
 		{

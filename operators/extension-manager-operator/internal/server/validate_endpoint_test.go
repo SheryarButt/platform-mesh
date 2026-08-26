@@ -66,7 +66,7 @@ func TestHandlerValidate_Error(t *testing.T) {
 	}()
 
 	assert.Nil(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	assert.GreaterOrEqual(t, len(r.ValidationErrors), 1)
 }
 
@@ -159,7 +159,7 @@ func TestYAML_FailureWrongType(t *testing.T) {
 	err := decoder.Decode(re)
 	assert.Nil(t, err)
 
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	assert.GreaterOrEqual(t, len(re.ValidationErrors), 1)
 }
 
@@ -190,7 +190,7 @@ func TestValidation_Error(t *testing.T) {
 	}()
 
 	assert.Nil(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	assert.GreaterOrEqual(t, len(r.ValidationErrors), 1)
 }
 
@@ -250,7 +250,7 @@ func TestValidation_ErrorMarshallingValidatedResponse(t *testing.T) {
 	}()
 
 	assert.Nil(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	assert.GreaterOrEqual(t, len(r.ValidationErrors), 1)
 }
 
@@ -324,7 +324,7 @@ func TestHandlerValidate_WriteErrorOnValidationErrorResponse(t *testing.T) {
 
 	w := mocks.NewResponseWriter(t)
 	w.EXPECT().Header().Return(http.Header{})
-	w.EXPECT().WriteHeader(http.StatusOK)
+	w.EXPECT().WriteHeader(http.StatusUnprocessableEntity)
 	w.EXPECT().Write(mock.Anything).Return(0, errors.New("simulated write error"))
 
 	reqBody := OK_VALID_JSON_CONTENT
@@ -333,5 +333,5 @@ func TestHandlerValidate_WriteErrorOnValidationErrorResponse(t *testing.T) {
 	handler.HandlerValidate(w, req)
 
 	w.AssertCalled(t, "Write", mock.Anything)
-	w.AssertCalled(t, "WriteHeader", http.StatusOK)
+	w.AssertCalled(t, "WriteHeader", http.StatusUnprocessableEntity)
 }

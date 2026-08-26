@@ -59,7 +59,7 @@ func (suite *ContentConfigurationSubroutineTestSuite) SetupTest() {
 	suite.clientMock = new(mocks.Client)
 
 	// create new test object
-	suite.testObj = NewContentConfigurationSubroutine(validation.NewContentConfiguration(), http.DefaultClient, nil, nil)
+	suite.testObj, _ = NewContentConfigurationSubroutine(validation.NewContentConfiguration(), http.DefaultClient, nil, nil)
 }
 
 func (suite *ContentConfigurationSubroutineTestSuite) TestCreateAndUpdate_OK() {
@@ -321,9 +321,11 @@ func TestService_Do(t *testing.T) {
 					httpmock.NewStringResponder(tt.mockStatusCode, tt.mockResponse))
 			}
 
-			r := NewContentConfigurationSubroutine(validation.NewContentConfiguration(), http.DefaultClient, nil, nil)
+			r, err := NewContentConfigurationSubroutine(validation.NewContentConfiguration(), http.DefaultClient, nil, nil)
+			require.NoError(t, err)
 
-			body, err := r.getRemoteConfig(tt.url, log)
+			var body []byte
+			body, err = r.getRemoteConfig(tt.url, log)
 			if tt.expectError {
 				assert.Error(t, err)
 			} else {
@@ -501,13 +503,6 @@ func TestProcess_EntityTypeValidation(t *testing.T) {
 			expectRegistryContains: []string{"global"},
 		},
 		{
-			name:                "registry init with nil reader returns error",
-			inlineContent:       validJSONWithEntityType("global"),
-			registry:            validation.NewEntityTypeRegistry(),
-			k8sReader:           nil,
-			expectOperatorError: true,
-		},
-		{
 			name:                 "entity type validation failure sets Valid=False condition",
 			existingCCs:          []ctrlruntimeclient.Object{},
 			inlineContent:        validJSONWithEntityType("nonexistent-type"),
@@ -599,12 +594,13 @@ func TestProcess_EntityTypeValidation(t *testing.T) {
 				reader = newFakeReader(tt.existingCCs...)
 			}
 
-			sub := NewContentConfigurationSubroutine(
+			sub, err := NewContentConfigurationSubroutine(
 				validation.NewContentConfiguration(),
 				http.DefaultClient,
 				reader,
 				tt.registry,
 			)
+			require.NoError(t, err)
 
 			cc := &pmuiv1alpha1.ContentConfiguration{
 				Spec: pmuiv1alpha1.ContentConfigurationSpec{
@@ -615,7 +611,7 @@ func TestProcess_EntityTypeValidation(t *testing.T) {
 				},
 			}
 
-			_, err := sub.Process(context.Background(), cc)
+			_, err = sub.Process(context.Background(), cc)
 
 			if tt.expectOperatorError {
 				require.NotNil(t, err, "expected an OperatorError but got nil")
@@ -655,12 +651,13 @@ func TestProcess_RegistryInitOnlyRunsOnce(t *testing.T) {
 	)
 
 	registry := validation.NewEntityTypeRegistry()
-	sub := NewContentConfigurationSubroutine(
+	sub, err := NewContentConfigurationSubroutine(
 		validation.NewContentConfiguration(),
 		http.DefaultClient,
 		reader,
 		registry,
 	)
+	require.NoError(t, err)
 
 	cc1 := &pmuiv1alpha1.ContentConfiguration{
 		Spec: pmuiv1alpha1.ContentConfigurationSpec{
@@ -671,7 +668,7 @@ func TestProcess_RegistryInitOnlyRunsOnce(t *testing.T) {
 		},
 	}
 
-	_, err := sub.Process(context.Background(), cc1)
+	_, err = sub.Process(context.Background(), cc1)
 	require.Nil(t, err)
 	assert.True(t, registry.KnownTypes()["project"], "registry should contain 'project' after init")
 
@@ -689,13 +686,26 @@ func TestProcess_RegistryInitOnlyRunsOnce(t *testing.T) {
 	assert.True(t, registry.KnownTypes()["project"])
 }
 
+func TestNew_RegistryWithoutReaderReturnsError(t *testing.T) {
+	registry := validation.NewEntityTypeRegistry()
+	_, err := NewContentConfigurationSubroutine(
+		validation.NewContentConfiguration(),
+		http.DefaultClient,
+		nil,
+		registry,
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "k8s reader")
+}
+
 func TestProcess_NilRegistrySkipsEntityTypeValidation(t *testing.T) {
-	sub := NewContentConfigurationSubroutine(
+	sub, err := NewContentConfigurationSubroutine(
 		validation.NewContentConfiguration(),
 		http.DefaultClient,
 		nil,
 		nil,
 	)
+	require.NoError(t, err)
 
 	cc := &pmuiv1alpha1.ContentConfiguration{
 		Spec: pmuiv1alpha1.ContentConfigurationSpec{
@@ -706,7 +716,7 @@ func TestProcess_NilRegistrySkipsEntityTypeValidation(t *testing.T) {
 		},
 	}
 
-	_, err := sub.Process(context.Background(), cc)
+	_, err = sub.Process(context.Background(), cc)
 	require.Nil(t, err)
 
 	cond := getCondition(cc.Status.Conditions, ValidationConditionType)
@@ -718,12 +728,13 @@ func TestProcess_EntityTypeValidationFailure_PreservesExistingConfigResult(t *te
 	reader := newFakeReader()
 	registry := validation.NewEntityTypeRegistry()
 
-	sub := NewContentConfigurationSubroutine(
+	sub, err := NewContentConfigurationSubroutine(
 		validation.NewContentConfiguration(),
 		http.DefaultClient,
 		reader,
 		registry,
 	)
+	require.NoError(t, err)
 
 	existingResult := validJSONWithEntityType("global")
 	cc := &pmuiv1alpha1.ContentConfiguration{
@@ -738,7 +749,7 @@ func TestProcess_EntityTypeValidationFailure_PreservesExistingConfigResult(t *te
 		},
 	}
 
-	_, err := sub.Process(context.Background(), cc)
+	_, err = sub.Process(context.Background(), cc)
 	require.Nil(t, err)
 
 	assert.Equal(t, existingResult, cc.Status.ConfigurationResult)
@@ -753,12 +764,13 @@ func TestProcess_ValidCC_UpdatesRegistryWithDefinedEntityTypes(t *testing.T) {
 	reader := newFakeReader()
 	registry := validation.NewEntityTypeRegistry()
 
-	sub := NewContentConfigurationSubroutine(
+	sub, err := NewContentConfigurationSubroutine(
 		validation.NewContentConfiguration(),
 		http.DefaultClient,
 		reader,
 		registry,
 	)
+	require.NoError(t, err)
 
 	cc := &pmuiv1alpha1.ContentConfiguration{
 		ObjectMeta: metav1.ObjectMeta{Name: "definer", UID: "uid-definer"},
@@ -770,7 +782,7 @@ func TestProcess_ValidCC_UpdatesRegistryWithDefinedEntityTypes(t *testing.T) {
 		},
 	}
 
-	_, err := sub.Process(context.Background(), cc)
+	_, err = sub.Process(context.Background(), cc)
 	require.Nil(t, err)
 
 	cond := getCondition(cc.Status.Conditions, ValidationConditionType)
@@ -785,12 +797,13 @@ func TestProcess_IdempotentRegistryLoad(t *testing.T) {
 	reader := newFakeReader()
 	registry := validation.NewEntityTypeRegistry()
 
-	sub := NewContentConfigurationSubroutine(
+	sub, err := NewContentConfigurationSubroutine(
 		validation.NewContentConfiguration(),
 		http.DefaultClient,
 		reader,
 		registry,
 	)
+	require.NoError(t, err)
 
 	cc := &pmuiv1alpha1.ContentConfiguration{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-cc", UID: "uid-test"},
@@ -802,7 +815,7 @@ func TestProcess_IdempotentRegistryLoad(t *testing.T) {
 		},
 	}
 
-	_, err := sub.Process(context.Background(), cc)
+	_, err = sub.Process(context.Background(), cc)
 	require.Nil(t, err)
 	_, err = sub.Process(context.Background(), cc)
 	require.Nil(t, err)
@@ -815,12 +828,13 @@ func TestFinalize_RemovesFromRegistry(t *testing.T) {
 	reader := newFakeReader()
 	registry := validation.NewEntityTypeRegistry()
 
-	sub := NewContentConfigurationSubroutine(
+	sub, err := NewContentConfigurationSubroutine(
 		validation.NewContentConfiguration(),
 		http.DefaultClient,
 		reader,
 		registry,
 	)
+	require.NoError(t, err)
 
 	cc := &pmuiv1alpha1.ContentConfiguration{
 		ObjectMeta: metav1.ObjectMeta{Name: "to-delete", UID: "uid-delete"},
@@ -832,7 +846,7 @@ func TestFinalize_RemovesFromRegistry(t *testing.T) {
 		},
 	}
 
-	_, err := sub.Process(context.Background(), cc)
+	_, err = sub.Process(context.Background(), cc)
 	require.Nil(t, err)
 	assert.True(t, registry.KnownTypes()["ephemeral"])
 
@@ -843,12 +857,13 @@ func TestFinalize_RemovesFromRegistry(t *testing.T) {
 }
 
 func TestFinalize_NilRegistry_NoOp(t *testing.T) {
-	sub := NewContentConfigurationSubroutine(
+	sub, err := NewContentConfigurationSubroutine(
 		validation.NewContentConfiguration(),
 		http.DefaultClient,
 		nil,
 		nil,
 	)
+	require.NoError(t, err)
 
 	cc := &pmuiv1alpha1.ContentConfiguration{
 		ObjectMeta: metav1.ObjectMeta{Name: "test", UID: "uid-test"},
@@ -861,12 +876,13 @@ func TestFinalize_NilRegistry_NoOp(t *testing.T) {
 
 func TestFinalizers_ReturnsFinalizerWhenRegistryEnabled(t *testing.T) {
 	registry := validation.NewEntityTypeRegistry()
-	sub := NewContentConfigurationSubroutine(
+	sub, err := NewContentConfigurationSubroutine(
 		validation.NewContentConfiguration(),
 		http.DefaultClient,
-		nil,
+		newFakeReader(),
 		registry,
 	)
+	require.NoError(t, err)
 
 	finalizers := sub.Finalizers(nil)
 	require.Len(t, finalizers, 1)
@@ -874,12 +890,13 @@ func TestFinalizers_ReturnsFinalizerWhenRegistryEnabled(t *testing.T) {
 }
 
 func TestFinalizers_ReturnsNilWhenRegistryDisabled(t *testing.T) {
-	sub := NewContentConfigurationSubroutine(
+	sub, err := NewContentConfigurationSubroutine(
 		validation.NewContentConfiguration(),
 		http.DefaultClient,
 		nil,
 		nil,
 	)
+	require.NoError(t, err)
 
 	finalizers := sub.Finalizers(nil)
 	assert.Nil(t, finalizers)
@@ -889,12 +906,13 @@ func TestProcess_SelfReferencingCC_DefinesAndUsesOwnEntityType(t *testing.T) {
 	reader := newFakeReader()
 	registry := validation.NewEntityTypeRegistry()
 
-	sub := NewContentConfigurationSubroutine(
+	sub, err := NewContentConfigurationSubroutine(
 		validation.NewContentConfiguration(),
 		http.DefaultClient,
 		reader,
 		registry,
 	)
+	require.NoError(t, err)
 
 	selfReferencingJSON := `{
 		"name": "self-ref-cc",
@@ -931,7 +949,7 @@ func TestProcess_SelfReferencingCC_DefinesAndUsesOwnEntityType(t *testing.T) {
 		},
 	}
 
-	_, err := sub.Process(context.Background(), cc)
+	_, err = sub.Process(context.Background(), cc)
 	require.Nil(t, err)
 
 	cond := getCondition(cc.Status.Conditions, ValidationConditionType)
