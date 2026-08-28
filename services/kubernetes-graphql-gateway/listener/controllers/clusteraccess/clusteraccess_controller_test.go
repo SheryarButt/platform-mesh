@@ -17,7 +17,6 @@ limitations under the License.
 package clusteraccess_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -30,6 +29,7 @@ import (
 	pmgatewayv1alpha1 "go.platform-mesh.io/apis/gateway/v1alpha1"
 	"go.platform-mesh.io/kubernetes-graphql-gateway/listener"
 	"go.platform-mesh.io/kubernetes-graphql-gateway/listener/controllers/clusteraccess"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/listener/controllers/reconciler"
 	"go.platform-mesh.io/kubernetes-graphql-gateway/listener/options"
 
 	authenticationv1 "k8s.io/api/authentication/v1"
@@ -223,27 +223,8 @@ func (suite *ClusterAccessControllerTestSuite) verifySchemaMetadata(
 	raw []byte,
 	expectedAuthType pmgatewayv1alpha1.AuthenticationType,
 ) {
-	var schemaJSON map[string]any
-	err := json.NewDecoder(bytes.NewReader(raw)).Decode(&schemaJSON)
-	suite.Require().NoError(err, "failed to decode schema file")
-
-	// The x-cluster-metadata is stored as raw JSON bytes in the schema
-	metadataRaw, ok := schemaJSON["x-cluster-metadata"]
-	suite.Require().True(ok, "schema should have x-cluster-metadata")
-
-	var metadata pmgatewayv1alpha1.ClusterMetadata
-	switch v := metadataRaw.(type) {
-	case string:
-		err = json.Unmarshal([]byte(v), &metadata)
-	case []byte:
-		err = json.Unmarshal(v, &metadata)
-	default:
-		// Try to marshal and unmarshal
-		data, marshalErr := json.Marshal(v)
-		suite.Require().NoError(marshalErr, "failed to marshal metadata")
-		err = json.Unmarshal(data, &metadata)
-	}
-	suite.Require().NoError(err, "failed to decode cluster metadata")
+	metadata, err := reconciler.ExtractClusterMetadataFromSchema(raw)
+	suite.Require().NoError(err, "failed to extract metadata")
 
 	suite.NotEmpty(metadata.Host, "metadata should have host")
 	suite.NotNil(metadata.Auth, "metadata should have auth")
@@ -512,25 +493,8 @@ func (suite *ClusterAccessControllerTestSuite) TestServiceAccountAuth() {
 	raw := suite.waitForSchemaFile("single-serviceaccount-test")
 
 	// Verify schema metadata has SA auth type and details
-	var schemaJSON map[string]any
-	err = json.NewDecoder(bytes.NewReader(raw)).Decode(&schemaJSON)
-	suite.Require().NoError(err, "failed to decode schema file")
-
-	metadataRaw, ok := schemaJSON["x-cluster-metadata"]
-	suite.Require().True(ok, "schema should have x-cluster-metadata")
-
-	var metadata pmgatewayv1alpha1.ClusterMetadata
-	switch v := metadataRaw.(type) {
-	case string:
-		err = json.Unmarshal([]byte(v), &metadata)
-	case []byte:
-		err = json.Unmarshal(v, &metadata)
-	default:
-		data, marshalErr := json.Marshal(v)
-		suite.Require().NoError(marshalErr, "failed to marshal metadata")
-		err = json.Unmarshal(data, &metadata)
-	}
-	suite.Require().NoError(err, "failed to decode cluster metadata")
+	metadata, err := reconciler.ExtractClusterMetadataFromSchema(raw)
+	suite.Require().NoError(err, "failed to extract metadata")
 
 	suite.NotNil(metadata.Auth, "metadata should have auth")
 	suite.Equal(pmgatewayv1alpha1.AuthTypeServiceAccount, metadata.Auth.Type, "auth type should be serviceAccount")
