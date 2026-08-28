@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	pmmigrationv1alpha1 "go.platform-mesh.io/apis/migration/v1alpha1"
 	"go.platform-mesh.io/golang-commons/logger"
@@ -94,7 +95,7 @@ func (r *KCPMigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		if err := r.Status().Update(ctx, migration); err != nil {
 			if apierrors.IsConflict(err) {
 				log.Debug().Msg("conflict updating status, requeuing")
-				return ctrl.Result{Requeue: true}, nil
+				return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
 			}
 			log.Error().Err(err).Msg("failed to update status")
 			return ctrl.Result{}, err
@@ -114,7 +115,7 @@ func (r *KCPMigrationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		migration.Status.ObservedGeneration = migration.Generation
 		if err := r.Status().Update(ctx, migration); err != nil {
 			if apierrors.IsConflict(err) {
-				return ctrl.Result{Requeue: true}, nil
+				return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
 			}
 			return ctrl.Result{}, err
 		}
