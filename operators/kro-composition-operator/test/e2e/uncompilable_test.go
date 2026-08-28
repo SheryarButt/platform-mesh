@@ -29,7 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 
-	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
+	kcpapisv1alpha2 "github.com/kcp-dev/sdk/apis/apis/v1alpha2"
 )
 
 // TestUncompilableRGDReportsWhy covers an RGD composing an API the workspace does not serve.
@@ -90,7 +90,7 @@ func TestUncompilableRGDReportsWhy(t *testing.T) {
 
 	// Nothing is published for a graph that never compiled.
 	require.True(t, apierrors.IsNotFound(
-		c.Client.Get(ctx, types.NamespacedName{Name: "kro-" + rgdName}, &kcpapisv1alpha1.APIExport{})),
+		c.Client.Get(ctx, types.NamespacedName{Name: "kro-" + rgdName}, &kcpapisv1alpha2.APIExport{})),
 		"an uncompilable RGD must not publish a type")
 
 	t.Log("composing a served API instead clears it")

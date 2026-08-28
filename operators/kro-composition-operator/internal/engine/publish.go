@@ -76,10 +76,17 @@ func (e *Engine) publishComposite(ctx context.Context, c ctrlruntimeclient.Clien
 		}
 	}
 
-	export := &kcpapisv1alpha1.APIExport{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	export := &kcpapisv1alpha2.APIExport{ObjectMeta: metav1.ObjectMeta{Name: name}}
 	if _, err := controllerutil.CreateOrUpdate(ctx, c, export, func() error {
 		setRGDOwner(export, rgd)
-		export.Spec.LatestResourceSchemas = []string{ars.Name}
+		export.Spec.Resources = []kcpapisv1alpha2.ResourceSchema{{
+			Name:   crd.Spec.Names.Plural,
+			Group:  crd.Spec.Group,
+			Schema: ars.Name,
+			Storage: kcpapisv1alpha2.ResourceSchemaStorage{
+				CRD: &kcpapisv1alpha2.ResourceSchemaStorageCRD{},
+			},
+		}}
 		return nil
 	}); err != nil {
 		return false, fmt.Errorf("apply APIExport %s: %w", name, err)
@@ -153,7 +160,7 @@ func teardownComposite(ctx context.Context, c ctrlruntimeclient.Client, rgd *kro
 	}}
 	kcpDefaultSecret := ctrlruntimeclient.ObjectKeyFromObject(identitySecret)
 
-	export := &kcpapisv1alpha1.APIExport{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	export := &kcpapisv1alpha2.APIExport{ObjectMeta: metav1.ObjectMeta{Name: name}}
 	switch err := c.Get(ctx, types.NamespacedName{Name: name}, export); {
 	case err == nil:
 		if id := export.Spec.Identity; id != nil && id.SecretRef != nil && id.SecretRef.Name != "" {
@@ -349,18 +356,18 @@ func checkSchemaCompatibility(
 	}
 
 	name := compositeExportName(rgd.Name)
-	export := &kcpapisv1alpha1.APIExport{}
+	export := &kcpapisv1alpha2.APIExport{}
 	if err := c.Get(ctx, types.NamespacedName{Name: name}, export); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
 		}
 		return fmt.Errorf("get APIExport %s: %w", name, err)
 	}
-	if len(export.Spec.LatestResourceSchemas) == 0 {
+	if len(export.Spec.Resources) == 0 {
 		return nil
 	}
 
-	servedName := export.Spec.LatestResourceSchemas[0]
+	servedName := export.Spec.Resources[0].Schema
 	served := &kcpapisv1alpha1.APIResourceSchema{}
 	if err := c.Get(ctx, types.NamespacedName{Name: servedName}, served); err != nil {
 		if apierrors.IsNotFound(err) {

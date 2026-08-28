@@ -114,8 +114,8 @@ func TestTeardownCompositeDeletesIdentitySecret(t *testing.T) {
 	t.Run("deletes the secret kcp created, whose ref kcp populates", func(t *testing.T) {
 		t.Parallel()
 
-		export := &kcpapisv1alpha1.APIExport{ObjectMeta: metav1.ObjectMeta{Name: exportName}}
-		export.Spec.Identity = &kcpapisv1alpha1.Identity{
+		export := &kcpapisv1alpha2.APIExport{ObjectMeta: metav1.ObjectMeta{Name: exportName}}
+		export.Spec.Identity = &kcpapisv1alpha2.Identity{
 			SecretRef: &corev1.SecretReference{Namespace: kcpDefault.Namespace, Name: kcpDefault.Name},
 		}
 		secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
@@ -136,14 +136,14 @@ func TestTeardownCompositeDeletesIdentitySecret(t *testing.T) {
 			c.Get(context.Background(), kcpDefault, &corev1.Secret{})),
 			"identity secret %s must be deleted", kcpDefault)
 		require.True(t, apierrors.IsNotFound(
-			c.Get(context.Background(), types.NamespacedName{Name: exportName}, &kcpapisv1alpha1.APIExport{})),
+			c.Get(context.Background(), types.NamespacedName{Name: exportName}, &kcpapisv1alpha2.APIExport{})),
 			"APIExport must be deleted")
 	})
 
 	t.Run("deletes the default secret when no ref is set yet", func(t *testing.T) {
 		t.Parallel()
 
-		export := &kcpapisv1alpha1.APIExport{ObjectMeta: metav1.ObjectMeta{Name: exportName}}
+		export := &kcpapisv1alpha2.APIExport{ObjectMeta: metav1.ObjectMeta{Name: exportName}}
 		secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
 			Name:      kcpDefault.Name,
 			Namespace: kcpDefault.Namespace,
@@ -166,8 +166,8 @@ func TestTeardownCompositeDeletesIdentitySecret(t *testing.T) {
 		t.Parallel()
 
 		shared := types.NamespacedName{Namespace: "custom-ns", Name: "shared-key"}
-		export := &kcpapisv1alpha1.APIExport{ObjectMeta: metav1.ObjectMeta{Name: exportName}}
-		export.Spec.Identity = &kcpapisv1alpha1.Identity{
+		export := &kcpapisv1alpha2.APIExport{ObjectMeta: metav1.ObjectMeta{Name: exportName}}
+		export.Spec.Identity = &kcpapisv1alpha2.Identity{
 			SecretRef: &corev1.SecretReference{Namespace: shared.Namespace, Name: shared.Name},
 		}
 		secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
@@ -472,12 +472,17 @@ func publishedClient(t *testing.T, rgd *krov1alpha1.ResourceGraphDefinition, crd
 
 	// Assert the state the compatibility check reads, so a test that expects no breaking
 	// change cannot pass merely because there was nothing to compare against.
-	export := &kcpapisv1alpha1.APIExport{}
+	export := &kcpapisv1alpha2.APIExport{}
 	require.NoError(t, c.Get(context.Background(),
 		types.NamespacedName{Name: compositeExportName(rgd.Name)}, export))
-	require.Len(t, export.Spec.LatestResourceSchemas, 1)
+	require.Len(t, export.Spec.Resources, 1)
+	// The entry is keyed by name+group, so a wrong one publishes the schema under a type
+	// nobody asked for rather than failing.
+	require.Equal(t, crd.Spec.Names.Plural, export.Spec.Resources[0].Name)
+	require.Equal(t, crd.Spec.Group, export.Spec.Resources[0].Group)
+	require.NotNil(t, export.Spec.Resources[0].Storage.CRD, "the type is served as a CRD")
 	require.NoError(t, c.Get(context.Background(),
-		types.NamespacedName{Name: export.Spec.LatestResourceSchemas[0]}, &kcpapisv1alpha1.APIResourceSchema{}))
+		types.NamespacedName{Name: export.Spec.Resources[0].Schema}, &kcpapisv1alpha1.APIResourceSchema{}))
 	return c
 }
 
@@ -557,10 +562,10 @@ func TestPublishCompositeRefusesBreakingChange(t *testing.T) {
 	served := compositeCRD(stringProps("image", "replicas"))
 	c := publishedClient(t, rgd, served)
 
-	export := &kcpapisv1alpha1.APIExport{}
+	export := &kcpapisv1alpha2.APIExport{}
 	require.NoError(t, c.Get(context.Background(),
 		types.NamespacedName{Name: compositeExportName(rgd.Name)}, export))
-	before := export.Spec.LatestResourceSchemas
+	before := export.Spec.Resources
 
 	_, err := (&Engine{}).publishComposite(context.Background(), c, compositeCRD(stringProps("image")), rgd)
 	require.Error(t, err)
@@ -568,7 +573,7 @@ func TestPublishCompositeRefusesBreakingChange(t *testing.T) {
 
 	require.NoError(t, c.Get(context.Background(),
 		types.NamespacedName{Name: compositeExportName(rgd.Name)}, export))
-	require.Equal(t, before, export.Spec.LatestResourceSchemas,
+	require.Equal(t, before, export.Spec.Resources,
 		"the export must still point at the schema it was serving")
 
 	list := &kcpapisv1alpha1.APIResourceSchemaList{}
@@ -611,7 +616,7 @@ func TestPublishCompositeRefusesForeignType(t *testing.T) {
 		require.Contains(t, err.Error(), "alpha", "the message must name the RGD holding the type")
 
 		require.Equal(t, 1, schemaCount(t, c))
-		export := &kcpapisv1alpha1.APIExport{}
+		export := &kcpapisv1alpha2.APIExport{}
 		require.True(t, apierrors.IsNotFound(
 			c.Get(context.Background(), types.NamespacedName{Name: compositeExportName("beta")}, export)),
 			"the refused RGD must not get an APIExport pointing at someone else's schema")
