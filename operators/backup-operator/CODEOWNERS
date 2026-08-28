@@ -1,5 +1,0 @@
-* @platform-mesh/tsc @platform-mesh/kube-approvers @platform-mesh/go-approvers
-go.mod
-go.sum
-**/go.mod
-**/go.sum

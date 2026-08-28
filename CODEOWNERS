@@ -1,1 +1,5 @@
-* @platform-mesh/tsc @platform-mesh/go-approvers
+* @platform-mesh/go-maintainers
+
+# ownerless so renovate can auto-merge updates
+**/go.mod
+**/go.sum
