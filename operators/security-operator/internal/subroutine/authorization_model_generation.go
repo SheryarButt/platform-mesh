@@ -272,7 +272,6 @@ func (a *AuthorizationModelGenerationSubroutine) Process(ctx context.Context, ob
 	internalAPIBindings := []string{"core.platform-mesh.io", "system.platform-mesh.io", "providers.platform-mesh.io"}
 
 	if slices.Contains(internalAPIBindings, binding.Spec.Reference.Export.Name) || strings.HasSuffix(binding.Spec.Reference.Export.Name, "kcp.io") {
-		// If the APIExport is the core.platform-mesh.io, system.platform-mesh.io, providers.platform-mesh.io we can skip the model generation.
 		return subroutines.OK(), nil
 	}
 
@@ -298,22 +297,28 @@ func (a *AuthorizationModelGenerationSubroutine) Process(ctx context.Context, ob
 		return subroutines.OK(), fmt.Errorf("getting APIExport: %w", err)
 	}
 
-	providerCluster, err := a.mgr.GetCluster(ctx, config.MultiProviderName(config.ProvidersProviderName, binding.Status.APIExportClusterName))
-	if err != nil {
-		return subroutines.OK(), fmt.Errorf("getting provider cluster: %w", err)
-	}
-
-	var providerPermissionsList pmprovidersv1alpha1.ProviderPermissionsList
-	err = providerCluster.GetClient().List(ctx, &providerPermissionsList)
-	if err != nil {
-		return subroutines.OK(), fmt.Errorf("listing ProviderPermissions: %w", err)
-	}
-
+	var providerClient ctrlruntimeclient.Client
 	var providerPermissions *pmprovidersv1alpha1.ProviderPermissions
-	for i := range providerPermissionsList.Items {
-		if providerPermissionsList.Items[i].Spec.APIExport.Ref.Name == apiExport.Name {
-			providerPermissions = &providerPermissionsList.Items[i]
-			break
+
+	// A self-bound export has no provider workspace and uses the template defaults. Every
+	// other export must resolve, or the model would lose the provider's permission overrides.
+	if binding.Status.APIExportClusterName != logicalcluster.From(binding).String() {
+		providerCluster, err := a.mgr.GetCluster(ctx, config.MultiProviderName(config.ProvidersProviderName, binding.Status.APIExportClusterName))
+		if err != nil {
+			return subroutines.OK(), fmt.Errorf("getting provider cluster: %w", err)
+		}
+		providerClient = providerCluster.GetClient()
+
+		var providerPermissionsList pmprovidersv1alpha1.ProviderPermissionsList
+		if err := providerClient.List(ctx, &providerPermissionsList); err != nil {
+			return subroutines.OK(), fmt.Errorf("listing ProviderPermissions: %w", err)
+		}
+
+		for i := range providerPermissionsList.Items {
+			if providerPermissionsList.Items[i].Spec.APIExport.Ref.Name == apiExport.Name {
+				providerPermissions = &providerPermissionsList.Items[i]
+				break
+			}
 		}
 	}
 
@@ -402,7 +407,7 @@ func (a *AuthorizationModelGenerationSubroutine) Process(ctx context.Context, ob
 			Message:            "ProviderPermissions successfully applied to all AuthorizationModels",
 		})
 
-		if err := providerCluster.GetClient().Status().Update(ctx, providerPermissions); err != nil {
+		if err := providerClient.Status().Update(ctx, providerPermissions); err != nil {
 			return subroutines.OK(), fmt.Errorf("updating ProviderPermissions status: %w", err)
 		}
 	}
