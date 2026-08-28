@@ -41,7 +41,8 @@ import (
 
 func newApiBinding(name, path string) *kcpapisv1alpha2.APIBinding {
 	return &kcpapisv1alpha2.APIBinding{
-		Spec: kcpapisv1alpha2.APIBindingSpec{Reference: kcpapisv1alpha2.BindingReference{Export: &kcpapisv1alpha2.ExportBindingReference{Name: name, Path: path}}},
+		Spec:   kcpapisv1alpha2.APIBindingSpec{Reference: kcpapisv1alpha2.BindingReference{Export: &kcpapisv1alpha2.ExportBindingReference{Name: name, Path: path}}},
+		Status: kcpapisv1alpha2.APIBindingStatus{APIExportClusterName: "export-cluster"},
 	}
 }
 
@@ -56,6 +57,21 @@ func bindingWithCluster(name, path, cluster string) *kcpapisv1alpha2.APIBinding 
 
 func bindingWithApiExportCluster(name, path, exportCluster string) *kcpapisv1alpha2.APIBinding {
 	b := newApiBinding(name, path)
+	b.Status.APIExportClusterName = exportCluster
+	return b
+}
+
+// selfBoundBinding is a binding whose APIExport lives in its own workspace, as KROaaS
+// publishes composite types. It has no path and its export cluster is its own cluster.
+func selfBoundBinding(name, cluster string) *kcpapisv1alpha2.APIBinding {
+	b := bindingWithCluster(name, "", cluster)
+	b.Status.APIExportClusterName = cluster
+	return b
+}
+
+// providerBoundBinding is a binding whose APIExport lives in a provider workspace.
+func providerBoundBinding(name, path, cluster, exportCluster string) *kcpapisv1alpha2.APIBinding {
+	b := bindingWithCluster(name, path, cluster)
 	b.Status.APIExportClusterName = exportCluster
 	return b
 }
@@ -358,6 +374,83 @@ func TestAuthorizationModelGeneration_Process(t *testing.T) {
 				kcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
 				kcpClient.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Maybe()
 				kcpClient.EXPECT().Create(mock.Anything, mock.Anything).Return(nil).Maybe()
+			},
+		},
+		{
+			// A self-bound export lives in the consumer's own workspace, which is never in
+			// providers scope. The model must still be generated from the export's schemas,
+			// so no provider cluster is looked up at all: GetCluster is expected twice
+			// (binding workspace + APIExport cluster) rather than three times.
+			name:        "self-bound export generates a model without a provider lookup",
+			binding:     selfBoundBinding("kro-greeting", "consumer-cluster"),
+			expectError: false,
+			mockSetup: func(manager *mocks.MockManager, lister *mocks.MockLister, cluster *mocks.MockCluster, kcpClient *mocks.MockClient) {
+				manager.EXPECT().ClusterFromContext(mock.Anything).Return(cluster, nil)
+				cluster.EXPECT().GetClient().Return(kcpClient)
+				mockAccountInfo(kcpClient, "org", "origin")
+				manager.EXPECT().GetCluster(mock.Anything, mock.Anything).Return(cluster, nil).Times(2)
+				kcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
+					if ae, ok := o.(*kcpapisv1alpha2.APIExport); ok {
+						ae.Spec.Resources = []kcpapisv1alpha2.ResourceSchema{{Schema: "schema1"}}
+						ae.Name = "kro-greeting"
+					}
+					return nil
+				}).Once()
+				kcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
+					if rs, ok := o.(*kcpapisv1alpha1.APIResourceSchema); ok {
+						rs.Spec.Group = "kro.run"
+						rs.Spec.Names.Plural = "greetings"
+						rs.Spec.Names.Singular = "greeting"
+						rs.Spec.Scope = "Namespaced"
+					}
+					return nil
+				}).Once()
+				kcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+				kcpClient.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Maybe()
+				kcpClient.EXPECT().Create(mock.Anything, mock.Anything).Return(nil).Maybe()
+			},
+		},
+		{
+			// A provider-backed export must keep failing closed: if its provider cluster
+			// cannot be resolved the model is left untouched rather than regenerated
+			// without the provider's ProviderPermissions overrides.
+			name:        "provider-backed export aborts when the provider cluster is unresolvable",
+			binding:     providerBoundBinding("some-export", "root:providers:p", "consumer-cluster", "provider-cluster"),
+			expectError: true,
+			mockSetup: func(manager *mocks.MockManager, lister *mocks.MockLister, cluster *mocks.MockCluster, kcpClient *mocks.MockClient) {
+				manager.EXPECT().ClusterFromContext(mock.Anything).Return(cluster, nil)
+				cluster.EXPECT().GetClient().Return(kcpClient)
+				mockAccountInfo(kcpClient, "org", "origin")
+				manager.EXPECT().GetCluster(mock.Anything, mock.Anything).Return(cluster, nil).Once()
+				kcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
+					if ae, ok := o.(*kcpapisv1alpha2.APIExport); ok {
+						ae.Spec.Resources = []kcpapisv1alpha2.ResourceSchema{{Schema: "schema1"}}
+						ae.Name = "some-export"
+					}
+					return nil
+				}).Once()
+				manager.EXPECT().GetCluster(mock.Anything, mock.Anything).Return(nil, assert.AnError).Once()
+			},
+		},
+		{
+			// An unreconciled binding has no APIExportClusterName, which does not match its
+			// own cluster, so it is not self-bound and fails closed.
+			name:        "unset APIExportClusterName takes the strict path",
+			binding:     bindingWithCluster("foo", "bar", "consumer-cluster"),
+			expectError: true,
+			mockSetup: func(manager *mocks.MockManager, lister *mocks.MockLister, cluster *mocks.MockCluster, kcpClient *mocks.MockClient) {
+				manager.EXPECT().ClusterFromContext(mock.Anything).Return(cluster, nil)
+				cluster.EXPECT().GetClient().Return(kcpClient)
+				mockAccountInfo(kcpClient, "org", "origin")
+				manager.EXPECT().GetCluster(mock.Anything, mock.Anything).Return(cluster, nil).Once()
+				kcpClient.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(func(ctx context.Context, nn types.NamespacedName, o ctrlruntimeclient.Object, opts ...ctrlruntimeclient.GetOption) error {
+					if ae, ok := o.(*kcpapisv1alpha2.APIExport); ok {
+						ae.Spec.Resources = []kcpapisv1alpha2.ResourceSchema{{Schema: "schema1"}}
+						ae.Name = "foo"
+					}
+					return nil
+				}).Once()
+				manager.EXPECT().GetCluster(mock.Anything, mock.Anything).Return(nil, assert.AnError).Once()
 			},
 		},
 		{
