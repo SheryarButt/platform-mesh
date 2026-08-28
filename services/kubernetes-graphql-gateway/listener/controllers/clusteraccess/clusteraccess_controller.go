@@ -19,7 +19,6 @@ package clusteraccess
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -275,14 +274,7 @@ func injectClusterMetadata(ctx context.Context, schemaData []byte, clusterAccess
 		}
 	}
 
-	var schemaJSON map[string]any
-	if err := json.Unmarshal(schemaData, &schemaJSON); err != nil {
-		return nil, fmt.Errorf("failed to parse schema JSON: %w", err)
-	}
-
-	schemaJSON["x-cluster-metadata"] = metadata
-
-	return json.Marshal(schemaJSON)
+	return reconciler.InjectClusterMetadataIntoSchema(schemaData, metadata)
 }
 
 // restMapperFromConfig creates a REST mapper from a config
