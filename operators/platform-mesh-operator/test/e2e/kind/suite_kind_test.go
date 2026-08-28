@@ -265,7 +265,7 @@ func (s *KindTestSuite) createKindCluster() error {
 	s.config = configClient
 
 	pods := &corev1.PodList{}
-	err = s.client.List(context.TODO(), pods, &ctrlruntimeclient.ListOptions{
+	err = s.client.List(s.T().Context(), pods, &ctrlruntimeclient.ListOptions{
 		Namespace: "kube-system",
 	})
 	if err != nil {

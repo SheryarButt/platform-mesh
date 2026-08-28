@@ -19,7 +19,6 @@ limitations under the License.
 package e2e
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -38,7 +37,7 @@ func TestKindSuite(t *testing.T) {
 }
 
 func (s *KindTestSuite) Test01ResourceReady() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	s.Eventually(func() bool {
 		pm := pmcorev1alpha1.PlatformMesh{}
@@ -62,7 +61,7 @@ func (s *KindTestSuite) Test01ResourceReady() {
 }
 
 func (s *KindTestSuite) Test02ExtraWorkspaces() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	pm := pmcorev1alpha1.PlatformMesh{}
 	err := s.client.Get(ctx, ctrlruntimeclient.ObjectKey{

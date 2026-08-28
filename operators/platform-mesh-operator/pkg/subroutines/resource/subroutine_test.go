@@ -52,7 +52,7 @@ func (s *ResourceTestSuite) SetupTest() {
 }
 
 func (s *ResourceTestSuite) Test_applyReleaseWithValues() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -109,7 +109,7 @@ func (s *ResourceTestSuite) Test_GetName() {
 }
 
 func (s *ResourceTestSuite) Test_Finalize() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 	inst := &unstructured.Unstructured{}
 	result, err := s.subroutine.Finalize(ctx, inst)
 	s.Nil(err)
@@ -255,7 +255,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			ctx := context.TODO()
+			ctx := s.T().Context()
 
 			annotations := map[string]any{
 				"artifact": tt.artifact,
@@ -335,7 +335,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag() {
 }
 
 func (s *ResourceTestSuite) Test_updateGitRepo() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -396,7 +396,7 @@ func (s *ResourceTestSuite) Test_updateGitRepo() {
 }
 
 func (s *ResourceTestSuite) Test_updateGitRepo_CreateOrUpdateError() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -436,7 +436,7 @@ func (s *ResourceTestSuite) Test_updateGitRepo_CreateOrUpdateError() {
 }
 
 func (s *ResourceTestSuite) Test_updateHelmRepository() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -510,7 +510,7 @@ func (s *ResourceTestSuite) Test_updateHelmRepository() {
 }
 
 func (s *ResourceTestSuite) Test_updateHelmRepository_MissingURL() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -544,7 +544,7 @@ func (s *ResourceTestSuite) Test_updateHelmRepository_MissingURL() {
 }
 
 func (s *ResourceTestSuite) Test_updateHelmRelease() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -603,7 +603,7 @@ func (s *ResourceTestSuite) Test_updateHelmRelease() {
 }
 
 func (s *ResourceTestSuite) Test_updateHelmRelease_GetError() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -643,7 +643,7 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_GetError() {
 }
 
 func (s *ResourceTestSuite) Test_updateHelmRelease_UpdateError() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -695,7 +695,7 @@ func (s *ResourceTestSuite) Test_updateHelmRelease_UpdateError() {
 }
 
 func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_GetError() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -730,7 +730,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_GetError() {
 }
 
 func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_UpdateError() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -777,7 +777,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseWithImageTag_UpdateError() {
 }
 
 func (s *ResourceTestSuite) Test_updateOciRepo_ParseRefError() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -814,7 +814,7 @@ func (s *ResourceTestSuite) Test_updateOciRepo_ParseRefError() {
 }
 
 func (s *ResourceTestSuite) Test_updateOciRepo_CreateOrUpdateError() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -854,7 +854,7 @@ func (s *ResourceTestSuite) Test_updateOciRepo_CreateOrUpdateError() {
 }
 
 func (s *ResourceTestSuite) Test_Process_NoAnnotations() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -874,7 +874,7 @@ func (s *ResourceTestSuite) Test_Process_NoAnnotations() {
 }
 
 func (s *ResourceTestSuite) Test_updateArgoCDApplication_HelmRepo() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -933,7 +933,7 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplication_HelmRepo() {
 }
 
 func (s *ResourceTestSuite) Test_updateArgoCDApplication_AlreadyUpToDate() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -980,7 +980,7 @@ func (s *ResourceTestSuite) Test_updateArgoCDApplication_AlreadyUpToDate() {
 }
 
 func (s *ResourceTestSuite) Test_updateArgoCDApplicationHelmValues() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -1128,7 +1128,7 @@ func (s *ResourceTestSuite) Test_SetRuntimeClient() {
 }
 
 func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_InfraDeploymentNamespace() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 	clientMock := new(mocks.Client)
 	sub := NewResourceSubroutine(clientMock, nil, nil)
 
@@ -1149,7 +1149,7 @@ func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_InfraDeploymentNames
 }
 
 func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_ComponentsDeploymentNamespace() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 	clientMock := new(mocks.Client)
 	sub := NewResourceSubroutine(clientMock, nil, nil)
 
@@ -1170,7 +1170,7 @@ func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_ComponentsDeployment
 }
 
 func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_Fallback() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 	clientMock := new(mocks.Client)
 	sub := NewResourceSubroutine(clientMock, nil, nil)
 
@@ -1183,7 +1183,7 @@ func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_Fallback() {
 }
 
 func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_NoDeploymentNamespace() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 	clientMock := new(mocks.Client)
 	sub := NewResourceSubroutine(clientMock, nil, nil)
 
@@ -1207,7 +1207,7 @@ func (s *ResourceTestSuite) Test_getAppNamespaceFromProfile_NoDeploymentNamespac
 }
 
 func (s *ResourceTestSuite) Test_updateArgoCDApplication_UsesDeploymentNamespace() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -1510,7 +1510,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			ctx := context.TODO()
+			ctx := s.T().Context()
 
 			annotations := map[string]any{
 				"artifact": tt.artifact,
@@ -1622,7 +1622,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage() {
 }
 
 func (s *ResourceTestSuite) Test_updateHelmReleaseImage_StoresResolvedTag() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 	store := subroutines.NewImageVersionStore()
 
 	inst := imageResource("test-resource",
@@ -1654,7 +1654,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_StoresResolvedTag() {
 }
 
 func (s *ResourceTestSuite) Test_updateHelmReleaseImage_RemovesStaleCoordinatesFromStore() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 	store := subroutines.NewImageVersionStore()
 	store.Set("default", "test-resource", "image.registry", "stale-registry")
 	store.Set("default", "test-resource", "image.repository", "stale/repo")
@@ -1678,7 +1678,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_RemovesStaleCoordinatesF
 }
 
 func (s *ResourceTestSuite) Test_updateHelmReleaseImage_StoresCoordinatesAtCustomPath() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 	store := subroutines.NewImageVersionStore()
 
 	inst := imageResource("test-resource",
@@ -1707,7 +1707,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_StoresCoordinatesAtCusto
 }
 
 func (s *ResourceTestSuite) Test_updateHelmReleaseImage_PathLeafCollision() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := imageResource("test-resource",
 		map[string]any{"artifact": "image", "repo": "oci", "path": "image.registry"},
@@ -1747,7 +1747,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_PathLeafCollision() {
 }
 
 func (s *ResourceTestSuite) Test_updateHelmReleaseImage_CombinedRefStyle() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 	store := subroutines.NewImageVersionStore()
 
 	inst := imageResource("openfga-image",
@@ -1803,7 +1803,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_CombinedRefStyle() {
 }
 
 func (s *ResourceTestSuite) Test_updateHelmReleaseImage_GetError() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{
@@ -1849,7 +1849,7 @@ func (s *ResourceTestSuite) Test_updateHelmReleaseImage_GetError() {
 }
 
 func (s *ResourceTestSuite) Test_updateHelmReleaseImage_UpdateError() {
-	ctx := context.TODO()
+	ctx := s.T().Context()
 
 	inst := &unstructured.Unstructured{
 		Object: map[string]any{

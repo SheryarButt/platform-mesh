@@ -191,7 +191,7 @@ func (s *KindTestSuite) waitScopedProviderConnectionSecretsReady(ctx context.Con
 // instance for that export (virtual workspace server).
 func (s *KindTestSuite) TestScoped02KubeconfigProvider1() {
 	s.logger.Info().Str("kind_e2e", "TestScoped02KubeconfigProvider1").Msg("start")
-	ctx := context.TODO()
+	ctx := s.T().Context()
 	s.scopedWaitPlatformMeshReady(ctx)
 
 	sec := s.requireE2EProviderKubeconfigSecret(ctx, e2eScopedKubeconfigProvider1SecretName)
@@ -224,7 +224,7 @@ spec:
 // Test creates an E2EProviderConfig resource with that kubeconfig only (no APIExport creation in the test).
 func (s *KindTestSuite) TestScoped03KubeconfigProvider2() {
 	s.logger.Info().Str("kind_e2e", "TestScoped03KubeconfigProvider2").Msg("start")
-	ctx := context.TODO()
+	ctx := s.T().Context()
 	s.scopedWaitPlatformMeshReady(ctx)
 
 	sec := s.requireE2EProviderKubeconfigSecret(ctx, e2eScopedKubeconfigProvider2SecretName)
@@ -256,7 +256,7 @@ spec:
 // Provider3: extraProviderConnections entry with adminAuth true — same slice-based virtual workspace wiring as default providers, admin cert material.
 func (s *KindTestSuite) TestScoped04ExtraProviderAdminKubeconfigProvider3() {
 	s.logger.Info().Str("kind_e2e", "TestScoped04ExtraProviderAdminKubeconfigProvider3").Msg("start")
-	ctx := context.TODO()
+	ctx := s.T().Context()
 	s.scopedWaitPlatformMeshReady(ctx)
 
 	sec := s.requireE2EProviderKubeconfigSecret(ctx, e2eAdminKubeconfigProvider3SecretName)
