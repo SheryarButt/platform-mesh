@@ -502,11 +502,13 @@ infra:
 ```
 
 **Requirements:**
+
 - Cert-manager CRDs must be installed: `issuers.cert-manager.io`, `certificates.cert-manager.io`
 - Cert-manager controller must be running and processing Certificate resources
 - The deployment name and namespace don't matter — the operator only validates CRDs exist
 
 **How it works:**
+
 The operator will:
 - Skip creating HelmRelease/Application for cert-manager
 - Validate that cert-manager CRDs are established
