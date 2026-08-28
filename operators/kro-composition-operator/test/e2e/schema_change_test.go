@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
+	kcpapisv1alpha2 "github.com/kcp-dev/sdk/apis/apis/v1alpha2"
 )
 
 var rgdGVK = schema.GroupVersionKind{Group: "kro.run", Version: "v1alpha1", Kind: "ResourceGraphDefinition"}
@@ -142,10 +143,10 @@ func TestSchemaMetadataReachesPublishedSchema(t *testing.T) {
 // composite type from.
 func servedSchemaName(ctx context.Context, t *testing.T, c *consumer, rgdName string) string {
 	t.Helper()
-	export := &kcpapisv1alpha1.APIExport{}
+	export := &kcpapisv1alpha2.APIExport{}
 	require.NoError(t, c.Client.Get(ctx, types.NamespacedName{Name: "kro-" + rgdName}, export))
-	require.Len(t, export.Spec.LatestResourceSchemas, 1)
-	return export.Spec.LatestResourceSchemas[0]
+	require.Len(t, export.Spec.Resources, 1)
+	return export.Spec.Resources[0].Schema
 }
 
 func setSchemaSpec(ctx context.Context, t *testing.T, c *consumer, rgdName string, spec map[string]any) {
