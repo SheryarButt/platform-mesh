@@ -127,7 +127,7 @@ func (s *apiBindingWatcherSubroutine) Process(ctx context.Context, instance runt
 	orgClusterID, err := getOrgClusterID(ctx, s.orgsClient, orgName)
 	if err != nil {
 		log.Debug().Err(err).Str("orgName", orgName).Msg("org Workspace not found, requeuing")
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
 	}
 
 	for _, b := range otherBindings.Items {

@@ -31,7 +31,6 @@ import (
 	fgamocks "go.platform-mesh.io/iam-service/pkg/fga/mocks"
 	"go.platform-mesh.io/iam-service/pkg/graph"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -111,7 +110,6 @@ func TestService_AssignRolesToUsers_WithInvites_UserExists(t *testing.T) {
 	}
 
 	ai := &pmcorev1alpha1.AccountInfo{
-		ObjectMeta: metav1.ObjectMeta{Name: "account"},
 		Spec: pmcorev1alpha1.AccountInfoSpec{
 			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
@@ -202,7 +200,6 @@ func TestService_AssignRolesToUsers_WithInvites_UserDoesNotExist(t *testing.T) {
 	}
 
 	ai := &pmcorev1alpha1.AccountInfo{
-		ObjectMeta: metav1.ObjectMeta{Name: "account"},
 		Spec: pmcorev1alpha1.AccountInfoSpec{
 			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
@@ -285,7 +282,6 @@ func TestService_AssignRolesToUsers_WithInvites_InvalidRole(t *testing.T) {
 	}
 
 	ai := &pmcorev1alpha1.AccountInfo{
-		ObjectMeta: metav1.ObjectMeta{Name: "account"},
 		Spec: pmcorev1alpha1.AccountInfoSpec{
 			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
@@ -363,7 +359,6 @@ func TestService_AssignRolesToUsers_WithBothChangesAndInvites(t *testing.T) {
 	}
 
 	ai := &pmcorev1alpha1.AccountInfo{
-		ObjectMeta: metav1.ObjectMeta{Name: "account"},
 		Spec: pmcorev1alpha1.AccountInfoSpec{
 			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
@@ -453,7 +448,6 @@ func TestService_AssignRolesToUsers_WithInvites_IDMCheckError(t *testing.T) {
 	}
 
 	ai := &pmcorev1alpha1.AccountInfo{
-		ObjectMeta: metav1.ObjectMeta{Name: "account"},
 		Spec: pmcorev1alpha1.AccountInfoSpec{
 			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
@@ -534,7 +528,6 @@ func TestService_AssignRolesToUsers_WithInvites_WorkspaceClientError(t *testing.
 	}
 
 	ai := &pmcorev1alpha1.AccountInfo{
-		ObjectMeta: metav1.ObjectMeta{Name: "account"},
 		Spec: pmcorev1alpha1.AccountInfoSpec{
 			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
@@ -627,7 +620,6 @@ func TestService_AssignRolesToUsers_WithInvites_InvalidEmail(t *testing.T) {
 	}
 
 	ai := &pmcorev1alpha1.AccountInfo{
-		ObjectMeta: metav1.ObjectMeta{Name: "account"},
 		Spec: pmcorev1alpha1.AccountInfoSpec{
 			Account: pmcorev1alpha1.AccountLocation{
 				GeneratedClusterId: "cluster-123",
