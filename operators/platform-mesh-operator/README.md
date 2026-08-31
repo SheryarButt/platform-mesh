@@ -156,6 +156,7 @@ spec:
 | `feature-enable-account-iam-ui` | Applies the ContentConfiguration resources for the IAM UI Members section at the account level |
 | `feature-disable-email-verification` | Disables email verification requirement in WorkspaceAuthenticationConfiguration |
 | `feature-disable-contentconfigurations` | Disables loading of all ContentConfiguration manifests during KCP setup |
+| `feature-disable-idp-webhook` | - Disables the IDP validating webhook. This removes important security validation for IdentityProviderConfiguration resources. Production deployments should run with this webhook enabled. |
 
 ### Wait Configuration
 
