@@ -94,7 +94,7 @@ func BuildContentConfig(group, version, kind, plural string, namespaced bool, sp
 		"entityType":              "main." + AccountEntity,
 		"keepSelectedForChildren": true,
 		"url":                     "/assets/platform-mesh-portal-ui-wc.js#generic-list-view",
-		"webcomponent":            map[string]any{"selfRegistered": true},
+		"webcomponent":            map[string]any{"selfRegistered": true, "type": "module"},
 		"context": map[string]any{
 			"resourceDefinition": map[string]any{
 				"apiGroup": ug,
@@ -135,7 +135,7 @@ func BuildContentConfig(group, version, kind, plural string, namespaced bool, sp
 		"pathSegment":  "dashboard",
 		"label":        "Overview",
 		"url":          "/assets/platform-mesh-portal-ui-wc.js#generic-detail-view",
-		"webcomponent": map[string]any{"selfRegistered": true},
+		"webcomponent": map[string]any{"selfRegistered": true, "type": "module"},
 		"defineEntity": map[string]any{"id": "dashboard"},
 		"compound":     map[string]any{"children": []any{}},
 	}
