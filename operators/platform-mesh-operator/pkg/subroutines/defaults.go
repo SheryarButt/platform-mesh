@@ -38,6 +38,8 @@ var SecurityOperatorWebhookCASecretName = "security-operator-ca-secret"
 var IdentityProviderValidatingWebhookName = "identityproviderconfiguration-validator.webhooks.core.platform-mesh.io"
 var AccountOperatorWorkspace = "root:platform-mesh-system"
 
+const FeatureDisableIDPWebhook = "feature-disable-idp-webhook"
+
 var DefaultProviderConnections = []pmcorev1alpha1.ProviderConnection{
 	{
 		Path:      "root:platform-mesh-system",

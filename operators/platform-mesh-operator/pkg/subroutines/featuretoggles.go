@@ -146,6 +146,8 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj ctrlru
 			log.Info().Msg("Enabled 'Provider permissions' feature")
 		case "feature-disable-email-verification":
 			log.Info().Msg("Enabled 'disable-email-verification' feature")
+		case "feature-disable-idp-webhook":
+			log.Info().Msg("IDP validating webhook is disabled")
 		default:
 			log.Warn().Str("featureToggle", ft.Name).Msg("Unknown feature toggle")
 		}
