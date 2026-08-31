@@ -186,7 +186,7 @@ ServiceAccount for every request:
 
 ```yaml
 spec:
-  requestAuthenticationMode: serviceAccount
+  requestIdentityMode: serviceAccount
   auth:
     serviceAccountRef:
       name: graphql-gateway

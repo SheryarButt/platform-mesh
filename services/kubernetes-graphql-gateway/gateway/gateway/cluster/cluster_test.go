@@ -47,9 +47,9 @@ func TestNewRejectsServiceAccountModeWithoutServiceAccountCredentials(t *testing
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := New(t.Context(), "trusted", &pmgatewayv1alpha1.ClusterMetadata{
-				Host:                      "https://localhost:6443",
-				RequestAuthenticationMode: pmgatewayv1alpha1.RequestAuthenticationModeServiceAccount,
-				Auth:                      tt.auth,
+				Host:                "https://localhost:6443",
+				RequestIdentityMode: pmgatewayv1alpha1.RequestIdentityModeServiceAccount,
+				Auth:                tt.auth,
 			}, Options{})
 			if err == nil || !strings.Contains(err.Error(), "requires ServiceAccount credentials") {
 				t.Fatalf("New() error = %v, want missing ServiceAccount credentials error", err)

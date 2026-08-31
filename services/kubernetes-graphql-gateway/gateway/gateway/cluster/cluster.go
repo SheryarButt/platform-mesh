@@ -35,11 +35,11 @@ import (
 )
 
 type Cluster struct {
-	name                      string
-	client                    ctrlruntimeclient.WithWatch
-	restCfg                   *rest.Config
-	adminCfg                  *rest.Config
-	requestAuthenticationMode pmgatewayv1alpha1.RequestAuthenticationMode
+	name                string
+	client              ctrlruntimeclient.WithWatch
+	restCfg             *rest.Config
+	adminCfg            *rest.Config
+	requestIdentityMode pmgatewayv1alpha1.RequestIdentityMode
 }
 
 type Options struct {
@@ -59,14 +59,14 @@ func New(
 	if metadata == nil {
 		return nil, fmt.Errorf("cluster %s requires cluster metadata", name)
 	}
-	if metadata.RequestAuthenticationMode == pmgatewayv1alpha1.RequestAuthenticationModeServiceAccount &&
+	if metadata.RequestIdentityMode == pmgatewayv1alpha1.RequestIdentityModeServiceAccount &&
 		(metadata.Auth == nil || metadata.Auth.Type != pmgatewayv1alpha1.AuthTypeServiceAccount || metadata.Auth.Token == "") {
-		return nil, fmt.Errorf("cluster %s requires ServiceAccount credentials for serviceAccount request authentication", name)
+		return nil, fmt.Errorf("cluster %s requires ServiceAccount credentials for serviceAccount request identity", name)
 	}
 
 	cluster := &Cluster{
-		name:                      name,
-		requestAuthenticationMode: metadata.RequestAuthenticationMode,
+		name:                name,
+		requestIdentityMode: metadata.RequestIdentityMode,
 	}
 
 	var err error
@@ -98,7 +98,7 @@ func New(
 	}
 
 	dataPlanePrefix := basePath + tpl
-	if metadata.RequestAuthenticationMode == pmgatewayv1alpha1.RequestAuthenticationModeServiceAccount {
+	if metadata.RequestIdentityMode == pmgatewayv1alpha1.RequestIdentityModeServiceAccount {
 		cluster.restCfg.Wrap(func(adminRT http.RoundTripper) http.RoundTripper {
 			return roundtripper.NewPathTemplateHandler(adminRT, dataPlanePrefix, basePath)
 		})
@@ -149,7 +149,7 @@ func (c *Cluster) AdminConfig() *rest.Config {
 // UsesServiceAccountForRequests reports whether all data-plane requests use
 // the static ServiceAccount credential from ClusterAccess metadata.
 func (c *Cluster) UsesServiceAccountForRequests() bool {
-	return c.requestAuthenticationMode == pmgatewayv1alpha1.RequestAuthenticationModeServiceAccount
+	return c.requestIdentityMode == pmgatewayv1alpha1.RequestIdentityModeServiceAccount
 }
 
 func (c *Cluster) Close() {

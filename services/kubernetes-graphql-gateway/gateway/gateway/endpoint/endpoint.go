@@ -73,16 +73,10 @@ func New(
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse schema: %w", err)
 	}
-	requestAuthenticationMode := pmgatewayv1alpha1.RequestAuthenticationMode("")
-	if schemaData.ClusterMetadata != nil {
-		requestAuthenticationMode = schemaData.ClusterMetadata.RequestAuthenticationMode
+	usesServiceAccount, err := usesServiceAccountForRequests(schemaData.ClusterMetadata)
+	if err != nil {
+		return nil, err
 	}
-	if requestAuthenticationMode != "" &&
-		requestAuthenticationMode != pmgatewayv1alpha1.RequestAuthenticationModeUserToken &&
-		requestAuthenticationMode != pmgatewayv1alpha1.RequestAuthenticationModeServiceAccount {
-		return nil, fmt.Errorf("unsupported request authentication mode %q", requestAuthenticationMode)
-	}
-	usesServiceAccount := requestAuthenticationMode == pmgatewayv1alpha1.RequestAuthenticationModeServiceAccount
 
 	cl, err := cluster.New(ctx, name, schemaData.ClusterMetadata, clusterOpts)
 	if err != nil {
@@ -187,6 +181,17 @@ func New(
 		cancelFunc:    validatorCancel,
 		metrics:       endpointM,
 	}, nil
+}
+
+func usesServiceAccountForRequests(metadata *pmgatewayv1alpha1.ClusterMetadata) (bool, error) {
+	if metadata == nil || metadata.RequestIdentityMode == "" ||
+		metadata.RequestIdentityMode == pmgatewayv1alpha1.RequestIdentityModeUserToken {
+		return false, nil
+	}
+	if metadata.RequestIdentityMode == pmgatewayv1alpha1.RequestIdentityModeServiceAccount {
+		return true, nil
+	}
+	return false, fmt.Errorf("unsupported request identity mode %q", metadata.RequestIdentityMode)
 }
 
 func (e *Endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
