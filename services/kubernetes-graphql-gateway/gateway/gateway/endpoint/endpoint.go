@@ -73,6 +73,16 @@ func New(
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse schema: %w", err)
 	}
+	requestAuthenticationMode := pmgatewayv1alpha1.RequestAuthenticationMode("")
+	if schemaData.ClusterMetadata != nil {
+		requestAuthenticationMode = schemaData.ClusterMetadata.RequestAuthenticationMode
+	}
+	if requestAuthenticationMode != "" &&
+		requestAuthenticationMode != pmgatewayv1alpha1.RequestAuthenticationModeUserToken &&
+		requestAuthenticationMode != pmgatewayv1alpha1.RequestAuthenticationModeServiceAccount {
+		return nil, fmt.Errorf("unsupported request authentication mode %q", requestAuthenticationMode)
+	}
+	usesServiceAccount := requestAuthenticationMode == pmgatewayv1alpha1.RequestAuthenticationModeServiceAccount
 
 	cl, err := cluster.New(ctx, name, schemaData.ClusterMetadata, clusterOpts)
 	if err != nil {
@@ -83,7 +93,7 @@ func New(
 	// we build a per-endpoint TokenReviewValidator and own it ourselves.
 	validator := injectedValidator
 	validatorCancel := context.CancelFunc(func() {})
-	if validator == nil {
+	if !usesServiceAccount && validator == nil {
 		validatorCtx, trCancel := context.WithCancel(ctx)
 		tr, err := authn.NewTokenReviewValidator(cl.AdminConfig(), tokenReviewCacheTTL, authM)
 		if err != nil {
@@ -143,24 +153,26 @@ func New(
 			return
 		}
 
-		token, ok := utilscontext.GetTokenFromCtx(r.Context())
-		if !ok || token == "" {
-			log.FromContext(r.Context()).V(1).Info("request rejected: no bearer token", "cluster", name)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
+		if !usesServiceAccount {
+			token, ok := utilscontext.GetTokenFromCtx(r.Context())
+			if !ok || token == "" {
+				log.FromContext(r.Context()).V(1).Info("request rejected: no bearer token", "cluster", name)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
 
-		authenticated, err := validator.Validate(r.Context(), token)
-		if err != nil {
-			http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		if !authenticated {
-			// Verdict details (TokenReview status.error, cache-hit vs fresh)
-			// are logged by the validator.
-			log.FromContext(r.Context()).V(1).Info("request rejected: token failed TokenReview", "cluster", name)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
+			authenticated, err := validator.Validate(r.Context(), token)
+			if err != nil {
+				http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			if !authenticated {
+				// Verdict details (TokenReview status.error, cache-hit vs fresh)
+				// are logged by the validator.
+				log.FromContext(r.Context()).V(1).Info("request rejected: token failed TokenReview", "cluster", name)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
 		}
 
 		gqlHTTPHandler.ServeHTTP(w, r)
@@ -218,6 +230,12 @@ func (rw *statusResponseWriter) Flush() {
 
 func (e *Endpoint) Name() string {
 	return e.name
+}
+
+// AllowsTokenlessRequests reports whether this endpoint uses its configured
+// ServiceAccount rather than an end-user bearer token.
+func (e *Endpoint) AllowsTokenlessRequests() bool {
+	return e.cluster != nil && e.cluster.UsesServiceAccountForRequests()
 }
 
 func (e *Endpoint) Close() {

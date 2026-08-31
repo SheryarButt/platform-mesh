@@ -35,11 +35,13 @@ const testEndpointSuffix = "/graphql"
 // captureHandler is a test handler that records the request context values
 // passed through the middleware chain.
 type captureHandler struct {
-	called      bool
-	token       string
-	tokenOK     bool
-	clusterName string
-	clusterOK   bool
+	called         bool
+	allowTokenless bool
+	token          string
+	tokenOK        bool
+	clusterName    string
+	clusterOK      bool
+	policyCluster  string
 }
 
 func (h *captureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +50,11 @@ func (h *captureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.clusterName, h.clusterOK = utilscontext.GetClusterFromCtx(r.Context())
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("OK"))
+}
+
+func (h *captureHandler) AllowsTokenlessRequests(clusterName string) bool {
+	h.policyCluster = clusterName
+	return h.allowTokenless
 }
 
 func clusterURL(base, cluster string) string {
@@ -96,6 +103,26 @@ func TestMissingAuthorizationHeader(t *testing.T) {
 
 	body, _ := io.ReadAll(resp.Body)
 	assert.Contains(t, string(body), "missing Authorization header")
+}
+
+func TestMissingAuthorizationHeaderAllowedByEndpointPolicy(t *testing.T) {
+	handler := &captureHandler{allowTokenless: true}
+	ts := newTestServer(t, handler)
+	defer ts.Close()
+
+	req, err := http.NewRequest(http.MethodPost, clusterURL(ts.URL, "trusted-cluster"), strings.NewReader(`{"query":"{}"}`))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.True(t, handler.called)
+	assert.Equal(t, "trusted-cluster", handler.policyCluster)
+	assert.Equal(t, "trusted-cluster", handler.clusterName)
+	assert.False(t, handler.tokenOK)
 }
 
 func TestInvalidAuthorizationFormat(t *testing.T) {

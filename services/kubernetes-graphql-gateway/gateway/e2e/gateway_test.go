@@ -478,6 +478,38 @@ func (suite *GatewayE2ETestSuite) TestServiceAccountAuth() {
 	suite.Empty(resp.Errors, "expected no errors, got: %v", resp.Errors)
 }
 
+// TestTrustedServiceAccountAuth verifies that an explicitly trusted endpoint
+// accepts tokenless requests and always uses its configured ServiceAccount,
+// even when the caller supplies a different bearer token.
+func (suite *GatewayE2ETestSuite) TestTrustedServiceAccountAuth() {
+	clusterName := "trusted-serviceaccount-test-cluster"
+	metadata := suite.buildClusterMetadata(pmgatewayv1alpha1.AuthTypeServiceAccount)
+	metadata.RequestAuthenticationMode = pmgatewayv1alpha1.RequestAuthenticationModeServiceAccount
+
+	suite.generateSchema(clusterName, metadata)
+	suite.waitForSchemaLoaded(clusterName)
+
+	query := `
+		query {
+			v1 {
+				Namespaces {
+					items {
+						metadata { name }
+					}
+				}
+			}
+		}
+	`
+
+	resp := suite.executeGraphQLQuery(clusterName, query, nil, "")
+	suite.Equal(200, resp.StatusCode)
+	suite.Empty(resp.Errors, "expected tokenless request to use the configured ServiceAccount: %v", resp.Errors)
+
+	resp = suite.executeGraphQLQuery(clusterName, query, nil, "caller-token-must-not-be-forwarded")
+	suite.Equal(200, resp.StatusCode)
+	suite.Empty(resp.Errors, "expected caller token to be ignored in ServiceAccount mode: %v", resp.Errors)
+}
+
 // ============================================================================
 // Token Validation Tests (TokenReview middleware)
 // ============================================================================

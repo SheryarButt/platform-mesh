@@ -35,10 +35,11 @@ import (
 )
 
 type Cluster struct {
-	name     string
-	client   ctrlruntimeclient.WithWatch
-	restCfg  *rest.Config
-	adminCfg *rest.Config
+	name                      string
+	client                    ctrlruntimeclient.WithWatch
+	restCfg                   *rest.Config
+	adminCfg                  *rest.Config
+	requestAuthenticationMode pmgatewayv1alpha1.RequestAuthenticationMode
 }
 
 type Options struct {
@@ -58,9 +59,14 @@ func New(
 	if metadata == nil {
 		return nil, fmt.Errorf("cluster %s requires cluster metadata", name)
 	}
+	if metadata.RequestAuthenticationMode == pmgatewayv1alpha1.RequestAuthenticationModeServiceAccount &&
+		(metadata.Auth == nil || metadata.Auth.Type != pmgatewayv1alpha1.AuthTypeServiceAccount || metadata.Auth.Token == "") {
+		return nil, fmt.Errorf("cluster %s requires ServiceAccount credentials for serviceAccount request authentication", name)
+	}
 
 	cluster := &Cluster{
-		name: name,
+		name:                      name,
+		requestAuthenticationMode: metadata.RequestAuthenticationMode,
 	}
 
 	var err error
@@ -92,12 +98,18 @@ func New(
 	}
 
 	dataPlanePrefix := basePath + tpl
-	cluster.restCfg.Wrap(func(adminRT http.RoundTripper) http.RoundTripper {
-		return union.New(
-			roundtripper.NewDiscoveryHandler(roundtripper.NewPathTemplateHandler(adminRT, dataPlanePrefix, basePath)),
-			roundtripper.NewBearerHandler(roundtripper.NewPathTemplateHandler(baseRT, dataPlanePrefix, basePath), roundtripper.NewUnauthorizedRoundTripper()),
-		)
-	})
+	if metadata.RequestAuthenticationMode == pmgatewayv1alpha1.RequestAuthenticationModeServiceAccount {
+		cluster.restCfg.Wrap(func(adminRT http.RoundTripper) http.RoundTripper {
+			return roundtripper.NewPathTemplateHandler(adminRT, dataPlanePrefix, basePath)
+		})
+	} else {
+		cluster.restCfg.Wrap(func(adminRT http.RoundTripper) http.RoundTripper {
+			return union.New(
+				roundtripper.NewDiscoveryHandler(roundtripper.NewPathTemplateHandler(adminRT, dataPlanePrefix, basePath)),
+				roundtripper.NewBearerHandler(roundtripper.NewPathTemplateHandler(baseRT, dataPlanePrefix, basePath), roundtripper.NewUnauthorizedRoundTripper()),
+			)
+		})
+	}
 
 	var mapper meta.RESTMapper
 	if metadata.IntrospectionPath != "" {
@@ -132,6 +144,12 @@ func (c *Cluster) RestConfig() *rest.Config {
 // suitable for privileged API calls like TokenReview.
 func (c *Cluster) AdminConfig() *rest.Config {
 	return rest.CopyConfig(c.adminCfg)
+}
+
+// UsesServiceAccountForRequests reports whether all data-plane requests use
+// the static ServiceAccount credential from ClusterAccess metadata.
+func (c *Cluster) UsesServiceAccountForRequests() bool {
+	return c.requestAuthenticationMode == pmgatewayv1alpha1.RequestAuthenticationModeServiceAccount
 }
 
 func (c *Cluster) Close() {

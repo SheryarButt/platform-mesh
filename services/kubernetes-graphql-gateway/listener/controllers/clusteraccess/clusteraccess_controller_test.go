@@ -553,7 +553,8 @@ func (suite *ClusterAccessControllerTestSuite) TestServiceAccountAuth() {
 			Name: "serviceaccount-test",
 		},
 		Spec: pmgatewayv1alpha1.ClusterAccessSpec{
-			Host: suite.envtestHost,
+			Host:                      suite.envtestHost,
+			RequestAuthenticationMode: pmgatewayv1alpha1.RequestAuthenticationModeServiceAccount,
 			CA: &pmgatewayv1alpha1.CAConfig{
 				SecretRef: &pmgatewayv1alpha1.SecretKeyRef{
 					SecretReference: corev1.SecretReference{
@@ -586,6 +587,21 @@ func (suite *ClusterAccessControllerTestSuite) TestServiceAccountAuth() {
 	suite.Equal("test-sa", metadata.Auth.SAName, "SA name should match")
 	suite.Equal(testNamespace, metadata.Auth.SANamespace, "SA namespace should match")
 	suite.NotEmpty(metadata.Auth.Token, "SA auth should have generated token")
+	suite.Equal(pmgatewayv1alpha1.RequestAuthenticationModeServiceAccount, metadata.RequestAuthenticationMode)
+}
+
+func (suite *ClusterAccessControllerTestSuite) TestServiceAccountRequestAuthenticationRequiresServiceAccountRef() {
+	clusterAccess := &pmgatewayv1alpha1.ClusterAccess{
+		ObjectMeta: metav1.ObjectMeta{Name: "trusted-without-serviceaccount"},
+		Spec: pmgatewayv1alpha1.ClusterAccessSpec{
+			Host:                      suite.envtestHost,
+			RequestAuthenticationMode: pmgatewayv1alpha1.RequestAuthenticationModeServiceAccount,
+		},
+	}
+
+	err := suite.client.Create(context.Background(), clusterAccess)
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "requestAuthenticationMode serviceAccount requires auth.serviceAccountRef")
 }
 
 func (suite *ClusterAccessControllerTestSuite) TestCustomPathSchemaCleanup() {

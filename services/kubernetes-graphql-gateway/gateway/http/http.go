@@ -72,6 +72,10 @@ type Server struct {
 	Server *http.Server
 }
 
+type tokenlessRequestPolicy interface {
+	AllowsTokenlessRequests(clusterName string) bool
+}
+
 // NewServer creates a new HTTP server with the provided configuration
 // It main server, used to serve the GraphQL API, health checks, and metrics
 func NewServer(c ServerConfig) (*Server, error) {
@@ -96,20 +100,26 @@ func NewServer(c ServerConfig) (*Server, error) {
 
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			http.Error(w, "Unauthorized: missing Authorization header", http.StatusUnauthorized)
-			return
+			policy, ok := c.Gateway.(tokenlessRequestPolicy)
+			if !ok || !policy.AllowsTokenlessRequests(clusterName) {
+				http.Error(w, "Unauthorized: missing Authorization header", http.StatusUnauthorized)
+				return
+			}
 		}
-		if !strings.HasPrefix(authHeader, "Bearer ") {
+		if authHeader != "" && !strings.HasPrefix(authHeader, "Bearer ") {
 			http.Error(w, "Unauthorized: invalid Authorization header format", http.StatusUnauthorized)
 			return
 		}
 		token := strings.TrimPrefix(authHeader, "Bearer ")
-		if token == "" {
+		if authHeader != "" && token == "" {
 			http.Error(w, "Unauthorized: empty bearer token", http.StatusUnauthorized)
 			return
 		}
 
-		ctx := utilscontext.SetToken(r.Context(), token)
+		ctx := r.Context()
+		if token != "" {
+			ctx = utilscontext.SetToken(ctx, token)
+		}
 		ctx = utilscontext.SetCluster(ctx, clusterName)
 
 		// Route to separate timeout/concurrency pools; the endpoint layer

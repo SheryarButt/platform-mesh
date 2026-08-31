@@ -55,12 +55,13 @@ func DefaultClusterURLResolverFunc(url, clusterName string) (string, error) {
 
 // ClusterMetadata represents the cluster connection metadata stored in schema files.
 type ClusterMetadata struct {
-	Host                string        `json:"host"`
-	Path                string        `json:"path,omitempty"`
-	RequestPathTemplate string        `json:"requestPathTemplate,omitempty"`
-	IntrospectionPath   string        `json:"introspectionPath,omitempty"`
-	Auth                *AuthMetadata `json:"auth,omitempty"`
-	CA                  *CAMetadata   `json:"ca,omitempty"`
+	Host                      string                    `json:"host"`
+	Path                      string                    `json:"path,omitempty"`
+	RequestPathTemplate       string                    `json:"requestPathTemplate,omitempty"`
+	IntrospectionPath         string                    `json:"introspectionPath,omitempty"`
+	RequestAuthenticationMode RequestAuthenticationMode `json:"requestAuthenticationMode,omitempty"`
+	Auth                      *AuthMetadata             `json:"auth,omitempty"`
+	CA                        *CAMetadata               `json:"ca,omitempty"`
 }
 
 type AuthenticationType string
@@ -103,10 +104,11 @@ func BuildClusterMetadataFromClusterAccess(ctx context.Context, ca ClusterAccess
 // buildClusterMetadataFromClusterAccess builds ClusterMetadata from ClusterAccess
 func buildClusterMetadataFromClusterAccess(ctx context.Context, ca ClusterAccess, c ctrlruntimeclient.Client) (*ClusterMetadata, error) {
 	metadata := &ClusterMetadata{
-		Host:                ca.Spec.Host,
-		Path:                ca.Spec.Path,
-		RequestPathTemplate: ca.Spec.RequestPathTemplate,
-		IntrospectionPath:   ca.Spec.IntrospectionPath,
+		Host:                      ca.Spec.Host,
+		Path:                      ca.Spec.Path,
+		RequestPathTemplate:       ca.Spec.RequestPathTemplate,
+		IntrospectionPath:         ca.Spec.IntrospectionPath,
+		RequestAuthenticationMode: ca.Spec.RequestAuthenticationMode,
 	}
 
 	// Handle CA configuration
