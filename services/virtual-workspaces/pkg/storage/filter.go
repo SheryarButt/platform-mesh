@@ -241,7 +241,7 @@ func Marketplace(
 					if logicalcluster.From(&export) != providerClusterID {
 						continue
 					}
-					if len(export.Spec.LatestResourceSchemas) == 0 {
+					if export.Status.IdentityHash == "" {
 						continue
 					}
 

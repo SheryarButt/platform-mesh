@@ -84,6 +84,9 @@ func makeExport(cfg config.ServiceConfig, name, clusterID, provider string) *kcp
 		Spec: kcpapisv1alpha1.APIExportSpec{
 			LatestResourceSchemas: []string{"v260810" + name},
 		},
+		Status: kcpapisv1alpha1.APIExportStatus{
+			IdentityHash: "testhash-" + name,
+		},
 	}
 }
 
@@ -243,4 +246,56 @@ func TestMarketplace_ExportsWithoutMatchingProvider(t *testing.T) {
 	list := listMarketplace(t, lister, fake.NewClientBuilder().WithScheme(s).Build(), cfg)
 
 	assert.Empty(t, list.Items, "should skip unknown providers")
+}
+
+func TestMarketplace_UIOnlyExportWithNoSchemas(t *testing.T) {
+	cfg := config.NewServiceConfig()
+	s := marketplaceTestScheme(t)
+
+	uiOnlyExport := &kcpapisv1alpha1.APIExport{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        testExportName,
+			Annotations: map[string]string{"kcp.io/cluster": testProviderClusterID},
+			Labels:      map[string]string{cfg.ContentForLabel: testProviderName},
+		},
+		Spec: kcpapisv1alpha1.APIExportSpec{},
+		Status: kcpapisv1alpha1.APIExportStatus{
+			IdentityHash: "testhash-ui-only",
+		},
+	}
+
+	lister := fake.NewClientBuilder().
+		WithScheme(s).
+		WithObjects(makeProviderMeta(testProviderClusterID), uiOnlyExport).
+		Build()
+
+	list := listMarketplace(t, lister, fake.NewClientBuilder().WithScheme(s).Build(), cfg)
+
+	require.Len(t, list.Items, 1, "UI-only export with no schemas but established identityHash should appear in Marketplace")
+}
+
+func TestMarketplace_UnestablishedExportSkipped(t *testing.T) {
+	cfg := config.NewServiceConfig()
+	s := marketplaceTestScheme(t)
+
+	unestablishedExport := &kcpapisv1alpha1.APIExport{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        testExportName,
+			Annotations: map[string]string{"kcp.io/cluster": testProviderClusterID},
+			Labels:      map[string]string{cfg.ContentForLabel: testProviderName},
+		},
+		Spec: kcpapisv1alpha1.APIExportSpec{
+			LatestResourceSchemas: []string{"v1.myresources.example.com"},
+		},
+		Status: kcpapisv1alpha1.APIExportStatus{},
+	}
+
+	lister := fake.NewClientBuilder().
+		WithScheme(s).
+		WithObjects(makeProviderMeta(testProviderClusterID), unestablishedExport).
+		Build()
+
+	list := listMarketplace(t, lister, fake.NewClientBuilder().WithScheme(s).Build(), cfg)
+
+	assert.Empty(t, list.Items, "export with schemas but empty identityHash should be skipped")
 }
