@@ -147,26 +147,29 @@ func New(
 			return
 		}
 
-		if !usesServiceAccount {
-			token, ok := utilscontext.GetTokenFromCtx(r.Context())
-			if !ok || token == "" {
-				log.FromContext(r.Context()).V(1).Info("request rejected: no bearer token", "cluster", name)
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
+		if usesServiceAccount {
+			gqlHTTPHandler.ServeHTTP(w, r)
+			return
+		}
 
-			authenticated, err := validator.Validate(r.Context(), token)
-			if err != nil {
-				http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
-				return
-			}
-			if !authenticated {
-				// Verdict details (TokenReview status.error, cache-hit vs fresh)
-				// are logged by the validator.
-				log.FromContext(r.Context()).V(1).Info("request rejected: token failed TokenReview", "cluster", name)
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
+		token, ok := utilscontext.GetTokenFromCtx(r.Context())
+		if !ok || token == "" {
+			log.FromContext(r.Context()).V(1).Info("request rejected: no bearer token", "cluster", name)
+			http.Error(w, "Unauthorized: missing Authorization header", http.StatusUnauthorized)
+			return
+		}
+
+		authenticated, err := validator.Validate(r.Context(), token)
+		if err != nil {
+			http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		if !authenticated {
+			// Verdict details (TokenReview status.error, cache-hit vs fresh)
+			// are logged by the validator.
+			log.FromContext(r.Context()).V(1).Info("request rejected: token failed TokenReview", "cluster", name)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
 		}
 
 		gqlHTTPHandler.ServeHTTP(w, r)
@@ -235,12 +238,6 @@ func (rw *statusResponseWriter) Flush() {
 
 func (e *Endpoint) Name() string {
 	return e.name
-}
-
-// AllowsTokenlessRequests reports whether this endpoint uses its configured
-// ServiceAccount rather than an end-user bearer token.
-func (e *Endpoint) AllowsTokenlessRequests() bool {
-	return e.cluster != nil && e.cluster.UsesServiceAccountForRequests()
 }
 
 func (e *Endpoint) Close() {

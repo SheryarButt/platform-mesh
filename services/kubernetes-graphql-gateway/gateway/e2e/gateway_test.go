@@ -546,8 +546,8 @@ func (suite *GatewayE2ETestSuite) TestTrustedServiceAccountRBACBoundary() {
 // ============================================================================
 
 // TestMissingAuthorizationHeader verifies that a request without an
-// Authorization header is rejected with 401 at the HTTP layer before
-// reaching the gateway.
+// Authorization header is rejected with 401 by the endpoint authentication
+// policy.
 func (suite *GatewayE2ETestSuite) TestMissingAuthorizationHeader() {
 	clusterName := "missing-auth-cluster"
 	metadata := suite.buildClusterMetadata(pmgatewayv1alpha1.AuthTypeKubeconfig)
@@ -567,6 +567,8 @@ func (suite *GatewayE2ETestSuite) TestMissingAuthorizationHeader() {
 	`, nil, "")
 
 	suite.Equal(401, resp.StatusCode, "missing Authorization header should return 401")
+	suite.Require().NotEmpty(resp.Errors)
+	suite.Contains(resp.Errors[0].Message, "Unauthorized: missing Authorization header")
 }
 
 // TestInvalidToken verifies that a request with a fabricated token that

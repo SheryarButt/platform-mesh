@@ -45,7 +45,6 @@ type ServerConfig struct {
 
 	CORSConfig CORSConfig
 
-	PlaygroundEnabled        bool
 	MaxRequestBodyBytes      int64
 	MaxInFlightRequests      int
 	MaxInFlightSubscriptions int
@@ -72,10 +71,6 @@ type Server struct {
 	Server *http.Server
 }
 
-type tokenlessRequestPolicy interface {
-	AllowsTokenlessRequests(clusterName string) bool
-}
-
 // NewServer creates a new HTTP server with the provided configuration
 // It main server, used to serve the GraphQL API, health checks, and metrics
 func NewServer(c ServerConfig) (*Server, error) {
@@ -91,21 +86,7 @@ func NewServer(c ServerConfig) (*Server, error) {
 
 		clusterName := r.PathValue("clusterName")
 
-		// Allow unauthenticated GET requests through to the playground handler.
-		if c.PlaygroundEnabled && r.Method == http.MethodGet {
-			ctx := utilscontext.SetCluster(r.Context(), clusterName)
-			queryHandler.ServeHTTP(w, r.WithContext(ctx))
-			return
-		}
-
 		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			policy, ok := c.Gateway.(tokenlessRequestPolicy)
-			if !ok || !policy.AllowsTokenlessRequests(clusterName) {
-				http.Error(w, "Unauthorized: missing Authorization header", http.StatusUnauthorized)
-				return
-			}
-		}
 		if authHeader != "" && !strings.HasPrefix(authHeader, "Bearer ") {
 			http.Error(w, "Unauthorized: invalid Authorization header format", http.StatusUnauthorized)
 			return

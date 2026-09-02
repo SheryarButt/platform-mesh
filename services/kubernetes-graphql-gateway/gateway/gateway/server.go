@@ -128,12 +128,6 @@ func (s *Service) Registry() *registry.Registry {
 	return s.registry
 }
 
-// AllowsTokenlessRequests reports whether the named endpoint uses its
-// configured ServiceAccount instead of an end-user bearer token.
-func (s *Service) AllowsTokenlessRequests(clusterName string) bool {
-	return s.registry.AllowsTokenlessRequests(clusterName)
-}
-
 // WaitForReady blocks until the gateway service has started or the context is cancelled.
 func (s *Service) WaitForReady(ctx context.Context) error {
 	select {

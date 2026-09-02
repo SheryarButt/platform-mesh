@@ -111,12 +111,3 @@ func (r *Registry) GetEndpoint(name string) (*endpoint.Endpoint, bool) {
 	ep, exists := r.endpoints[name]
 	return ep, exists
 }
-
-// AllowsTokenlessRequests reports whether an endpoint is configured to use its
-// ServiceAccount identity for incoming requests.
-func (r *Registry) AllowsTokenlessRequests(name string) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	ep, exists := r.endpoints[name]
-	return exists && ep.AllowsTokenlessRequests()
-}

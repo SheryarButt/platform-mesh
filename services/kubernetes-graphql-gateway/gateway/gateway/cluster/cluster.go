@@ -35,11 +35,10 @@ import (
 )
 
 type Cluster struct {
-	name                string
-	client              ctrlruntimeclient.WithWatch
-	restCfg             *rest.Config
-	adminCfg            *rest.Config
-	requestIdentityMode pmgatewayv1alpha1.RequestIdentityMode
+	name     string
+	client   ctrlruntimeclient.WithWatch
+	restCfg  *rest.Config
+	adminCfg *rest.Config
 }
 
 type Options struct {
@@ -64,10 +63,7 @@ func New(
 		return nil, fmt.Errorf("cluster %s requires ServiceAccount credentials for serviceAccount request identity", name)
 	}
 
-	cluster := &Cluster{
-		name:                name,
-		requestIdentityMode: metadata.RequestIdentityMode,
-	}
+	cluster := &Cluster{name: name}
 
 	var err error
 	cluster.restCfg, err = pmgatewayv1alpha1.BuildRestConfigFromMetadata(*metadata)
@@ -144,12 +140,6 @@ func (c *Cluster) RestConfig() *rest.Config {
 // suitable for privileged API calls like TokenReview.
 func (c *Cluster) AdminConfig() *rest.Config {
 	return rest.CopyConfig(c.adminCfg)
-}
-
-// UsesServiceAccountForRequests reports whether all data-plane requests use
-// the static ServiceAccount credential from ClusterAccess metadata.
-func (c *Cluster) UsesServiceAccountForRequests() bool {
-	return c.requestIdentityMode == pmgatewayv1alpha1.RequestIdentityModeServiceAccount
 }
 
 func (c *Cluster) Close() {
