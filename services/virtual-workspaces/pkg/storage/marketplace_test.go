@@ -95,7 +95,7 @@ func makeExport(cfg config.ServiceConfig, name, clusterID, provider string) *kcp
 				},
 			}},
 		},
-		Status: kcpapisv1alpha1.APIExportStatus{
+		Status: kcpapisv1alpha2.APIExportStatus{
 			IdentityHash: "testhash-" + name,
 		},
 	}
@@ -263,14 +263,14 @@ func TestMarketplace_UIOnlyExportWithNoSchemas(t *testing.T) {
 	cfg := config.NewServiceConfig()
 	s := marketplaceTestScheme(t)
 
-	uiOnlyExport := &kcpapisv1alpha1.APIExport{
+	uiOnlyExport := &kcpapisv1alpha2.APIExport{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        testExportName,
 			Annotations: map[string]string{"kcp.io/cluster": testProviderClusterID},
 			Labels:      map[string]string{cfg.ContentForLabel: testProviderName},
 		},
-		Spec: kcpapisv1alpha1.APIExportSpec{},
-		Status: kcpapisv1alpha1.APIExportStatus{
+		Spec: kcpapisv1alpha2.APIExportSpec{},
+		Status: kcpapisv1alpha2.APIExportStatus{
 			IdentityHash: "testhash-ui-only",
 		},
 	}
@@ -289,16 +289,23 @@ func TestMarketplace_UnestablishedExportSkipped(t *testing.T) {
 	cfg := config.NewServiceConfig()
 	s := marketplaceTestScheme(t)
 
-	unestablishedExport := &kcpapisv1alpha1.APIExport{
+	unestablishedExport := &kcpapisv1alpha2.APIExport{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        testExportName,
 			Annotations: map[string]string{"kcp.io/cluster": testProviderClusterID},
 			Labels:      map[string]string{cfg.ContentForLabel: testProviderName},
 		},
-		Spec: kcpapisv1alpha1.APIExportSpec{
-			LatestResourceSchemas: []string{"v1.myresources.example.com"},
+		Spec: kcpapisv1alpha2.APIExportSpec{
+			Resources: []kcpapisv1alpha2.ResourceSchema{{
+				Name:   "myresources",
+				Group:  "example.com",
+				Schema: "v1.myresources.example.com",
+				Storage: kcpapisv1alpha2.ResourceSchemaStorage{
+					CRD: &kcpapisv1alpha2.ResourceSchemaStorageCRD{},
+				},
+			}},
 		},
-		Status: kcpapisv1alpha1.APIExportStatus{},
+		Status: kcpapisv1alpha2.APIExportStatus{},
 	}
 
 	lister := fake.NewClientBuilder().
