@@ -11,7 +11,7 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.69.0
 	go.platform-mesh.io/apis v0.0.3
 	go.platform-mesh.io/golang-commons v0.18.1
-	google.golang.org/grpc v1.82.1
+	google.golang.org/grpc v1.83.1
 	k8s.io/apimachinery v0.36.3
 	k8s.io/client-go v0.36.3
 )
