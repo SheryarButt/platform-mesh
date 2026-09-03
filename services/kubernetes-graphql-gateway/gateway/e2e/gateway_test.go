@@ -230,15 +230,7 @@ func (suite *GatewayE2ETestSuite) createTestNamespace() {
 
 // generateTestToken creates a service account and generates a token for testing
 func (suite *GatewayE2ETestSuite) generateTestToken() {
-	// Create ServiceAccount
-	sa := &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-sa",
-			Namespace: testNamespace,
-		},
-	}
-	err := suite.client.Create(suite.T().Context(), sa)
-	suite.Require().NoError(err, "failed to create service account")
+	suite.testToken = suite.createServiceAccountToken("test-sa")
 
 	// Grant cluster-admin role
 	binding := &rbacv1.ClusterRoleBinding{
@@ -258,10 +250,20 @@ func (suite *GatewayE2ETestSuite) generateTestToken() {
 			},
 		},
 	}
-	err = suite.client.Create(suite.T().Context(), binding)
+	err := suite.client.Create(suite.T().Context(), binding)
 	suite.Require().NoError(err, "failed to create cluster role binding")
+}
 
-	// Generate token
+func (suite *GatewayE2ETestSuite) createServiceAccountToken(name string) string {
+	sa := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: testNamespace,
+		},
+	}
+	err := suite.client.Create(suite.T().Context(), sa)
+	suite.Require().NoError(err, "failed to create service account")
+
 	tokenRequest := &authenticationv1.TokenRequest{
 		Spec: authenticationv1.TokenRequestSpec{
 			ExpirationSeconds: ptr.To[int64](3600),
@@ -271,7 +273,7 @@ func (suite *GatewayE2ETestSuite) generateTestToken() {
 	err = suite.client.SubResource("token").Create(suite.T().Context(), sa, tokenRequest)
 	suite.Require().NoError(err, "failed to create token request")
 
-	suite.testToken = tokenRequest.Status.Token
+	return tokenRequest.Status.Token
 }
 
 // generateSchema uses the real listener reconciler to generate a schema
@@ -478,13 +480,74 @@ func (suite *GatewayE2ETestSuite) TestServiceAccountAuth() {
 	suite.Empty(resp.Errors, "expected no errors, got: %v", resp.Errors)
 }
 
+// TestTrustedServiceAccountAuth verifies that an explicitly trusted endpoint
+// accepts tokenless requests and always uses its configured ServiceAccount,
+// even when the caller supplies a different bearer token.
+func (suite *GatewayE2ETestSuite) TestTrustedServiceAccountAuth() {
+	clusterName := "trusted-serviceaccount-test-cluster"
+	metadata := suite.buildClusterMetadata(pmgatewayv1alpha1.AuthTypeServiceAccount)
+	metadata.RequestIdentityMode = pmgatewayv1alpha1.RequestIdentityModeServiceAccount
+
+	suite.generateSchema(clusterName, metadata)
+	suite.waitForSchemaLoaded(clusterName)
+
+	query := `
+		query {
+			v1 {
+				Namespaces {
+					items {
+						metadata { name }
+					}
+				}
+			}
+		}
+	`
+
+	resp := suite.executeGraphQLQuery(clusterName, query, nil, "")
+	suite.Equal(200, resp.StatusCode)
+	suite.Empty(resp.Errors, "expected tokenless request to use the configured ServiceAccount: %v", resp.Errors)
+
+	resp = suite.executeGraphQLQuery(clusterName, query, nil, "caller-token-must-not-be-forwarded")
+	suite.Equal(200, resp.StatusCode)
+	suite.Empty(resp.Errors, "expected caller token to be ignored in ServiceAccount mode: %v", resp.Errors)
+}
+
+// TestTrustedServiceAccountRBACBoundary verifies that a valid, privileged caller
+// token cannot expand the permissions of the configured ServiceAccount.
+func (suite *GatewayE2ETestSuite) TestTrustedServiceAccountRBACBoundary() {
+	clusterName := "trusted-limited-serviceaccount-test-cluster"
+	limitedToken := suite.createServiceAccountToken("trusted-limited-sa")
+	metadata := suite.buildClusterMetadata(pmgatewayv1alpha1.AuthTypeServiceAccount)
+	metadata.RequestIdentityMode = pmgatewayv1alpha1.RequestIdentityModeServiceAccount
+	metadata.Auth.Token = base64.StdEncoding.EncodeToString([]byte(limitedToken))
+	metadata.Auth.SAName = "trusted-limited-sa"
+
+	suite.generateSchema(clusterName, metadata)
+	suite.waitForSchemaLoaded(clusterName)
+
+	resp := suite.executeGraphQLQuery(clusterName, `
+		query {
+			v1 {
+				Namespaces {
+					items { metadata { name } }
+				}
+			}
+		}
+	`, nil, suite.testToken)
+
+	suite.Equal(200, resp.StatusCode)
+	suite.NotEmpty(resp.Errors, "expected configured ServiceAccount RBAC to deny the request")
+	suite.Contains(resp.Errors[0].Message, "namespaces is forbidden")
+	suite.Contains(resp.Errors[0].Message, "system:serviceaccount:"+testNamespace+":trusted-limited-sa")
+}
+
 // ============================================================================
 // Token Validation Tests (TokenReview middleware)
 // ============================================================================
 
 // TestMissingAuthorizationHeader verifies that a request without an
-// Authorization header is rejected with 401 at the HTTP layer before
-// reaching the gateway.
+// Authorization header is rejected with 401 by the endpoint authentication
+// policy.
 func (suite *GatewayE2ETestSuite) TestMissingAuthorizationHeader() {
 	clusterName := "missing-auth-cluster"
 	metadata := suite.buildClusterMetadata(pmgatewayv1alpha1.AuthTypeKubeconfig)
@@ -504,6 +567,8 @@ func (suite *GatewayE2ETestSuite) TestMissingAuthorizationHeader() {
 	`, nil, "")
 
 	suite.Equal(401, resp.StatusCode, "missing Authorization header should return 401")
+	suite.Require().NotEmpty(resp.Errors)
+	suite.Contains(resp.Errors[0].Message, "Unauthorized: missing Authorization header")
 }
 
 // TestInvalidToken verifies that a request with a fabricated token that

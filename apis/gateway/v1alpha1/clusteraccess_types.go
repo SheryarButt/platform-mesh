@@ -34,8 +34,19 @@ type ClusterAccess struct {
 	Status ClusterAccessStatus `json:"status,omitempty"`
 }
 
+// RequestIdentityMode selects the identity used for gateway requests.
+type RequestIdentityMode string
+
+const (
+	// RequestIdentityModeUserToken validates and forwards the caller's bearer token.
+	RequestIdentityModeUserToken RequestIdentityMode = "userToken"
+	// RequestIdentityModeServiceAccount uses the ClusterAccess ServiceAccount for every request.
+	RequestIdentityModeServiceAccount RequestIdentityMode = "serviceAccount"
+)
+
 // ClusterAccessSpec defines the desired state of ClusterAccess
 // +kubebuilder:validation:XValidation:rule="has(self.host) || (has(self.auth) && has(self.auth.kubeconfigSecretRef))",message="host is required unless kubeconfigSecretRef auth is used"
+// +kubebuilder:validation:XValidation:rule="!has(self.requestIdentityMode) || self.requestIdentityMode != 'serviceAccount' || (has(self.auth) && has(self.auth.serviceAccountRef))",message="requestIdentityMode serviceAccount requires auth.serviceAccountRef"
 type ClusterAccessSpec struct {
 	// Path is an optional field. If not set, the name of the resource is used
 	// +optional
@@ -63,6 +74,14 @@ type ClusterAccessSpec struct {
 	// Auth configuration for the cluster
 	// +optional
 	Auth *AuthConfig `json:"auth,omitempty"`
+
+	// RequestIdentityMode controls which identity the gateway uses for
+	// Kubernetes requests. When omitted or set to userToken, the gateway requires,
+	// validates, and forwards the caller's bearer token. serviceAccount accepts
+	// tokenless requests and always uses auth.serviceAccountRef instead.
+	// +kubebuilder:validation:Enum=userToken;serviceAccount
+	// +optional
+	RequestIdentityMode RequestIdentityMode `json:"requestIdentityMode,omitempty"`
 }
 
 // CAConfig defines CA configuration options

@@ -174,6 +174,34 @@ The `ClusterAccess` CRD supports four authentication methods (mutually exclusive
 
 Optionally set `ca.secretRef` for custom CA certificates.
 
+### Trusted ServiceAccount Requests
+
+By default, every GraphQL request requires an end-user bearer token. The
+gateway validates it with Kubernetes TokenReview and forwards that identity to
+the target API server.
+
+For endpoints protected by an external trust boundary such as mTLS at the
+ingress or service mesh, a `ClusterAccess` can explicitly use its configured
+ServiceAccount for every request:
+
+```yaml
+spec:
+  requestIdentityMode: serviceAccount
+  auth:
+    serviceAccountRef:
+      name: graphql-gateway
+      namespace: graphql-gateway
+```
+
+In this mode, requests do not need an `Authorization` header, TokenReview is
+skipped, and a caller-supplied bearer token never changes the Kubernetes
+identity. Kubernetes RBAC on the ServiceAccount authorizes queries, mutations,
+and subscriptions. Keep its permissions least-privileged and expose this
+endpoint only behind the external trust boundary; the gateway does not
+establish or verify that boundary.
+
+See `config/examples/clusteraccess-serviceaccount.yaml` for a read-only example.
+
 ## Configuration Reference
 
 ### Gateway Flags

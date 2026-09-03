@@ -45,7 +45,6 @@ type ServerConfig struct {
 
 	CORSConfig CORSConfig
 
-	PlaygroundEnabled        bool
 	MaxRequestBodyBytes      int64
 	MaxInFlightRequests      int
 	MaxInFlightSubscriptions int
@@ -87,29 +86,21 @@ func NewServer(c ServerConfig) (*Server, error) {
 
 		clusterName := r.PathValue("clusterName")
 
-		// Allow unauthenticated GET requests through to the playground handler.
-		if c.PlaygroundEnabled && r.Method == http.MethodGet {
-			ctx := utilscontext.SetCluster(r.Context(), clusterName)
-			queryHandler.ServeHTTP(w, r.WithContext(ctx))
-			return
-		}
-
 		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "Unauthorized: missing Authorization header", http.StatusUnauthorized)
-			return
-		}
-		if !strings.HasPrefix(authHeader, "Bearer ") {
+		if authHeader != "" && !strings.HasPrefix(authHeader, "Bearer ") {
 			http.Error(w, "Unauthorized: invalid Authorization header format", http.StatusUnauthorized)
 			return
 		}
 		token := strings.TrimPrefix(authHeader, "Bearer ")
-		if token == "" {
+		if authHeader != "" && token == "" {
 			http.Error(w, "Unauthorized: empty bearer token", http.StatusUnauthorized)
 			return
 		}
 
-		ctx := utilscontext.SetToken(r.Context(), token)
+		ctx := r.Context()
+		if token != "" {
+			ctx = utilscontext.SetToken(ctx, token)
+		}
 		ctx = utilscontext.SetCluster(ctx, clusterName)
 
 		// Route to separate timeout/concurrency pools; the endpoint layer
