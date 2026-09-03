@@ -277,15 +277,35 @@ func TestDeniedVerdictIsLogged(t *testing.T) {
 	assert.Contains(t, joined, "cached", "cached denial must be distinguishable from a fresh review")
 }
 
+func TestStaleCacheMissUsesCachedVerdict(t *testing.T) {
+	var calls atomic.Int32
+	v := NewTokenReviewValidatorFromClientset(fakeClientset(true, &calls, nil), 5*time.Minute)
+	const token = "stale-miss-token"
+
+	ok, err := v.Validate(t.Context(), token)
+	assert.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, int32(1), calls.Load())
+
+	// Simulate a caller that observed a cache miss before the first validation
+	// populated the cache, but reached singleflight only after it completed.
+	ok, err = v.validateAfterCacheMiss(t.Context(), token, hashToken(token))
+	assert.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, int32(1), calls.Load(), "stale cache miss should not trigger another TokenReview")
+}
+
 func TestConcurrentValidation(t *testing.T) {
 	var calls atomic.Int32
 	v := NewTokenReviewValidatorFromClientset(fakeClientset(true, &calls, nil), 5*time.Minute)
 
 	const goroutines = 20
 	errCh := make(chan error, goroutines)
+	start := make(chan struct{})
 
 	for range goroutines {
 		go func() {
+			<-start
 			ok, err := v.Validate(t.Context(), "concurrent-token")
 			if err != nil {
 				errCh <- err
@@ -298,12 +318,13 @@ func TestConcurrentValidation(t *testing.T) {
 			errCh <- nil
 		}()
 	}
+	close(start)
 
 	for range goroutines {
 		assert.NoError(t, <-errCh)
 	}
 
-	// singleflight deduplicates concurrent in-flight calls for the same key,
-	// so we expect exactly 1 API call (all goroutines share the result).
-	assert.Equal(t, int32(1), calls.Load(), "singleflight should deduplicate concurrent calls")
+	// The cache recheck inside singleflight covers callers that observed the
+	// initial cache miss but arrive after the first flight has completed.
+	assert.Equal(t, int32(1), calls.Load(), "concurrent calls should share one TokenReview")
 }
