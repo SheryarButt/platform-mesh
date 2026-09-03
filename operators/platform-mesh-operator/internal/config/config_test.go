@@ -50,6 +50,8 @@ func TestNewOperatorConfig(t *testing.T) {
 	assert.Equal(t, "root:platform-mesh-system", cfg.Providers.ProvidersAPIExportEndpointSliceWorkspace)
 	assert.True(t, cfg.Subroutines.Provider.Workspace.Enabled)
 	assert.True(t, cfg.Subroutines.Provider.Kubeconfig.Enabled)
+
+	assert.Equal(t, "email", cfg.IDP.UserClaim)
 }
 
 func TestOperatorConfigAddFlags(t *testing.T) {
@@ -68,6 +70,7 @@ func TestOperatorConfigAddFlags(t *testing.T) {
 		"--idp-registration-allowed=true",
 		"--idp-welcome-additional-redirect-uris=https://extra.example.com/callback,https://other.example.com/callback",
 		"--idp-welcome-additional-post-logout-redirect-uris=https://extra.example.com/logout",
+		"--user-claim=sub",
 		"--subroutines-deployment-enabled=false",
 		"--authorization-webhook-secret-name=authz-secret",
 		"--authorization-webhook-secret-ca-name=authz-ca",
@@ -91,6 +94,7 @@ func TestOperatorConfigAddFlags(t *testing.T) {
 	assert.True(t, cfg.IDP.RegistrationAllowed)
 	assert.Equal(t, []string{"https://extra.example.com/callback", "https://other.example.com/callback"}, cfg.IDP.WelcomeAdditionalRedirectUris)
 	assert.Equal(t, []string{"https://extra.example.com/logout"}, cfg.IDP.WelcomeAdditionalPostLogoutRedirectUris)
+	assert.Equal(t, "sub", cfg.IDP.UserClaim)
 
 	assert.False(t, cfg.Subroutines.Deployment.Enabled)
 	assert.Equal(t, "authz-secret", cfg.Subroutines.Deployment.AuthorizationWebhookSecretName)

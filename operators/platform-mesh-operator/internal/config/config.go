@@ -31,6 +31,7 @@ type IDPConfig struct {
 	RegistrationAllowed                     bool
 	WelcomeAdditionalRedirectUris           []string
 	WelcomeAdditionalPostLogoutRedirectUris []string
+	UserClaim                               string
 }
 
 type DeploymentSubroutineConfig struct {
@@ -115,6 +116,9 @@ func NewOperatorConfig() OperatorConfig {
 			FrontProxyPort:         "8443",
 			ClusterAdminSecretName: "kcp-cluster-admin-client-cert",
 		},
+		IDP: IDPConfig{
+			UserClaim: "email",
+		},
 		Providers: NewProvidersConfig(),
 		Subroutines: SubroutinesConfig{
 			Deployment: DeploymentSubroutineConfig{
@@ -165,6 +169,7 @@ func (c *OperatorConfig) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&c.IDP.RegistrationAllowed, "idp-registration-allowed", c.IDP.RegistrationAllowed, "Allow IDP registration")
 	fs.StringSliceVar(&c.IDP.WelcomeAdditionalRedirectUris, "idp-welcome-additional-redirect-uris", c.IDP.WelcomeAdditionalRedirectUris, "Additional redirect URIs for the welcome client (comma-separated)")
 	fs.StringSliceVar(&c.IDP.WelcomeAdditionalPostLogoutRedirectUris, "idp-welcome-additional-post-logout-redirect-uris", c.IDP.WelcomeAdditionalPostLogoutRedirectUris, "Additional post-logout redirect URIs for the welcome client (comma-separated)")
+	fs.StringVar(&c.IDP.UserClaim, "user-claim", c.IDP.UserClaim, "Set the ID token user claim for workspace authentication")
 
 	fs.BoolVar(&c.Subroutines.Deployment.Enabled, "subroutines-deployment-enabled", c.Subroutines.Deployment.Enabled, "Enable deployment subroutine")
 	fs.StringVar(&c.Subroutines.Deployment.AuthorizationWebhookSecretName, "authorization-webhook-secret-name", c.Subroutines.Deployment.AuthorizationWebhookSecretName, "Authorization webhook secret name")
