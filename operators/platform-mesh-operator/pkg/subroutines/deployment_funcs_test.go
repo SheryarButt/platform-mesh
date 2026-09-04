@@ -901,9 +901,9 @@ func (s *TemplateVarsTestSuite) Test_buildComponentsTemplateVars_BaseDomainWithD
 	result, err := sub.buildComponentsTemplateVars(context.Background(), inst, apiextensionsv1.JSON{})
 
 	s.Require().NoError(err)
-	s.Equal("443", result["port"])
-	// When port is 443, baseDomainWithPort should equal baseDomain
-	s.Equal("my.domain.com", result["baseDomainWithPort"])
+	s.Equal("8443", result["port"])
+	// When port is 8443 (non-standard), baseDomainWithPort includes the port
+	s.Equal("my.domain.com:8443", result["baseDomainWithPort"])
 }
 
 // ---- loadProfileSections tests ----

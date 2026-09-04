@@ -18,7 +18,6 @@ package subroutines
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"time"
 
@@ -174,14 +173,10 @@ func (r *FeatureToggleSubroutine) applyKcpManifests(
 
 	dir := r.workspaceDirectory + kcpDir
 
-	baseDomain, baseDomainPort, port, protocol := baseDomainPortProtocol(inst)
-	tplValues := map[string]any{
-		"baseDomain":     baseDomain,
-		"protocol":       protocol,
-		"port":           fmt.Sprintf("%d", port),
-		"baseDomainPort": baseDomainPort,
+	tplValues := make(map[string]any)
+	for k, v := range getExposureParams(inst).templateVars(operatorCfg.KCP) {
+		tplValues[k] = v
 	}
-
 	err = ApplyDirStructure(ctx, dir, "root", cfg, tplValues, inst, r.kcpHelper)
 	if err != nil {
 		log.Err(err).Msg("Failed to apply dir structure")
