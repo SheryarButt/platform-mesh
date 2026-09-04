@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	kcpapisv1alpha1 "github.com/kcp-dev/sdk/apis/apis/v1alpha1"
+	kcpapisv1alpha2 "github.com/kcp-dev/sdk/apis/apis/v1alpha2"
 )
 
 // TestTypeConflictBetweenRGDs covers two RGDs in one workspace claiming the same composite
@@ -71,7 +72,7 @@ func TestTypeConflictBetweenRGDs(t *testing.T) {
 	require.NotNil(t, kindReady.Message)
 	require.Contains(t, *kindReady.Message, "alpha", "the message must name the RGD holding the type")
 
-	export := &kcpapisv1alpha1.APIExport{}
+	export := &kcpapisv1alpha2.APIExport{}
 	require.True(t, apierrors.IsNotFound(
 		c.Client.Get(ctx, types.NamespacedName{Name: "kro-beta"}, export)),
 		"the refused RGD must not publish an APIExport")

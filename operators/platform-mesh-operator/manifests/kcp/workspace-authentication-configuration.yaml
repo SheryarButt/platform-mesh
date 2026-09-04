@@ -38,9 +38,9 @@ spec:
           prefix: ""
         username:
       {{- if eq .featureDisableEmailVerification "true" }}
-          expression: claims.email
+          expression: claims.{{ .userClaim }}
       {{- else }}
-          claim: email
+          claim: {{ .userClaim }}
           prefix: ""
       {{- end }}
       {{- if eq .featureDisableEmailVerification "true" }}

@@ -17,12 +17,46 @@ limitations under the License.
 package cluster
 
 import (
+	"strings"
 	"testing"
 
 	pmgatewayv1alpha1 "go.platform-mesh.io/apis/gateway/v1alpha1"
 
 	"k8s.io/client-go/rest"
 )
+
+func TestNewRejectsServiceAccountModeWithoutServiceAccountCredentials(t *testing.T) {
+	tests := []struct {
+		name string
+		auth *pmgatewayv1alpha1.AuthMetadata
+	}{
+		{name: "missing auth"},
+		{
+			name: "wrong auth type",
+			auth: &pmgatewayv1alpha1.AuthMetadata{
+				Type:  pmgatewayv1alpha1.AuthTypeToken,
+				Token: "dG9rZW4=",
+			},
+		},
+		{
+			name: "empty service account token",
+			auth: &pmgatewayv1alpha1.AuthMetadata{Type: pmgatewayv1alpha1.AuthTypeServiceAccount},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := New(t.Context(), "trusted", &pmgatewayv1alpha1.ClusterMetadata{
+				Host:                "https://localhost:6443",
+				RequestIdentityMode: pmgatewayv1alpha1.RequestIdentityModeServiceAccount,
+				Auth:                tt.auth,
+			}, Options{})
+			if err == nil || !strings.Contains(err.Error(), "requires ServiceAccount credentials") {
+				t.Fatalf("New() error = %v, want missing ServiceAccount credentials error", err)
+			}
+		})
+	}
+}
 
 // buildRestCfg calls BuildRestConfigFromMetadata with a minimal valid metadata,
 // then applies Options the same way cluster.New does — without the full

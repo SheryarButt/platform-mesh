@@ -76,26 +76,34 @@ func generateSchemaWithMetadata(
 
 	// Parse the existing schema JSON and inject cluster metadata if provided
 	if metadata != nil {
-		// TODO: This is ugly! Improve in future.
-		var schemaJSON map[string]any
-		if err := json.Unmarshal(rawSchema, &schemaJSON); err != nil {
-			return nil, fmt.Errorf("failed to parse schema JSON: %w", err)
-		}
-
-		data, err := json.Marshal(metadata)
+		rawSchema, err = InjectClusterMetadataIntoSchema(rawSchema, metadata)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal cluster metadata: %w", err)
+			return nil, fmt.Errorf("failed to inject metadata: %w", err)
 		}
-		// marshal metadata into map[string]any
-		var metadataMap map[string]any
-		if err := json.Unmarshal(data, &metadataMap); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal cluster metadata: %w", err)
-		}
-
-		// Inject the metadata into the schema
-		schemaJSON["x-cluster-metadata"] = metadataMap
-		return json.Marshal(schemaJSON)
 	}
 
 	return rawSchema, nil
+}
+
+func InjectClusterMetadataIntoSchema(schemaJSON []byte, metadata *pmgatewayv1alpha1.ClusterMetadata) ([]byte, error) {
+	var enhanced pmgatewayv1alpha1.Schema
+	if err := json.Unmarshal(schemaJSON, &enhanced); err != nil {
+		return nil, fmt.Errorf("failed to parse schema JSON: %w", err)
+	}
+	enhanced.ClusterMetadata = metadata
+
+	return json.Marshal(enhanced)
+}
+
+func ExtractClusterMetadataFromSchema(schemaJSON []byte) (*pmgatewayv1alpha1.ClusterMetadata, error) {
+	var enhanced pmgatewayv1alpha1.Schema
+	if err := json.Unmarshal(schemaJSON, &enhanced); err != nil {
+		return nil, fmt.Errorf("failed to parse schema JSON: %w", err)
+	}
+
+	if enhanced.ClusterMetadata == nil {
+		return nil, fmt.Errorf("schema does not contain cluster metadata")
+	}
+
+	return enhanced.ClusterMetadata, nil
 }

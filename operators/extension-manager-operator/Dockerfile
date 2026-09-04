@@ -19,7 +19,8 @@
 # repository-root go.work file and the go.mod replace directives, so the
 # workspace and those module sources must be present in the build:
 #   docker build -f operators/extension-manager-operator/Dockerfile .
-FROM --platform=$BUILDPLATFORM golang:1.26.4-bookworm@sha256:5f68ec6805843bd3981a951ffada82a26a0bd2631045c8f7dba483fa868f5ec5 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.7@sha256:dc2521c2a906db43073b8b4d99f491b6341cf15610b6ebbab187c45153f9959e AS builder
+ARG TARGETOS
 ARG TARGETARCH
 
 WORKDIR /workspace
@@ -49,7 +50,7 @@ WORKDIR /workspace/operators/extension-manager-operator
 RUN go mod download
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags '-w -s' -o /workspace/manager main.go
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags '-w -s' -o /workspace/manager main.go
 
 FROM scratch
 COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo

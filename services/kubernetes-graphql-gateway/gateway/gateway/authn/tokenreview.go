@@ -123,25 +123,48 @@ func NewTokenReviewValidatorFromClientset(cs kubernetes.Interface, cacheTTL time
 	}
 }
 
-func (v *TokenReviewValidator) Validate(ctx context.Context, token string) (bool, error) {
-	key := hashToken(token)
-	if v.cache != nil {
-		if item := v.cache.Get(key); item != nil {
-			if v.metrics != nil {
-				labelResult := metrics.ResultDenied
-				if item.Value() {
-					labelResult = metrics.ResultAllowed
-				}
-				v.metrics.RecordCacheHit(labelResult)
-			}
-			if !item.Value() {
-				log.FromContext(ctx).V(1).Info("token denied (cached TokenReview verdict)")
-			}
-			return item.Value(), nil
-		}
+func (v *TokenReviewValidator) cachedVerdict(ctx context.Context, key string) (bool, bool) {
+	if v.cache == nil {
+		return false, false
 	}
 
+	item := v.cache.Get(key)
+	if item == nil {
+		return false, false
+	}
+
+	authenticated := item.Value()
+	if v.metrics != nil {
+		labelResult := metrics.ResultDenied
+		if authenticated {
+			labelResult = metrics.ResultAllowed
+		}
+		v.metrics.RecordCacheHit(labelResult)
+	}
+	if !authenticated {
+		log.FromContext(ctx).V(1).Info("token denied (cached TokenReview verdict)")
+	}
+	return authenticated, true
+}
+
+func (v *TokenReviewValidator) Validate(ctx context.Context, token string) (bool, error) {
+	key := hashToken(token)
+	if result, ok := v.cachedVerdict(ctx, key); ok {
+		return result, nil
+	}
+
+	return v.validateAfterCacheMiss(ctx, token, key)
+}
+
+func (v *TokenReviewValidator) validateAfterCacheMiss(ctx context.Context, token, key string) (bool, error) {
 	result, err, _ := v.inflight.Do(key, func() (any, error) {
+		// A caller can observe a cache miss and then reach singleflight after a
+		// previous flight has populated the cache and completed. Recheck here so
+		// that stale miss does not trigger another TokenReview API call.
+		if result, ok := v.cachedVerdict(ctx, key); ok {
+			return result, nil
+		}
+
 		start := time.Now()
 		tr, err := v.clientset.AuthenticationV1().TokenReviews().Create(ctx, &authenticationv1.TokenReview{
 			Spec: authenticationv1.TokenReviewSpec{Token: token},

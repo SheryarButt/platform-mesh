@@ -651,6 +651,8 @@ users:
 }
 
 func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
+	ctx := s.T().Context()
+
 	// mocks
 	mockKcpClient := new(mocks.Client)
 	mockedKcpHelper := new(mocks.KcpHelper)
@@ -676,7 +678,7 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 			return errors.New("error")
 		}).Once()
 
-	inventory, err := s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
+	inventory, err := s.testObj.GetAPIExportHashInventory(ctx, &rest.Config{})
 	s.Assert().Error(err)
 	s.Assert().Equal(map[string]string{
 		"apiExportRootTenancyKcpIoIdentityHash": "hash1",
@@ -697,7 +699,7 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 			return errors.New("error")
 		}).Once()
 
-	inventory, err = s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
+	inventory, err = s.testObj.GetAPIExportHashInventory(ctx, &rest.Config{})
 	s.Assert().Error(err)
 	s.Assert().Equal(map[string]string{
 		"apiExportRootTenancyKcpIoIdentityHash": "hash1",
@@ -711,14 +713,14 @@ func (s *KcpsetupTestSuite) Test_getAPIExportHashInventory() {
 			return errors.New("error")
 		}).Once()
 
-	inventory, err = s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
+	inventory, err = s.testObj.GetAPIExportHashInventory(ctx, &rest.Config{})
 	s.Assert().Error(err)
 	s.Assert().Equal(map[string]string{}, inventory)
 
 	// test error 4
 	mockedKcpHelper.EXPECT().NewKcpClient(mock.Anything, mock.Anything).
 		Return(nil, errors.New("Error")).Once()
-	inventory, err = s.testObj.GetAPIExportHashInventory(context.TODO(), &rest.Config{})
+	inventory, err = s.testObj.GetAPIExportHashInventory(ctx, &rest.Config{})
 	s.Assert().Error(err)
 	s.Assert().Equal(map[string]string{}, inventory)
 }

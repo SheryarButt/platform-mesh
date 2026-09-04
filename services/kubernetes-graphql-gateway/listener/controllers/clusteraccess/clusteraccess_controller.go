@@ -19,7 +19,6 @@ package clusteraccess
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -39,6 +38,7 @@ import (
 	ctrlruntimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
@@ -47,6 +47,9 @@ import (
 
 const (
 	controllerName = "clusteraccess-schema-controller"
+
+	// SchemaCleanupFinalizer ensures the generated schema is removed before a ClusterAccess is deleted.
+	SchemaCleanupFinalizer = "gateway.platform-mesh.io/schema-cleanup"
 
 	// ConditionTypeReady indicates whether the ClusterAccess schema was
 	// successfully generated and written.
@@ -102,18 +105,44 @@ func (r *ClusterAccessReconciler) Reconcile(ctx context.Context, req mcreconcile
 	if err := c.Get(ctx, ctrlruntimeclient.ObjectKey{Name: req.Name}, ca); err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Info("ClusterAccess resource not found, cleaning up schema", "name", req.Name)
-			// Delete the schema file if ClusterAccess is deleted
-			// Try both possible paths (resource name and path field)
+			// Resources created before the cleanup finalizer was introduced can only
+			// be cleaned up by their object name because spec.path is no longer available.
 			name := req.Name
 			if clusterName != "" {
 				name = fmt.Sprintf("%s-%s", clusterName, name)
 			}
-			if err := r.ioHandler.Delete(ctx, name); err != nil {
-				logger.Error(err, "Failed to cleanup schema")
+			if err := r.ioHandler.Delete(ctx, name); err != nil && !errors.Is(err, schemahandler.ErrNotExist) {
+				return ctrl.Result{}, fmt.Errorf("failed to clean up legacy schema %q: %w", name, err)
 			}
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get ClusterAccess: %w", err)
+	}
+
+	if !ca.DeletionTimestamp.IsZero() {
+		if controllerutil.ContainsFinalizer(ca, SchemaCleanupFinalizer) {
+			schemaPath := resolveSchemaPath(ca, clusterName)
+			if err := r.ioHandler.Delete(ctx, schemaPath); err != nil && !errors.Is(err, schemahandler.ErrNotExist) {
+				return ctrl.Result{}, fmt.Errorf("failed to clean up schema %q: %w", schemaPath, err)
+			}
+
+			patch := ctrlruntimeclient.MergeFrom(ca.DeepCopy())
+			controllerutil.RemoveFinalizer(ca, SchemaCleanupFinalizer)
+			if err := c.Patch(ctx, ca, patch); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to remove schema cleanup finalizer: %w", err)
+			}
+		}
+
+		return ctrl.Result{}, nil
+	}
+
+	if !controllerutil.ContainsFinalizer(ca, SchemaCleanupFinalizer) {
+		patch := ctrlruntimeclient.MergeFrom(ca.DeepCopy())
+		controllerutil.AddFinalizer(ca, SchemaCleanupFinalizer)
+		if err := c.Patch(ctx, ca, patch); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to add schema cleanup finalizer: %w", err)
+		}
+		return ctrl.Result{}, nil
 	}
 
 	result, reconcileErr := r.reconcileClusterAccess(ctx, ca, c, cl.GetConfig(), clusterName)
@@ -136,14 +165,7 @@ func (r *ClusterAccessReconciler) reconcileClusterAccess(
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Determine cluster name/path for the schema file
-	clusterName := ca.GetName()
-	if ca.Spec.Path != "" {
-		clusterName = ca.Spec.Path
-	}
-	if reqClusterName != "" {
-		clusterName = fmt.Sprintf("%s-%s", reqClusterName, clusterName)
-	}
+	clusterName := resolveSchemaPath(ca, reqClusterName)
 
 	// Build target cluster config from ClusterAccess spec
 	targetConfig, err := buildTargetClusterConfig(ctx, *ca, c, currentConfig)
@@ -239,6 +261,17 @@ func (r *ClusterAccessReconciler) SetupWithManager(mgr mcmanager.Manager, forOpt
 		Complete(r)
 }
 
+func resolveSchemaPath(ca *pmgatewayv1alpha1.ClusterAccess, clusterName string) string {
+	name := ca.Name
+	if ca.Spec.Path != "" {
+		name = ca.Spec.Path
+	}
+	if clusterName != "" {
+		return fmt.Sprintf("%s-%s", clusterName, name)
+	}
+	return name
+}
+
 func buildTargetClusterConfig(ctx context.Context, clusterAccess pmgatewayv1alpha1.ClusterAccess, c ctrlruntimeclient.Client, currentConfig *rest.Config) (*rest.Config, error) {
 	spec := clusterAccess.Spec
 
@@ -275,14 +308,7 @@ func injectClusterMetadata(ctx context.Context, schemaData []byte, clusterAccess
 		}
 	}
 
-	var schemaJSON map[string]any
-	if err := json.Unmarshal(schemaData, &schemaJSON); err != nil {
-		return nil, fmt.Errorf("failed to parse schema JSON: %w", err)
-	}
-
-	schemaJSON["x-cluster-metadata"] = metadata
-
-	return json.Marshal(schemaJSON)
+	return reconciler.InjectClusterMetadataIntoSchema(schemaData, metadata)
 }
 
 // restMapperFromConfig creates a REST mapper from a config

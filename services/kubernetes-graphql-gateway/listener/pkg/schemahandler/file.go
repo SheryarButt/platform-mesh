@@ -19,6 +19,7 @@ package schemahandler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -72,7 +73,10 @@ func (h *FileHandler) Write(_ context.Context, JSON []byte, clusterName string) 
 func (h *FileHandler) Delete(_ context.Context, clusterName string) error {
 	fileName := path.Join(h.schemasDir, clusterName)
 	if err := os.Remove(fileName); err != nil {
-		return errors.Join(ErrNotExist, err)
+		if errors.Is(err, os.ErrNotExist) {
+			return errors.Join(ErrNotExist, err)
+		}
+		return fmt.Errorf("failed to delete schema %q: %w", clusterName, err)
 	}
 	return nil
 }

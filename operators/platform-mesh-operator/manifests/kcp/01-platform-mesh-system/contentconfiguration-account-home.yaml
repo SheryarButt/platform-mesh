@@ -35,7 +35,8 @@ spec:
                 "order": 100,
                 "url": "/assets/platform-mesh-portal-ui-wc.js#generic-detail-view",
                 "webcomponent": {
-                  "selfRegistered": true
+                  "selfRegistered": true,
+                  "type": "module"
                 },
                 "defineEntity": {
                     "id": "dashboard"

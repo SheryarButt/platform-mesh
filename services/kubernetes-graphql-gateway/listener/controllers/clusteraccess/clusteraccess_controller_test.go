@@ -17,11 +17,13 @@ limitations under the License.
 package clusteraccess_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -30,11 +32,14 @@ import (
 	pmgatewayv1alpha1 "go.platform-mesh.io/apis/gateway/v1alpha1"
 	"go.platform-mesh.io/kubernetes-graphql-gateway/listener"
 	"go.platform-mesh.io/kubernetes-graphql-gateway/listener/controllers/clusteraccess"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/listener/controllers/reconciler"
 	"go.platform-mesh.io/kubernetes-graphql-gateway/listener/options"
+	"go.platform-mesh.io/kubernetes-graphql-gateway/listener/pkg/schemahandler"
 
 	authenticationv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -51,13 +56,28 @@ import (
 
 const testNamespace = "test-ns"
 
+var errInjectedSchemaDelete = errors.New("injected schema deletion failure")
+
+type controllableSchemaHandler struct {
+	schemahandler.Handler
+	failDelete atomic.Bool
+}
+
+func (h *controllableSchemaHandler) Delete(ctx context.Context, clusterName string) error {
+	if h.failDelete.Load() {
+		return errInjectedSchemaDelete
+	}
+	return h.Handler.Delete(ctx, clusterName)
+}
+
 type ClusterAccessControllerTestSuite struct {
 	suite.Suite
 
-	env         *envtest.Environment
-	listenerCfg *listener.Config
-	cancel      context.CancelFunc
-	client      ctrlruntimeclient.Client
+	env           *envtest.Environment
+	listenerCfg   *listener.Config
+	cancel        context.CancelFunc
+	client        ctrlruntimeclient.Client
+	schemaHandler *controllableSchemaHandler
 
 	// Store envtest credentials for creating test secrets
 	envtestHost       string
@@ -111,11 +131,13 @@ func (suite *ClusterAccessControllerTestSuite) SetupSuite() {
 	listenerConfig, err := listener.NewConfig(completedOpts)
 	suite.Require().NoError(err, "failed to create listener config")
 
+	suite.schemaHandler = &controllableSchemaHandler{Handler: listenerConfig.SchemaHandler}
+
 	r, err := clusteraccess.NewClusterAccessReconciler(
 		suite.T().Context(),
 		listenerConfig.Manager,
 		controller.TypedOptions[mcreconcile.Request]{},
-		listenerConfig.SchemaHandler,
+		suite.schemaHandler,
 	)
 	suite.Require().NoError(err, "failed to create clusteraccess reconciler")
 
@@ -218,32 +240,76 @@ func (suite *ClusterAccessControllerTestSuite) waitForSchemaFile(name string) []
 	return raw
 }
 
+func (suite *ClusterAccessControllerTestSuite) waitForSchemaFileDeleted(name string) {
+	schemaFilePath := filepath.Join(suite.listenerCfg.Options.SchemasDir, name)
+	suite.Eventually(func() bool {
+		_, err := os.Stat(schemaFilePath)
+		return os.IsNotExist(err)
+	}, 10*time.Second, 250*time.Millisecond,
+		"expected schema file to be deleted for %s", name)
+}
+
+func (suite *ClusterAccessControllerTestSuite) waitForClusterAccessDeleted(name string) {
+	suite.Eventually(func() bool {
+		err := suite.client.Get(context.Background(), ctrlruntimeclient.ObjectKey{Name: name}, &pmgatewayv1alpha1.ClusterAccess{})
+		return apierrors.IsNotFound(err)
+	}, 10*time.Second, 250*time.Millisecond,
+		"expected ClusterAccess %s to be deleted", name)
+}
+
+func (suite *ClusterAccessControllerTestSuite) waitForSchemaCleanupFinalizer(name string) *pmgatewayv1alpha1.ClusterAccess {
+	clusterAccess := &pmgatewayv1alpha1.ClusterAccess{}
+	suite.Eventually(func() bool {
+		if err := suite.client.Get(context.Background(), ctrlruntimeclient.ObjectKey{Name: name}, clusterAccess); err != nil {
+			return false
+		}
+		return slices.Contains(clusterAccess.Finalizers, clusteraccess.SchemaCleanupFinalizer)
+	}, 10*time.Second, 250*time.Millisecond,
+		"expected ClusterAccess %s to have schema cleanup finalizer", name)
+	return clusterAccess
+}
+
+func (suite *ClusterAccessControllerTestSuite) createKubeconfigClusterAccess(name, schemaPath string) *pmgatewayv1alpha1.ClusterAccess {
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name + "-kubeconfig",
+			Namespace: testNamespace,
+		},
+		Data: map[string][]byte{
+			"kubeconfig": suite.envtestKubeconfig,
+		},
+	}
+	err := suite.client.Create(context.Background(), secret)
+	suite.Require().NoError(err, "failed to create kubeconfig secret")
+
+	clusterAccess := &pmgatewayv1alpha1.ClusterAccess{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: pmgatewayv1alpha1.ClusterAccessSpec{
+			Path: schemaPath,
+			Auth: &pmgatewayv1alpha1.AuthConfig{
+				KubeconfigSecretRef: &pmgatewayv1alpha1.SecretKeyRef{
+					SecretReference: corev1.SecretReference{
+						Name:      secret.Name,
+						Namespace: secret.Namespace,
+					},
+					Key: "kubeconfig",
+				},
+			},
+		},
+	}
+	err = suite.client.Create(context.Background(), clusterAccess)
+	suite.Require().NoError(err, "failed to create ClusterAccess")
+
+	return clusterAccess
+}
+
 // verifySchemaMetadata validates the contents of a schema file
 func (suite *ClusterAccessControllerTestSuite) verifySchemaMetadata(
 	raw []byte,
 	expectedAuthType pmgatewayv1alpha1.AuthenticationType,
 ) {
-	var schemaJSON map[string]any
-	err := json.NewDecoder(bytes.NewReader(raw)).Decode(&schemaJSON)
-	suite.Require().NoError(err, "failed to decode schema file")
-
-	// The x-cluster-metadata is stored as raw JSON bytes in the schema
-	metadataRaw, ok := schemaJSON["x-cluster-metadata"]
-	suite.Require().True(ok, "schema should have x-cluster-metadata")
-
-	var metadata pmgatewayv1alpha1.ClusterMetadata
-	switch v := metadataRaw.(type) {
-	case string:
-		err = json.Unmarshal([]byte(v), &metadata)
-	case []byte:
-		err = json.Unmarshal(v, &metadata)
-	default:
-		// Try to marshal and unmarshal
-		data, marshalErr := json.Marshal(v)
-		suite.Require().NoError(marshalErr, "failed to marshal metadata")
-		err = json.Unmarshal(data, &metadata)
-	}
-	suite.Require().NoError(err, "failed to decode cluster metadata")
+	metadata, err := reconciler.ExtractClusterMetadataFromSchema(raw)
+	suite.Require().NoError(err, "failed to extract metadata")
 
 	suite.NotEmpty(metadata.Host, "metadata should have host")
 	suite.NotNil(metadata.Auth, "metadata should have auth")
@@ -487,7 +553,8 @@ func (suite *ClusterAccessControllerTestSuite) TestServiceAccountAuth() {
 			Name: "serviceaccount-test",
 		},
 		Spec: pmgatewayv1alpha1.ClusterAccessSpec{
-			Host: suite.envtestHost,
+			Host:                suite.envtestHost,
+			RequestIdentityMode: pmgatewayv1alpha1.RequestIdentityModeServiceAccount,
 			CA: &pmgatewayv1alpha1.CAConfig{
 				SecretRef: &pmgatewayv1alpha1.SecretKeyRef{
 					SecretReference: corev1.SecretReference{
@@ -512,29 +579,115 @@ func (suite *ClusterAccessControllerTestSuite) TestServiceAccountAuth() {
 	raw := suite.waitForSchemaFile("single-serviceaccount-test")
 
 	// Verify schema metadata has SA auth type and details
-	var schemaJSON map[string]any
-	err = json.NewDecoder(bytes.NewReader(raw)).Decode(&schemaJSON)
-	suite.Require().NoError(err, "failed to decode schema file")
-
-	metadataRaw, ok := schemaJSON["x-cluster-metadata"]
-	suite.Require().True(ok, "schema should have x-cluster-metadata")
-
-	var metadata pmgatewayv1alpha1.ClusterMetadata
-	switch v := metadataRaw.(type) {
-	case string:
-		err = json.Unmarshal([]byte(v), &metadata)
-	case []byte:
-		err = json.Unmarshal(v, &metadata)
-	default:
-		data, marshalErr := json.Marshal(v)
-		suite.Require().NoError(marshalErr, "failed to marshal metadata")
-		err = json.Unmarshal(data, &metadata)
-	}
-	suite.Require().NoError(err, "failed to decode cluster metadata")
+	metadata, err := reconciler.ExtractClusterMetadataFromSchema(raw)
+	suite.Require().NoError(err, "failed to extract metadata")
 
 	suite.NotNil(metadata.Auth, "metadata should have auth")
 	suite.Equal(pmgatewayv1alpha1.AuthTypeServiceAccount, metadata.Auth.Type, "auth type should be serviceAccount")
 	suite.Equal("test-sa", metadata.Auth.SAName, "SA name should match")
 	suite.Equal(testNamespace, metadata.Auth.SANamespace, "SA namespace should match")
 	suite.NotEmpty(metadata.Auth.Token, "SA auth should have generated token")
+	suite.Equal(pmgatewayv1alpha1.RequestIdentityModeServiceAccount, metadata.RequestIdentityMode)
+}
+
+func (suite *ClusterAccessControllerTestSuite) TestServiceAccountRequestIdentityRequiresServiceAccountRef() {
+	clusterAccess := &pmgatewayv1alpha1.ClusterAccess{
+		ObjectMeta: metav1.ObjectMeta{Name: "trusted-without-serviceaccount"},
+		Spec: pmgatewayv1alpha1.ClusterAccessSpec{
+			Host:                suite.envtestHost,
+			RequestIdentityMode: pmgatewayv1alpha1.RequestIdentityModeServiceAccount,
+		},
+	}
+
+	err := suite.client.Create(context.Background(), clusterAccess)
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "requestIdentityMode serviceAccount requires auth.serviceAccountRef")
+}
+
+func (suite *ClusterAccessControllerTestSuite) TestCustomPathSchemaCleanup() {
+	const (
+		name       = "custom-path-cleanup"
+		schemaPath = "custom-schema-path"
+		schemaName = "single-" + schemaPath
+	)
+
+	suite.createKubeconfigClusterAccess(name, schemaPath)
+	suite.waitForSchemaFile(schemaName)
+	clusterAccess := suite.waitForSchemaCleanupFinalizer(name)
+
+	err := suite.client.Delete(context.Background(), clusterAccess)
+	suite.Require().NoError(err)
+
+	suite.waitForSchemaFileDeleted(schemaName)
+	suite.waitForClusterAccessDeleted(name)
+}
+
+func (suite *ClusterAccessControllerTestSuite) TestDefaultPathSchemaCleanup() {
+	const (
+		name       = "default-path-cleanup"
+		schemaName = "single-" + name
+	)
+
+	suite.createKubeconfigClusterAccess(name, "")
+	suite.waitForSchemaFile(schemaName)
+	clusterAccess := suite.waitForSchemaCleanupFinalizer(name)
+
+	err := suite.client.Delete(context.Background(), clusterAccess)
+	suite.Require().NoError(err)
+
+	suite.waitForSchemaFileDeleted(schemaName)
+	suite.waitForClusterAccessDeleted(name)
+}
+
+func (suite *ClusterAccessControllerTestSuite) TestCustomPathCleanupAllowsMissingSchema() {
+	const (
+		name       = "missing-schema-cleanup"
+		schemaPath = "missing-schema-path"
+		schemaName = "single-" + schemaPath
+	)
+
+	suite.createKubeconfigClusterAccess(name, schemaPath)
+	suite.waitForSchemaFile(schemaName)
+	clusterAccess := suite.waitForSchemaCleanupFinalizer(name)
+
+	schemaFilePath := filepath.Join(suite.listenerCfg.Options.SchemasDir, schemaName)
+	err := os.Remove(schemaFilePath)
+	suite.Require().NoError(err)
+
+	err = suite.client.Delete(context.Background(), clusterAccess)
+	suite.Require().NoError(err)
+
+	suite.waitForClusterAccessDeleted(name)
+}
+
+func (suite *ClusterAccessControllerTestSuite) TestCustomPathCleanupRetriesAfterFailure() {
+	const (
+		name       = "retry-schema-cleanup"
+		schemaPath = "retry-schema-path"
+		schemaName = "single-" + schemaPath
+	)
+
+	suite.createKubeconfigClusterAccess(name, schemaPath)
+	suite.waitForSchemaFile(schemaName)
+	clusterAccess := suite.waitForSchemaCleanupFinalizer(name)
+
+	suite.schemaHandler.failDelete.Store(true)
+	defer suite.schemaHandler.failDelete.Store(false)
+
+	err := suite.client.Delete(context.Background(), clusterAccess)
+	suite.Require().NoError(err)
+
+	suite.Eventually(func() bool {
+		current := &pmgatewayv1alpha1.ClusterAccess{}
+		if err := suite.client.Get(context.Background(), ctrlruntimeclient.ObjectKey{Name: name}, current); err != nil {
+			return false
+		}
+		return !current.DeletionTimestamp.IsZero() && slices.Contains(current.Finalizers, clusteraccess.SchemaCleanupFinalizer)
+	}, 10*time.Second, 250*time.Millisecond,
+		"expected cleanup failure to retain the finalizer")
+
+	suite.schemaHandler.failDelete.Store(false)
+
+	suite.waitForSchemaFileDeleted(schemaName)
+	suite.waitForClusterAccessDeleted(name)
 }

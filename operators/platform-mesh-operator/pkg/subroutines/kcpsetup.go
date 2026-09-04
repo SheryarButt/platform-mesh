@@ -183,12 +183,9 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 		templateData[k] = v
 	}
 
-	baseDomain, baseDomainPort, port, protocol := baseDomainPortProtocol(inst)
-	templateData["baseDomain"] = baseDomain
-	templateData["baseDomainPort"] = baseDomainPort
-	templateData["port"] = fmt.Sprintf("%d", port)
-	templateData["protocol"] = protocol
-	templateData["instance"] = inst
+	for k, v := range getExposureParams(inst).templateVars(r.cfg.KCP) {
+		templateData[k] = v
+	}
 	templateData["featureDisableEmailVerification"] = HasFeatureToggle(inst, "feature-disable-email-verification")
 	templateData["featureDisableContentConfigurations"] = HasFeatureToggle(inst, "feature-disable-contentconfigurations")
 	templateData["featureEnableTerminalControllerManager"] = HasFeatureToggle(inst, "feature-enable-terminal-controller-manager")
@@ -196,6 +193,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	templateData["registrationAllowed"] = r.cfg.IDP.RegistrationAllowed
 	templateData["welcomeAdditionalRedirectUris"] = r.cfg.IDP.WelcomeAdditionalRedirectUris
 	templateData["welcomeAdditionalPostLogoutRedirectUris"] = r.cfg.IDP.WelcomeAdditionalPostLogoutRedirectUris
+	templateData["userClaim"] = r.cfg.IDP.UserClaim
 
 	pmSystemClient, err := r.kcpHelper.NewKcpClient(config, "root:platform-mesh-system")
 	if err != nil {

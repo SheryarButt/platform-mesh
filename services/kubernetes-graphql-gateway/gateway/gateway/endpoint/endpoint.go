@@ -73,6 +73,10 @@ func New(
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse schema: %w", err)
 	}
+	usesServiceAccount, err := usesServiceAccountForRequests(schemaData.ClusterMetadata)
+	if err != nil {
+		return nil, err
+	}
 
 	cl, err := cluster.New(ctx, name, schemaData.ClusterMetadata, clusterOpts)
 	if err != nil {
@@ -83,7 +87,7 @@ func New(
 	// we build a per-endpoint TokenReviewValidator and own it ourselves.
 	validator := injectedValidator
 	validatorCancel := context.CancelFunc(func() {})
-	if validator == nil {
+	if !usesServiceAccount && validator == nil {
 		validatorCtx, trCancel := context.WithCancel(ctx)
 		tr, err := authn.NewTokenReviewValidator(cl.AdminConfig(), tokenReviewCacheTTL, authM)
 		if err != nil {
@@ -143,10 +147,15 @@ func New(
 			return
 		}
 
+		if usesServiceAccount {
+			gqlHTTPHandler.ServeHTTP(w, r)
+			return
+		}
+
 		token, ok := utilscontext.GetTokenFromCtx(r.Context())
 		if !ok || token == "" {
 			log.FromContext(r.Context()).V(1).Info("request rejected: no bearer token", "cluster", name)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			http.Error(w, "Unauthorized: missing Authorization header", http.StatusUnauthorized)
 			return
 		}
 
@@ -175,6 +184,17 @@ func New(
 		cancelFunc:    validatorCancel,
 		metrics:       endpointM,
 	}, nil
+}
+
+func usesServiceAccountForRequests(metadata *pmgatewayv1alpha1.ClusterMetadata) (bool, error) {
+	if metadata == nil || metadata.RequestIdentityMode == "" ||
+		metadata.RequestIdentityMode == pmgatewayv1alpha1.RequestIdentityModeUserToken {
+		return false, nil
+	}
+	if metadata.RequestIdentityMode == pmgatewayv1alpha1.RequestIdentityModeServiceAccount {
+		return true, nil
+	}
+	return false, fmt.Errorf("unsupported request identity mode %q", metadata.RequestIdentityMode)
 }
 
 func (e *Endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
