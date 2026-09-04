@@ -33,8 +33,8 @@ func (r *KcpsetupSubroutine) GetCaBundle(ctx context.Context, webhookConfig *pmc
 	return r.getCaBundle(ctx, webhookConfig)
 }
 
-func (r *KcpsetupSubroutine) GetCABundleInventory(ctx context.Context) (map[string]string, error) {
-	return r.getCABundleInventory(ctx)
+func (r *KcpsetupSubroutine) GetCABundleInventory(ctx context.Context, inst *pmcorev1alpha1.PlatformMesh) (map[string]string, error) {
+	return r.getCABundleInventory(ctx, inst)
 }
 
 func (r *KcpsetupSubroutine) CreateKcpResources(ctx context.Context, config *rest.Config, dir string, inst *pmcorev1alpha1.PlatformMesh) error {

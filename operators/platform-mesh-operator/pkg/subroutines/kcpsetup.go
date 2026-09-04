@@ -168,7 +168,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	}
 
 	// Get CA bundle data
-	caBundles, err := r.getCABundleInventory(ctx)
+	caBundles, err := r.getCABundleInventory(ctx, inst)
 	if err != nil {
 		log.Err(err).Msg("Failed to get CA bundle inventory")
 		return gcerrors.Wrap(err, "Failed to get CA bundle inventory")
@@ -189,6 +189,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	templateData["featureDisableEmailVerification"] = HasFeatureToggle(inst, "feature-disable-email-verification")
 	templateData["featureDisableContentConfigurations"] = HasFeatureToggle(inst, "feature-disable-contentconfigurations")
 	templateData["featureEnableTerminalControllerManager"] = HasFeatureToggle(inst, "feature-enable-terminal-controller-manager")
+	templateData["featureDisableIDPWebhook"] = HasFeatureToggle(inst, FeatureDisableIDPWebhook)
 	templateData["registrationAllowed"] = r.cfg.IDP.RegistrationAllowed
 	templateData["welcomeAdditionalRedirectUris"] = r.cfg.IDP.WelcomeAdditionalRedirectUris
 	templateData["welcomeAdditionalPostLogoutRedirectUris"] = r.cfg.IDP.WelcomeAdditionalPostLogoutRedirectUris
@@ -246,6 +247,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 
 func (r *KcpsetupSubroutine) getCABundleInventory(
 	ctx context.Context,
+	inst *pmcorev1alpha1.PlatformMesh,
 ) (map[string]string, error) {
 	log := logger.LoadLoggerFromContext(ctx)
 
@@ -269,14 +271,17 @@ func (r *KcpsetupSubroutine) getCABundleInventory(
 	caBundles[key] = b64Data
 
 	// Get Identity Provider validating webhook CA bundle (security-operator webhook)
-	ipdValidatingWebhookConfig := DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION
-	ipdCaData, err := r.getCaBundle(ctx, &ipdValidatingWebhookConfig)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get Identity Provider ValidatingWebhook CA bundle")
-		return nil, gcerrors.Wrap(err, "Failed to get Identity Provider ValidatingWebhook CA bundle")
+	// Skip if webhook is disabled via feature toggle
+	if HasFeatureToggle(inst, FeatureDisableIDPWebhook) != "true" {
+		ipdValidatingWebhookConfig := DEFAULT_IDENTITY_PROVIDER_VALIDATING_WEBHOOK_CONFIGURATION
+		ipdCaData, err := r.getCaBundle(ctx, &ipdValidatingWebhookConfig)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to get Identity Provider ValidatingWebhook CA bundle")
+			return nil, gcerrors.Wrap(err, "Failed to get Identity Provider ValidatingWebhook CA bundle")
+		}
+		ipdKey := fmt.Sprintf("%s.ca-bundle", ipdValidatingWebhookConfig.WebhookRef.Name)
+		caBundles[ipdKey] = base64.StdEncoding.EncodeToString(ipdCaData)
 	}
-	ipdKey := fmt.Sprintf("%s.ca-bundle", ipdValidatingWebhookConfig.WebhookRef.Name)
-	caBundles[ipdKey] = base64.StdEncoding.EncodeToString(ipdCaData)
 
 	// Get validating webhook CA bundle
 	validatingWebhookConfig := DEFAULT_VALIDATING_WEBHOOK_CONFIGURATION

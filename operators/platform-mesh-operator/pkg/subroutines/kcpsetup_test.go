@@ -207,7 +207,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 		})
 
 	// First call should fetch from secrets
-	inventory, err := s.testObj.GetCABundleInventory(ctx)
+	inventory, err := s.testObj.GetCABundleInventory(ctx, &pmcorev1alpha1.PlatformMesh{})
 	s.Assert().NoError(err)
 	s.Assert().NotNil(inventory)
 
@@ -228,7 +228,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 	s.Assert().Equal(expectedB64, inventory[ipdValidatingKey])
 
 	// Second call should use cache (no additional mock calls expected)
-	inventory2, err2 := s.testObj.GetCABundleInventory(ctx)
+	inventory2, err2 := s.testObj.GetCABundleInventory(ctx, &pmcorev1alpha1.PlatformMesh{})
 	s.Assert().NoError(err2)
 	s.Assert().NotNil(inventory2)
 	s.Assert().Contains(inventory2, mutatingKey)
@@ -253,7 +253,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory() {
 		Return(errors.New("secret not found")).
 		Once()
 
-	inventory, err = s.testObj.GetCABundleInventory(ctx)
+	inventory, err = s.testObj.GetCABundleInventory(ctx, &pmcorev1alpha1.PlatformMesh{})
 	s.Assert().Error(err)
 	s.Assert().Nil(inventory)
 	s.Assert().Contains(err.Error(), "Failed to get CA bundle")
@@ -328,7 +328,7 @@ func (s *KcpsetupTestSuite) Test_getCABundleInventory_CustomSecretNameAndKey() {
 			return nil
 		}).Once()
 
-	inventory, err := s.testObj.GetCABundleInventory(ctx)
+	inventory, err := s.testObj.GetCABundleInventory(ctx, &pmcorev1alpha1.PlatformMesh{})
 	s.Assert().NoError(err)
 	s.Assert().NotNil(inventory)
 	s.Assert().Contains(inventory, "domainCA")

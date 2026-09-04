@@ -145,6 +145,11 @@ func (r *FeatureToggleSubroutine) Process(ctx context.Context, runtimeObj ctrlru
 			log.Info().Msg("Enabled 'Provider permissions' feature")
 		case "feature-disable-email-verification":
 			log.Info().Msg("Enabled 'disable-email-verification' feature")
+		case "feature-disable-idp-webhook":
+			// This feature toggle should only be used intentionally for testing/development or for disaster recovery.
+			// The IDP validating webhook provides important security validation for IdentityProviderConfiguration resources.
+			// Production deployments should run with this webhook enabled (default behavior).
+			log.Info().Msg("IDP validating webhook is disabled")
 		default:
 			log.Warn().Str("featureToggle", ft.Name).Msg("Unknown feature toggle")
 		}
