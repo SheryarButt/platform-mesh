@@ -192,6 +192,7 @@ func (r *KcpsetupSubroutine) createKcpResources(ctx context.Context, config *res
 	templateData["registrationAllowed"] = r.cfg.IDP.RegistrationAllowed
 	templateData["welcomeAdditionalRedirectUris"] = r.cfg.IDP.WelcomeAdditionalRedirectUris
 	templateData["welcomeAdditionalPostLogoutRedirectUris"] = r.cfg.IDP.WelcomeAdditionalPostLogoutRedirectUris
+	templateData["userClaim"] = r.cfg.IDP.UserClaim
 
 	pmSystemClient, err := r.kcpHelper.NewKcpClient(config, "root:platform-mesh-system")
 	if err != nil {
